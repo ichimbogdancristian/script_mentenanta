@@ -1246,8 +1246,7 @@ function Test-ConfigurationSchema {
     $schemas = @{
         'main-config.json'    = @{
             'execution.countdownSeconds'      = @{ Type = 'int'; Min = 5; Max = 300; Required = $true; Description = 'Menu countdown duration in seconds' }
-            'execution.defaultMode'           = @{ Type = 'string'; Enum = @('unattended', 'interactive', 'dryrun'); Required = $false; Description = 'Default execution mode' }
-            'execution.enableDryRun'          = @{ Type = 'bool'; Required = $false; Description = 'Enable dry-run mode by default' }
+            'execution.defaultMode'           = @{ Type = 'string'; Enum = @('unattended', 'interactive'); Required = $false; Description = 'Default execution mode' }
             'modules.skipBloatwareRemoval'    = @{ Type = 'bool'; Required = $false; Description = 'Skip bloatware removal module' }
             'modules.skipEssentialApps'       = @{ Type = 'bool'; Required = $false; Description = 'Skip essential apps module' }
             'modules.skipWindowsUpdates'      = @{ Type = 'bool'; Required = $false; Description = 'Skip Windows updates module' }
@@ -2676,9 +2675,6 @@ function Save-DiffResults {
 .PARAMETER ErrorMessage
     Error message if operation failed
 
-.PARAMETER DryRun
-    Whether this was a dry-run (simulation) execution
-
 .PARAMETER AdditionalData
     Any extra data to include in result
 
@@ -2715,9 +2711,6 @@ function New-ModuleExecutionResult {
         [string]$ErrorMessage,
 
         [Parameter(Mandatory = $false)]
-        [switch]$DryRun,
-
-        [Parameter(Mandatory = $false)]
         [hashtable]$AdditionalData = @{}
     )
 
@@ -2730,7 +2723,6 @@ function New-ModuleExecutionResult {
         LogPath            = $LogPath
         ModuleName         = $ModuleName
         Error              = $ErrorMessage
-        DryRun             = $DryRun.IsPresent
         ExecutionTimestamp = Get-Date -Format 'o'
         AdditionalData     = $AdditionalData
     }
@@ -3650,9 +3642,6 @@ function Invoke-WithTimeout {
 .PARAMETER Config
     Configuration hashtable to pass to the module
 
-.PARAMETER DryRun
-    Whether to execute in dry-run mode
-
 .PARAMETER TimeoutSeconds
     Maximum execution time (uses config default if not specified)
 
@@ -3671,9 +3660,6 @@ function Invoke-ModuleWithTimeout {
 
         [Parameter(Mandatory = $true)]
         [hashtable]$Config,
-
-        [Parameter(Mandatory = $false)]
-        [switch]$DryRun,
 
         [Parameter(Mandatory = $false)]
         [int]$TimeoutSeconds = 600
@@ -3695,12 +3681,7 @@ function Invoke-ModuleWithTimeout {
 
     try {
         # Execute with timeout
-        $scriptBlock = if ($DryRun) {
-            { & $functionName -Config $args[0] -DryRun }
-        }
-        else {
-            { & $functionName -Config $args[0] }
-        }
+        $scriptBlock = { & $functionName -Config $args[0] }
 
         $result = Invoke-WithTimeout -ScriptBlock $scriptBlock -TimeoutSeconds $TimeoutSeconds -ArgumentList @($Config)
 

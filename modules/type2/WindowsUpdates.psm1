@@ -59,10 +59,7 @@ function Invoke-WindowsUpdates {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $true)]
-        [hashtable]$Config,
-
-        [Parameter()]
-        [switch]$DryRun
+        [hashtable]$Config
     )
 
     $perfContext = Start-PerformanceTrackingSafe -OperationName 'WindowsUpdates' -Component 'WINDOWS-UPDATES'
@@ -97,8 +94,7 @@ function Invoke-WindowsUpdates {
                 -ItemsProcessed 0 `
                 -DurationMilliseconds $executionTime.TotalMilliseconds `
                 -LogPath "" `
-                -ModuleName 'WindowsUpdates' `
-                -DryRun $DryRun.IsPresent
+                -ModuleName 'WindowsUpdates'
         }
 
         # Display module banner
@@ -109,7 +105,7 @@ function Invoke-WindowsUpdates {
         Write-Host "  Type: " -NoNewline -ForegroundColor Gray
         Write-Host "Type 2 (System Modification)" -ForegroundColor Yellow
         Write-Host "  Mode: " -NoNewline -ForegroundColor Gray
-        Write-Host "$(if ($DryRun) { 'DRY-RUN (Simulation)' } else { 'LIVE EXECUTION' })" -ForegroundColor $(if ($DryRun) { 'Cyan' } else { 'Green' })
+        Write-Host "LIVE EXECUTION" -ForegroundColor Green
         Write-Host "=================================================" -ForegroundColor Cyan
         Write-Host ""
 
@@ -120,15 +116,9 @@ function Invoke-WindowsUpdates {
         $updatesCount = $updatesCount
         Write-StructuredLogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message "Detected $updatesCount pending Windows updates" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ UpdateCount = $updatesCount }
 
-        if ($DryRun) {
-            Write-StructuredLogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message ' DRY-RUN: Simulating Windows updates installation' -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; UpdateCount = $updatesCount }
-            $results = @{ ProcessedCount = $updatesCount; Simulated = $true }; $processedCount = $updatesCount
-        }
-        else {
-            Write-StructuredLogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Executing Windows updates installation' -LogPath $executionLogPath -Operation 'Install' -Metadata @{ UpdateCount = $updatesCount }
-            $results = Install-WindowsUpdate -ExecutionLogPath $executionLogPath
-            $processedCount = if ($results.InstalledCount) { $results.InstalledCount } else { 0 }
-        }
+        Write-StructuredLogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Executing Windows updates installation' -LogPath $executionLogPath -Operation 'Install' -Metadata @{ UpdateCount = $updatesCount }
+        $results = Install-WindowsUpdate -ExecutionLogPath $executionLogPath
+        $processedCount = if ($results.InstalledCount) { $results.InstalledCount } else { 0 }
 
         Write-StructuredLogEntry -Level 'SUCCESS' -Component 'WINDOWS-UPDATES' -Message "Windows updates completed. Processed: $processedCount/$updatesCount" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ ProcessedCount = $processedCount; TotalUpdates = $updatesCount }
 
@@ -149,7 +139,7 @@ function Invoke-WindowsUpdates {
                 ItemsFailed    = 0
                 ItemsSkipped   = ($updatesCount - $processedCount)
             }
-            ExecutionMode = if ($DryRun) { 'DryRun' } else { 'Live' }
+            ExecutionMode = 'Live'
             LogFiles      = @{
                 TextLog = $executionLogPath
                 JsonLog = $executionLogPath -replace '\.log$', '-data.json'
@@ -177,8 +167,7 @@ function Invoke-WindowsUpdates {
             -ItemsProcessed $processedCount `
             -DurationMilliseconds $executionTime.TotalMilliseconds `
             -LogPath $executionLogPath `
-            -ModuleName 'WindowsUpdates' `
-            -DryRun $DryRun.IsPresent
+            -ModuleName 'WindowsUpdates'
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null }
         return $returnData
 
@@ -229,16 +218,12 @@ function Invoke-WindowsUpdates {
     Specifies the maximum total download size in megabytes (default: 2048MB).
     Updates exceeding this size will be skipped to manage bandwidth usage.
 
-.PARAMETER DryRun
-    When specified, performs update scan and analysis without installing updates.
-    Useful for testing and reporting available updates without system changes.
-
 .PARAMETER SuppressReboot
     When specified, suppresses automatic system reboots after update installation.
     System may require manual reboot to complete update installation.
 
 .EXAMPLE
-    $results = Install-WindowsUpdate -DryRun
+    $results = Install-WindowsUpdate
     Write-Output "Found $($results.Available) available updates"
 
 .EXAMPLE
@@ -281,9 +266,6 @@ function Install-WindowsUpdate {
         [int]$MaxDownloadSizeMB = 2048,
 
         [Parameter()]
-        [switch]$DryRun,
-
-        [Parameter()]
         [switch]$SuppressReboot,
 
         [Parameter()]
@@ -300,7 +282,6 @@ function Install-WindowsUpdate {
             IncludeOptional   = $IncludeOptional.IsPresent
             IncludeDrivers    = $IncludeDrivers.IsPresent
             MaxDownloadSizeMB = $MaxDownloadSizeMB
-            DryRun            = $DryRun.IsPresent
             SuppressReboot    = $SuppressReboot.IsPresent
         }
         $perfContext = Start-PerformanceTracking -OperationName 'WindowsUpdatesInstallation' -Component 'WINDOWS-UPDATES'
@@ -328,7 +309,6 @@ function Install-WindowsUpdate {
         RebootRequired   = $false
         Details          = [List[PSCustomObject]]::new()
         Method           = 'Unknown'
-        DryRun           = $DryRun.IsPresent
     }
 
     try {
@@ -371,10 +351,6 @@ function Install-WindowsUpdate {
         if ($results.UpdatesFound -eq 0) {
             Write-Information "   No updates available - system is up to date" -InformationAction Continue
             try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'No updates available - system is up to date' } catch { Write-Verbose "Failed to write log entry: $_" }
-        }
-        elseif ($DryRun) {
-            Write-Information "   Found $($results.UpdatesFound) available updates ($($results.TotalSizeMB) MB total)" -InformationAction Continue
-            try { Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Dry-run completed - updates would be installed' -Data @{ UpdatesFound = $results.UpdatesFound; TotalSizeMB = $results.TotalSizeMB } } catch { Write-Verbose "Failed to write log entry: $_" }
         }
         else {
             $statusIcon = if ($results.UpdatesFailed -eq 0) { "" } else { "" }
@@ -566,9 +542,6 @@ function Get-WindowsUpdateStatus {
 .PARAMETER MaxDownloadSizeMB
     Specifies the maximum total download size in megabytes.
 
-.PARAMETER DryRun
-    When specified, scans for updates without installing them.
-
 .PARAMETER SuppressReboot
     When specified, suppresses automatic reboots after update installation.
 
@@ -589,7 +562,6 @@ function Install-UpdatesViaPSWindowsUpdate {
         [switch]$IncludeOptional,
         [switch]$IncludeDrivers,
         [int]$MaxDownloadSizeMB = 2048,
-        [switch]$DryRun,
         [switch]$SuppressReboot
     )
 
@@ -601,7 +573,6 @@ function Install-UpdatesViaPSWindowsUpdate {
         RebootRequired   = $false
         Details          = [List[PSCustomObject]]::new()
         Method           = 'PSWindowsUpdate'
-        DryRun           = $DryRun.IsPresent
     }
 
     try {
@@ -683,22 +654,6 @@ function Install-UpdatesViaPSWindowsUpdate {
             $filteredUpdates = $selectedUpdates
             $results.UpdatesFound = $filteredUpdates.Count
             $results.TotalSizeMB = $currentSize
-        }
-
-        if ($DryRun) {
-            Write-Information "     [DRY RUN] Would install $($results.UpdatesFound) updates ($($results.TotalSizeMB) MB)" -InformationAction Continue
-
-            foreach ($update in $filteredUpdates) {
-                $results.Details.Add([PSCustomObject]@{
-                        Title    = $update.Title
-                        SizeMB   = [math]::Round($update.Size / 1MB, 2)
-                        Category = $update.Categories -join ', '
-                        Status   = 'Simulated'
-                    })
-            }
-
-            $results.UpdatesInstalled = $results.UpdatesFound
-            return $results
         }
 
         # Install updates
@@ -794,9 +749,7 @@ function Install-UpdatesViaPSWindowsUpdate {
 function Install-UpdatesViaNativeAPI {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
     [OutputType([hashtable])]
-    param(
-        [switch]$DryRun
-    )
+    param()
 
     $results = @{
         UpdatesFound     = 0
@@ -806,7 +759,6 @@ function Install-UpdatesViaNativeAPI {
         RebootRequired   = $false
         Details          = [List[PSCustomObject]]::new()
         Method           = 'Native API'
-        DryRun           = $DryRun.IsPresent
     }
 
     try {
@@ -831,21 +783,6 @@ function Install-UpdatesViaNativeAPI {
         # Calculate total size
         $totalSize = ($availableUpdates | ForEach-Object { $_.MaxDownloadSize } | Measure-Object -Sum).Sum
         $results.TotalSizeMB = [math]::Round($totalSize / 1MB, 2)
-
-        if ($DryRun) {
-            Write-Information "     [DRY RUN] Found $($results.UpdatesFound) updates ($($results.TotalSizeMB) MB)" -InformationAction Continue
-
-            foreach ($update in $availableUpdates) {
-                $results.Details.Add([PSCustomObject]@{
-                        Title    = $update.Title
-                        SizeMB   = [math]::Round($update.MaxDownloadSize / 1MB, 2)
-                        Category = 'Windows Update'
-                        Status   = 'Available'
-                    })
-            }
-
-            return $results
-        }
 
         # Download and install updates
         Write-Information "     Downloading and installing updates..." -InformationAction Continue

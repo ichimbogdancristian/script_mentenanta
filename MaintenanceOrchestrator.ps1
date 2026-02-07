@@ -13,8 +13,6 @@ using namespace System.Collections.Generic
     Path to the configuration directory (optional, auto-detected if not provided)
 .PARAMETER NonInteractive
     Skip interactive menus and use default settings
-.PARAMETER DryRun
-    Run in dry-run mode (simulate changes without modifying the system)
 .PARAMETER TaskNumbers
     Comma-separated list of task numbers to execute (e.g., "1,3,5")
 .EXAMPLE
@@ -24,8 +22,8 @@ using namespace System.Collections.Generic
     .\MaintenanceOrchestrator.ps1 -NonInteractive
     # Unattended mode with all tasks
 .EXAMPLE
-    .\MaintenanceOrchestrator.ps1 -DryRun -TaskNumbers "1,2,3"
-    # Dry-run mode with specific tasks
+    .\MaintenanceOrchestrator.ps1 -TaskNumbers "1,2,3"
+    # Run specific tasks
 .NOTES
     Author: Windows Maintenance Automation Project
     Version: 2.0.0
@@ -37,7 +35,6 @@ param(
     [ValidateScript({ [string]::IsNullOrEmpty($_) -or (Test-Path $_ -PathType Container) })]
     [string]$ConfigPath,
     [switch]$NonInteractive,
-    [switch]$DryRun,
     [ValidatePattern('^(\d+)(,\d+)*$|^$')]
     [string]$TaskNumbers
 )
@@ -555,11 +552,11 @@ try {
     $restorePointMinSizeGB = $mainConfig.system.restorePointMaxSizeGB ?? 10
 
     # First, ensure adequate disk space allocation for restore points
-    if ($createRestorePoint -and -not $DryRun) {
+    if ($createRestorePoint) {
         Ensure-SystemRestorePointSpace -MinimumGB $restorePointMinSizeGB | Out-Null
     }
 
-    if ($createRestorePoint -and -not $DryRun) {
+    if ($createRestorePoint) {
         Write-Information "   Creating system restore point before maintenance..." -InformationAction Continue
 
         $restoreDescription = "Before Windows Maintenance - $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
@@ -611,9 +608,6 @@ try {
             Write-Warning "   Failed to create restore point: $($restoreResult.Message)"
             Write-Warning "   Continuing without restore point - you may want to create one manually"
         }
-    }
-    elseif ($DryRun) {
-        Write-Information "   [DRY-RUN] Restore point creation skipped in dry-run mode" -InformationAction Continue
     }
     else {
         Write-Information "   Restore point creation disabled in configuration" -InformationAction Continue
@@ -946,24 +940,20 @@ try {
         param(
             [string]$TaskName,
             [string]$FunctionName,
-            [hashtable]$Config,
-            [switch]$DryRun
+            [hashtable]$Config
         )
         # Prepare task-specific parameters for Type2 modules
         switch ($TaskName) {
             'EssentialApps' {
                 $params = @{ Config = $Config }
-                if ($DryRun) { $params.DryRun = $true }
                 return & $FunctionName @params
             }
             'BloatwareRemoval' {
                 $params = @{ Config = $Config }
-                if ($DryRun) { $params.DryRun = $true }
                 return & $FunctionName @params
             }
             'TelemetryDisable' {
                 $params = @{ Config = $Config }
-                if ($DryRun) { $params.DryRun = $true }
                 return & $FunctionName @params
             }
             'BloatwareDetection' {
@@ -1065,14 +1055,14 @@ try {
     FIX #9: Creates session.json file that captures complete session metadata:
     - Unique session identifier (GUID)
     - Execution timestamp (ISO 8601)
-    - Execution mode (interactive/unattended/dry-run)
+    - Execution mode (interactive/unattended)
     - Module execution results
     - Total session duration
     - Final execution status
 .PARAMETER SessionId
     Unique session identifier (GUID)
 .PARAMETER ExecutionMode
-    Mode of execution: 'Interactive', 'Unattended', or 'DryRun'
+    Mode of execution: 'Interactive', 'Unattended', or 'Live'
 .PARAMETER ModuleResults
     Array of module execution results with timestamps
 .PARAMETER ExecutionStartTime
@@ -1090,9 +1080,7 @@ try {
             [Parameter(Mandatory = $false)]
             [array]$ModuleResults = @(),
             [Parameter(Mandatory = $true)]
-            [datetime]$ExecutionStartTime,
-            [Parameter(Mandatory = $false)]
-            [switch]$IsDryRun = $false
+            [datetime]$ExecutionStartTime
         )
         try {
             # Calculate execution duration
@@ -1102,10 +1090,7 @@ try {
             $successfulModules = @($ModuleResults | Where-Object { $_.Success -eq $true }).Count
             $failedModules = @($ModuleResults | Where-Object { $_.Success -eq $false }).Count
             # Determine final execution status
-            $executionStatus = if ($IsDryRun) {
-                'DryRun - No changes made'
-            }
-            elseif ($failedModules -eq 0) {
+            $executionStatus = if ($failedModules -eq 0) {
                 'Success - All modules completed'
             }
             elseif ($failedModules -lt $ModuleResults.Count) {
@@ -1120,7 +1105,6 @@ try {
                 sessionTimestamp     = $ExecutionStartTime.ToString('o')  # ISO 8601 format
                 sessionEndTime       = $executionEndTime.ToString('o')
                 executionMode        = $ExecutionMode
-                isDryRun             = $IsDryRun.IsPresent
                 executionStartTime   = $ExecutionStartTime.ToString('yyyy-MM-dd HH:mm:ss')
                 executionEndTime     = $executionEndTime.ToString('yyyy-MM-dd HH:mm:ss')
                 totalDurationSeconds = $totalDuration
@@ -1133,7 +1117,7 @@ try {
                             duration       = $_.Duration
                             startTime      = $_.StartTime
                             endTime        = $_.EndTime
-                            executionMode  = if ($IsDryRun) { 'DryRun' } else { 'Live' }
+                            executionMode  = 'Live'
                         }
                     })
                 executionStatus      = $executionStatus
@@ -1297,7 +1281,6 @@ try {
     #region Execution Mode Selection
     $ExecutionParams = @{
         Mode          = 'Execute'
-        DryRun        = $false
         SelectedTasks = $AvailableTasks
     }
     if (-not $NonInteractive) {
@@ -1305,7 +1288,6 @@ try {
         # Show hierarchical menu with integrated task selection
         $menuResult = Show-MainMenu -CountdownSeconds $MainConfig.execution.countdownSeconds -AvailableTasks $AvailableTasks
         # Apply menu selections
-        $ExecutionParams.DryRun = $menuResult.DryRun
         if (-not $TaskNumbers) {
             # Use tasks selected from the integrated menu system
             $ExecutionParams.SelectedTasks = @()
@@ -1315,16 +1297,11 @@ try {
                 }
             }
             Write-Information "   Menu selections applied:" -InformationAction Continue
-            Write-Information "    - Execution mode: $(if ($ExecutionParams.DryRun) { 'DRY-RUN' } else { 'NORMAL' })" -InformationAction Continue
             Write-Information "    - Selected tasks: $($ExecutionParams.SelectedTasks.Count)/$($AvailableTasks.Count)" -InformationAction Continue
         }
     }
     else {
         Write-Information "`nNon-interactive mode enabled" -InformationAction Continue
-        if ($DryRun) {
-            $ExecutionParams.DryRun = $true
-            Write-Information "   Dry-run mode enabled" -InformationAction Continue
-        }
     }
     # Handle TaskNumbers parameter
     if ($TaskNumbers) {
@@ -1350,7 +1327,7 @@ try {
     #endregion
     #region Task Execution
     Write-Information "`nStarting maintenance execution..." -InformationAction Continue
-    $executionMode = if ($ExecutionParams.DryRun) { "DRY-RUN" } else { "LIVE" }
+    $executionMode = "LIVE"
     Write-Information "Execution Mode: $executionMode" -InformationAction Continue
     Write-Information "Selected Tasks: $($ExecutionParams.SelectedTasks.Count)/$($AvailableTasks.Count)" -InformationAction Continue
 
@@ -1405,7 +1382,6 @@ try {
         ExecutionMode      = $executionMode
         SelectedTasksCount = $ExecutionParams.SelectedTasks.Count
         TotalTasksCount    = $AvailableTasks.Count
-        DryRun             = $ExecutionParams.DryRun
     }
     if ($ExecutionParams.SelectedTasks.Count -eq 0) {
         Write-Warning "No tasks selected for execution"
@@ -1413,7 +1389,7 @@ try {
     }
     # Show final confirmation for system modification tasks
     $type2Tasks = $ExecutionParams.SelectedTasks | Where-Object { $_.Type -eq 'Type2' }
-    if ($type2Tasks.Count -gt 0 -and -not $ExecutionParams.DryRun -and -not $NonInteractive) {
+    if ($type2Tasks.Count -gt 0 -and -not $NonInteractive) {
         $confirmMessage = "About to execute $($type2Tasks.Count) system modification task(s). Continue?"
         $confirmed = Show-ConfirmationDialog -Message $confirmMessage -CountdownSeconds 10
         if (-not $confirmed) {
@@ -1434,9 +1410,6 @@ try {
         Write-Information "[$taskNumber/$totalTasks] $($task.Name)" -InformationAction Continue
         Write-Information "Description: $($task.Description)" -InformationAction Continue
         Write-Information "Type: $($task.Type) | Category: $($task.Category)" -InformationAction Continue
-        if ($ExecutionParams.DryRun) {
-            Write-Information "Mode: DRY-RUN (simulation)" -InformationAction Continue
-        }
         $taskStartTime = Get-Date
         $taskResult = @{
             TaskName    = $task.Name
@@ -1445,7 +1418,6 @@ try {
             Category    = $task.Category
             StartTime   = $taskStartTime
             Success     = $false
-            DryRun      = $ExecutionParams.DryRun
             Output      = ''
             Error       = $null
             Duration    = $null
@@ -1458,7 +1430,6 @@ try {
                 TaskType     = $task.Type
                 TaskCategory = $task.Category
                 Function     = $task.Function
-                DryRun       = $ExecutionParams.DryRun
                 Architecture = 'v3.1'
             }
             # Verify function is available (already checked during module loading)
@@ -1468,14 +1439,8 @@ try {
             # Execute the standardized v3.0 function with consistent parameters
             $result = $null
             try {
-                if ($ExecutionParams.DryRun) {
-                    Write-Information "   Simulating: $($task.Function)" -InformationAction Continue
-                    $result = & $task.Function -Config $MainConfig -DryRun
-                }
-                else {
-                    Write-Information "   Executing: $($task.Function)" -InformationAction Continue
-                    $result = & $task.Function -Config $MainConfig
-                }
+                Write-Information "   Executing: $($task.Function)" -InformationAction Continue
+                $result = & $task.Function -Config $MainConfig
                 # Validate standardized return structure (support both hashtable and PSCustomObject)
                 $hasValidStructure = $false
                 if ($result) {
@@ -1664,7 +1629,6 @@ try {
 
         # Expose execution mode to downstream processors
         $env:MAINTENANCE_EXECUTION_MODE = $executionMode
-        $env:MAINTENANCE_DRYRUN = if ($ExecutionParams.DryRun) { 'true' } else { 'false' }
 
         # Patch 4: Finalize and export aggregated results
         if ($script:ResultCollectionEnabled) {
@@ -1860,8 +1824,7 @@ try {
     $manifestPath = New-SessionManifest -SessionId $script:MaintenanceSessionId `
         -ExecutionMode $executionMode `
         -ModuleResults $TaskResults `
-        -ExecutionStartTime $StartTime `
-        -IsDryRun:($executionMode -eq 'DryRun')
+        -ExecutionStartTime $StartTime
     if ($manifestPath) {
         if (Test-Path $manifestPath) {
             Write-Information "   Session manifest successfully created" -InformationAction Continue

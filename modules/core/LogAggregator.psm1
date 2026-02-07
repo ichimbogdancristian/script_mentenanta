@@ -53,7 +53,7 @@
         ModuleName = "SystemInventory"
         CorrelationId = "eadf22e4-f811-447a-8672-3910b93c89b0"
         ExecutionSequence = 1
-        Status = "Success|Failed|Skipped|DryRun"
+        Status = "Success|Failed|Skipped"
 
         Metrics = @{
             ItemsDetected = 63
@@ -214,7 +214,7 @@ function New-CorrelationId {
     Name of the module (e.g., "SystemInventory", "BloatwareRemoval")
 
 .PARAMETER Status
-    Execution status: Success, Failed, Skipped, DryRun
+    Execution status: Success, Failed, Skipped
 
 .PARAMETER ItemsDetected
     Count of items detected by module (audit modules) or actions discovered
@@ -261,7 +261,7 @@ function New-ModuleResult {
         [string]$ModuleName,
 
         [Parameter()]
-        [ValidateSet('Success', 'Failed', 'Skipped', 'DryRun')]
+        [ValidateSet('Success', 'Failed', 'Skipped')]
         [string]$Status = 'Success',
 
         [Parameter()]
@@ -493,7 +493,7 @@ function Get-ModuleResultsByName {
     - SuccessfulModules: Modules with Status = Success
     - FailedModules: Modules with Status = Failed
     - SkippedModules: Modules with Status = Skipped
-    - DryRunModules: Modules with Status = DryRun
+    - SkippedModules: Modules with Status = Skipped
     - TotalDurationSeconds: Sum of all module durations
     - TotalItemsDetected: Sum of ItemsDetected across modules
     - TotalItemsProcessed: Sum of ItemsProcessed across modules
@@ -513,7 +513,6 @@ function Get-ResultsSummary {
         SuccessfulModules    = ($allResults | Where-Object { $_.Status -eq 'Success' }).Count
         FailedModules        = ($allResults | Where-Object { $_.Status -eq 'Failed' }).Count
         SkippedModules       = ($allResults | Where-Object { $_.Status -eq 'Skipped' }).Count
-        DryRunModules        = ($allResults | Where-Object { $_.Status -eq 'DryRun' }).Count
         TotalDurationSeconds = ($allResults | Measure-Object -Property { $_.Metrics.DurationSeconds } -Sum).Sum
         TotalItemsDetected   = ($allResults | Measure-Object -Property { $_.Metrics.ItemsDetected } -Sum).Sum
         TotalItemsProcessed  = ($allResults | Measure-Object -Property { $_.Metrics.ItemsProcessed } -Sum).Sum

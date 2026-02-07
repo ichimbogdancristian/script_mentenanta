@@ -411,7 +411,7 @@ function New-ErrorObject {
     Standard Format:
     @{
         ModuleName = "..."
-        Status = "Success|Failed|Skipped|DryRun"
+        Status = "Success|Failed|Skipped"
         Metrics = @{
             ItemsDetected = 0
             ItemsProcessed = 0
@@ -437,7 +437,7 @@ function ConvertTo-StandardizedResult {
         [decimal]$DurationSeconds = 0,
         
         [Parameter()]
-        [ValidateSet('Success', 'Failed', 'Skipped', 'DryRun')]
+        [ValidateSet('Success', 'Failed', 'Skipped')]
         [string]$Status
     )
     

@@ -66,17 +66,11 @@ if (-not (Get-Command -Name 'Get-EssentialAppsAudit' -ErrorAction SilentlyContin
     Standardized entry point that implements the Type2 → Type1 flow:
     1. Calls EssentialAppsAudit (Type1) to analyze missing apps
     2. Validates findings and logs results
-    3. Executes installation actions (Type2) based on DryRun mode
+    3. Executes installation actions in live mode
     4. Returns standardized results for ReportGeneration
 
 .PARAMETER Config
     Main configuration object from orchestrator
-
-.PARAMETER DryRun
-    When specified, simulates installation without making changes
-
-.EXAMPLE
-    $result = Invoke-EssentialApps -Config $MainConfig -DryRun
 
 .EXAMPLE
     $result = Invoke-EssentialApps -Config $MainConfig
@@ -86,10 +80,7 @@ function Invoke-EssentialApps {
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
-        [hashtable]$Config,
-
-        [Parameter()]
-        [switch]$DryRun
+        [hashtable]$Config
     )
 
     # Performance tracking
@@ -114,7 +105,7 @@ function Invoke-EssentialApps {
         Write-Host "  Type: " -NoNewline -ForegroundColor Gray
         Write-Host "Type 2 (System Modification)" -ForegroundColor Yellow
         Write-Host "  Mode: " -NoNewline -ForegroundColor Gray
-        Write-Host "$(if ($DryRun) { 'DRY-RUN (Simulation)' } else { 'LIVE EXECUTION' })" -ForegroundColor $(if ($DryRun) { 'Cyan' } else { 'Green' })
+        Write-Host "LIVE EXECUTION" -ForegroundColor Green
         Write-Host "=================================================" -ForegroundColor Cyan
         Write-Host ""
 
@@ -124,7 +115,7 @@ function Invoke-EssentialApps {
         # STEP 1: Always run Type1 detection first and save to temp_files/data/
         $executionLogPath = Get-SessionPath -Category 'logs' -SubCategory 'essential-apps' -FileName 'execution.log'
 
-        Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting essential apps analysis' -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ DryRun = $DryRun.IsPresent }
+        Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting essential apps analysis' -LogPath $executionLogPath -Operation 'Detect'
         # Explicit assignment to prevent pipeline contamination
         $detectionResults = $null
         $detectionResults = Get-EssentialAppsAnalysis -Config $Config
@@ -141,8 +132,7 @@ function Invoke-EssentialApps {
                 -DurationMilliseconds 0 `
                 -LogPath "" `
                 -ModuleName 'EssentialApps' `
-                -ErrorMessage 'Configuration not available' `
-                -DryRun $DryRun.IsPresent
+                -ErrorMessage 'Configuration not available'
         }
 
         # Create diff: Missing apps that need to be installed (already computed by Type1 audit)
@@ -162,17 +152,11 @@ function Invoke-EssentialApps {
                 -ItemsProcessed 0 `
                 -DurationMilliseconds $executionTime.TotalMilliseconds `
                 -LogPath $executionLogPath `
-                -ModuleName 'EssentialApps' `
-                -DryRun $DryRun.IsPresent
+                -ModuleName 'EssentialApps'
         }
 
-        if ($DryRun) {
-            Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message " DRY-RUN: Would install $($diffList.Count) missing apps" -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $diffList.Count }
-            $processedCount = 0
-        }
-        else {
-            # Process only missing apps found in diff comparison
-            $installResults = @{ InstalledApps = @(); FailedApps = @() }
+        # Process only missing apps found in diff comparison
+        $installResults = @{ InstalledApps = @(); FailedApps = @() }
 
             foreach ($app in $diffList) {
                 try {
@@ -206,7 +190,6 @@ function Invoke-EssentialApps {
 
             $processedCount = $installResults.InstalledApps.Count
             Write-StructuredLogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Installed $processedCount essential apps" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ InstalledCount = $processedCount; FailedCount = $installResults.FailedApps.Count }
-        }
 
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null }
 
@@ -227,7 +210,7 @@ function Invoke-EssentialApps {
                 ItemsFailed    = if ($installResults) { $installResults.FailedApps.Count } else { 0 }
                 ItemsSkipped   = ($diffList.Count - $processedCount)
             }
-            ExecutionMode = if ($DryRun) { 'DryRun' } else { 'Live' }
+            ExecutionMode = 'Live'
             LogFiles      = @{
                 TextLog = $executionLogPath
                 JsonLog = $executionLogPath -replace '\.log$', '-data.json'
@@ -261,8 +244,7 @@ function Invoke-EssentialApps {
             -ItemsProcessed $processedCount `
             -DurationMilliseconds $executionTime.TotalMilliseconds `
             -LogPath $executionLogPath `
-            -ModuleName 'EssentialApps' `
-            -DryRun $DryRun.IsPresent
+            -ModuleName 'EssentialApps'
     }
     catch {
         $errorMsg = "Failed to execute essential apps installation: $($_.Exception.Message)"
@@ -304,7 +286,7 @@ function Invoke-EssentialApps {
 .PARAMETER SkipDuplicates
     Skip apps that are already installed
 
-.PARAMETER DryRun
+.PARAMETER CategoryFilter
     Simulate installation without making changes
 
 .PARAMETER ParallelInstalls
@@ -314,7 +296,7 @@ function Invoke-EssentialApps {
     $results = Install-EssentialApplication -Categories @('Browsers', 'Productivity')
 
 .EXAMPLE
-    $results = Install-EssentialApplication -CustomApps @('VSCode', 'Git') -DryRun
+    $results = Install-EssentialApplication -CustomApps @('VSCode', 'Git')
 #>
 function Install-EssentialApplication {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
@@ -332,9 +314,6 @@ function Install-EssentialApplication {
         [switch]$SkipDuplicates,
 
         [Parameter()]
-        [switch]$DryRun,
-
-        [Parameter()]
         [ValidateRange(1, 8)]
         [int]$ParallelInstalls = 3
     )
@@ -348,7 +327,6 @@ function Install-EssentialApplication {
             Categories       = $Categories
             CustomAppsCount  = $CustomApps.Count
             SkipDuplicates   = $SkipDuplicates.IsPresent
-            DryRun           = $DryRun.IsPresent
             ParallelInstalls = $ParallelInstalls
         }
         $perfContext = Start-PerformanceTracking -OperationName 'EssentialAppsInstallation' -Component 'ESSENTIAL-APPS'
@@ -400,10 +378,6 @@ function Install-EssentialApplication {
 
         Write-Information "   Found $($essentialApps.Count) essential apps across $($Categories.Count) categories" -InformationAction Continue
 
-        if ($DryRun) {
-            Write-Information "   DRY RUN MODE - No installations will be performed" -InformationAction Continue
-        }
-
         # Filter out duplicates by default (skip duplicates unless explicitly disabled)
         $appsToInstall = if ($PSBoundParameters.ContainsKey('SkipDuplicates') -and -not $SkipDuplicates) {
             $essentialApps
@@ -444,13 +418,13 @@ function Install-EssentialApplication {
         # Install apps using preferred package managers
         if ($wingetApps.Count -gt 0) {
             Write-Information "   Installing $($wingetApps.Count) apps via Winget..." -InformationAction Continue
-            $wingetResults = Install-AppViaWinget -Apps $wingetApps -DryRun:$DryRun -ParallelCount $ParallelInstalls
+            $wingetResults = Install-AppViaWinget -Apps $wingetApps -ParallelCount $ParallelInstalls
             Merge-InstallationResult -Results $results -NewResults $wingetResults -PackageManager 'Winget'
         }
 
         if ($chocoApps.Count -gt 0) {
             Write-Information "   Installing $($chocoApps.Count) apps via Chocolatey..." -InformationAction Continue
-            $chocoResults = Install-AppViaChocolatey -Apps $chocoApps -DryRun:$DryRun -ParallelCount $ParallelInstalls
+            $chocoResults = Install-AppViaChocolatey -Apps $chocoApps -ParallelCount $ParallelInstalls
             Merge-InstallationResult -Results $results -NewResults $chocoResults -PackageManager 'Chocolatey'
         }
 
@@ -906,13 +880,10 @@ function Test-AppInstallationStatus {
 .DESCRIPTION
     Performs parallel installation of applications using Windows Package Manager (winget).
     Includes intelligent retry logic, error handling, and detailed progress tracking.
-    Supports dry-run mode for testing without actual installations.
+    Validates prerequisites and handles installation failures gracefully.
 
 .PARAMETER Apps
     Array of application objects to install via Winget
-
-.PARAMETER DryRun
-    When specified, simulates installation without making actual changes
 
 .PARAMETER ParallelCount
     Number of parallel installations to run simultaneously (default: 3)
@@ -922,8 +893,8 @@ function Test-AppInstallationStatus {
     Installs all apps in the list using Winget with default parallel count
 
 .EXAMPLE
-    $result = Install-AppViaWinget -Apps $appList -DryRun -ParallelCount 5
-    Tests installation of apps with higher parallelism without making changes
+    $result = Install-AppViaWinget -Apps $appList -ParallelCount 5
+    Tests installation of apps with higher parallelism
 #>
 function Install-AppViaWinget {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
@@ -933,15 +904,12 @@ function Install-AppViaWinget {
         [Array]$Apps,
 
         [Parameter()]
-        [switch]$DryRun,
-
-        [Parameter()]
         [int]$ParallelCount = 3
     )
 
     # Start structured logging for Winget installation batch
     try {
-        Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting Winget batch installation' -Data @{ AppCount = $Apps.Count; ParallelCount = $ParallelCount; DryRun = $DryRun.IsPresent }
+        Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting Winget batch installation' -Data @{ AppCount = $Apps.Count; ParallelCount = $ParallelCount }
     }
     catch {
         Write-Verbose "ESSENTIAL-APPS: Winget batch logging failed - $_"
@@ -966,7 +934,6 @@ function Install-AppViaWinget {
     foreach ($batch in $batches) {
         $batch | ForEach-Object -ThrottleLimit $ParallelCount -Parallel {
             $app = $_
-            $isDryRun = $using:DryRun
             $operationStart = Get-Date
 
             $result = @{
@@ -987,15 +954,7 @@ function Install-AppViaWinget {
                 # Log operation start with pre-check state
                 Write-Information "     [WINGET] Processing: $($app.Name) (ID: $($app.Winget)) - Already installed: $alreadyInstalled" -InformationAction Continue
 
-                if ($alreadyInstalled -and -not $isDryRun) {
-                    Write-Information "      ℹ  App already installed, skipping: $($app.Name)" -InformationAction Continue
-                    $result.Status = 'AlreadyInstalled'
-                }
-                elseif ($isDryRun) {
-                    Write-Information "    [DRY RUN] Would install: $($app.Name) ($($app.Winget))" -InformationAction Continue
-                    $result.Status = 'Simulated'
-                }
-                else {
+                if ($alreadyInstalled) {
                     Write-Information "     Installing: $($app.Name)..." -InformationAction Continue
 
                     $wingetArgs = @(
@@ -1061,7 +1020,7 @@ function Install-AppViaWinget {
             return [PSCustomObject]$result
         } | ForEach-Object {
             $results.Details.Add($_)
-            if ($_.Status -eq 'Installed' -or $_.Status -eq 'Simulated' -or $_.Status -eq 'AlreadyInstalled') {
+            if ($_.Status -eq 'Installed' -or $_.Status -eq 'AlreadyInstalled') {
                 $results.Installed++
             }
             else {
@@ -1084,13 +1043,10 @@ function Install-AppViaWinget {
 .DESCRIPTION
     Performs parallel installation of applications using Chocolatey package manager.
     Uses lower parallelism than Winget for stability. Includes comprehensive error
-    handling and supports dry-run mode for testing installations.
+    handling and provides detailed installation results.
 
 .PARAMETER Apps
     Array of application objects to install via Chocolatey
-
-.PARAMETER DryRun
-    When specified, simulates installation without making actual changes
 
 .PARAMETER ParallelCount
     Number of parallel installations to run simultaneously (default: 2, lower than Winget for stability)
@@ -1098,25 +1054,18 @@ function Install-AppViaWinget {
 .EXAMPLE
     $result = Install-AppViaChocolatey -Apps $appList
     Installs all apps in the list using Chocolatey with default parallel count
-
-.EXAMPLE
-    $result = Install-AppViaChocolatey -Apps $appList -DryRun
-    Tests installation of apps without making actual changes
 #>
 function Install-AppViaChocolatey {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
-        [Array]$Apps,
-
-        [Parameter()]
-        [switch]$DryRun
+        [Array]$Apps
     )
 
     # Start structured logging for Chocolatey installation batch
     try {
-        Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting Chocolatey batch installation' -Data @{ AppCount = $Apps.Count; DryRun = $DryRun.IsPresent }
+        Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting Chocolatey batch installation' -Data @{ AppCount = $Apps.Count }
     }
     catch {
         Write-Verbose "ESSENTIAL-APPS: Chocolatey batch logging failed - $_"
@@ -1159,14 +1108,9 @@ function Install-AppViaChocolatey {
                 Write-Information "      ℹ  Current version: $installedVersion" -InformationAction Continue
             }
 
-            if ($alreadyInstalled -and -not $DryRun) {
+            if ($alreadyInstalled) {
                 Write-Information "      ℹ  App already installed, skipping: $($app.Name)" -InformationAction Continue
                 $result.Status = 'AlreadyInstalled'
-                $results.Installed++
-            }
-            elseif ($DryRun) {
-                Write-Information "    [DRY RUN] Would install: $($app.Name) ($($app.Chocolatey))" -InformationAction Continue
-                $result.Status = 'Simulated'
                 $results.Installed++
             }
             else {

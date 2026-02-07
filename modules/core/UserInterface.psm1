@@ -7,7 +7,7 @@
 .DESCRIPTION
     Provides countdown-based interactive menus with automatic fallback to default options.
     Manages user input collection, task selection, progress tracking, and result presentation.
-    Supports unattended execution, dry-run modes, and comprehensive user feedback.
+    Supports unattended execution and comprehensive user feedback.
     Consolidated from MenuSystem module focusing on user interaction in v3.0 refactoring.
 
 .MODULE ARCHITECTURE
@@ -49,7 +49,7 @@
         • Available task list passed from MaintenanceOrchestrator
 
     Output:
-        • Hashtable with execution parameters: @{ DryRun = bool; SelectedTasks = array }
+        • Hashtable with execution parameters: @{ SelectedTasks = array }
         • Progress updates written to console with Write-LogEntry calls
         • Final summary table with module results
 
@@ -86,8 +86,7 @@ if (Test-Path $CoreInfraPath) {
 
 .DESCRIPTION
     Displays a hierarchical menu system with 20-second countdowns:
-    - Main menu: Choose between normal execution or dry-run
-    - Sub-menus: Choose between all tasks or specific task numbers
+    - Main menu: Choose between all tasks or specific task numbers
     Auto-selects defaults when countdown expires.
 
 .PARAMETER CountdownSeconds
@@ -97,11 +96,11 @@ if (Test-Path $CoreInfraPath) {
     Array of available tasks to display and select from
 
 .OUTPUTS
-    [hashtable] Returns execution parameters: DryRun, SelectedTasks
+    [hashtable] Returns execution parameters: SelectedTasks
 
 .EXAMPLE
     $result = Show-MainMenu -AvailableTasks $taskList
-    # Returns: @{ DryRun = $false; SelectedTasks = @(1,2,3,4,5) }
+    # Returns: @{ SelectedTasks = @(1,2,3,4,5) }
 #>
 function Show-MainMenu {
     [CmdletBinding()]
@@ -127,7 +126,6 @@ function Show-MainMenu {
 
     # Initialize result object
     $result = @{
-        DryRun        = $false
         SelectedTasks = @()
     }
 
@@ -136,12 +134,10 @@ function Show-MainMenu {
     Write-Host "    Windows Maintenance Automation v3.0.0" -ForegroundColor White
     Write-Host "===================================================" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "Select execution mode:" -ForegroundColor Yellow
+    Write-Host "Select task execution:" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  [1] Execute normally (recommended)" -ForegroundColor Green -NoNewline
-    Write-Host "  [Shortcut: N]" -ForegroundColor DarkGray
-    Write-Host "  [2] Dry-run mode (simulate changes)" -ForegroundColor Cyan -NoNewline
-    Write-Host "  [Shortcut: D]" -ForegroundColor DarkGray
+    Write-Host "  [1] Execute all tasks (recommended)" -ForegroundColor Green
+    Write-Host "  [2] Execute specific task numbers" -ForegroundColor Magenta
     Write-Host ""
     Write-Host "Tip: Press ENTER for default, ESC to abort" -ForegroundColor DarkGray
     Write-Host ""
@@ -180,24 +176,8 @@ function Show-MainMenu {
 
     $mainSelection = Start-CountdownMenu -CountdownSeconds $CountdownSeconds -DefaultOption 1 -ValidOptions @(1, 2)
 
-    # Set dry-run mode based on main selection
-    $result.DryRun = ($mainSelection -eq 2)
-
-    # ===== SUB-MENU =====
-    Write-Host ""
-    $modeText = if ($result.DryRun) { "DRY-RUN" } else { "NORMAL" }
-    Write-Host "Selected: $modeText execution mode" -ForegroundColor $(if ($result.DryRun) { 'Cyan' } else { 'Green' })
-    Write-Host ""
-    Write-Host "Select task execution:" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "  [1] Execute all tasks (recommended)" -ForegroundColor Green
-    Write-Host "  [2] Execute specific task numbers" -ForegroundColor Magenta
-    Write-Host ""
-
-    $subSelection = Start-CountdownMenu -CountdownSeconds $CountdownSeconds -DefaultOption 1 -ValidOptions @(1, 2)
-
-    # Handle task selection based on sub-menu choice
-    if ($subSelection -eq 1) {
+    # Handle task selection based on main menu choice
+    if ($mainSelection -eq 1) {
         # All tasks selected
         $result.SelectedTasks = 1..$AvailableTasks.Count
         Write-Host ""
@@ -242,7 +222,6 @@ function Show-MainMenu {
     try {
         Complete-PerformanceTracking -Context $perfContext -Status 'Success' -ResultCount $result.SelectedTasks.Count
         Write-LogEntry -Level 'INFO' -Component 'USER-INTERFACE' -Message 'Menu selection completed' -Data @{
-            DryRun            = $result.DryRun
             SelectedTaskCount = $result.SelectedTasks.Count
             SelectedTasks     = ($result.SelectedTasks -join ',')
         }
@@ -665,12 +644,7 @@ function Start-CountdownMenu {
                 # Support keyboard shortcuts
                 if ($userInput -eq 'N' -and 1 -in $ValidOptions) {
                     $selection = 1
-                    Write-Host "`n`nSelected: Normal execution mode" -ForegroundColor Green
-                    return $selection
-                }
-                elseif ($userInput -eq 'D' -and 2 -in $ValidOptions) {
-                    $selection = 2
-                    Write-Host "`n`nSelected: Dry-run mode" -ForegroundColor Cyan
+                    Write-Host "`n`nSelected: Execute all tasks" -ForegroundColor Green
                     return $selection
                 }
                 elseif ($userInput -match '^\d$') {

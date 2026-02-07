@@ -54,7 +54,7 @@ if (-not (Get-Command -Name 'Get-TelemetryAnalysis' -ErrorAction SilentlyContinu
 function Invoke-TelemetryDisable {
     [CmdletBinding()]
     [OutputType([hashtable])]
-    param([Parameter(Mandatory)][hashtable]$Config, [Parameter()][switch]$DryRun)
+    param([Parameter(Mandatory)][hashtable]$Config)
 
     $perfContext = Start-PerformanceTrackingSafe -OperationName 'TelemetryDisable' -Component 'TELEMETRY-DISABLE'
 
@@ -78,8 +78,7 @@ function Invoke-TelemetryDisable {
                 -ItemsProcessed 0 `
                 -DurationMilliseconds $executionTime.TotalMilliseconds `
                 -LogPath "" `
-                -ModuleName 'TelemetryDisable' `
-                -DryRun $DryRun.IsPresent
+                -ModuleName 'TelemetryDisable'
         }
 
         # Display module banner
@@ -90,7 +89,7 @@ function Invoke-TelemetryDisable {
         Write-Host "  Type: " -NoNewline -ForegroundColor Gray
         Write-Host "Type 2 (System Modification)" -ForegroundColor Yellow
         Write-Host "  Mode: " -NoNewline -ForegroundColor Gray
-        Write-Host "$(if ($DryRun) { 'DRY-RUN (Simulation)' } else { 'LIVE EXECUTION' })" -ForegroundColor $(if ($DryRun) { 'Cyan' } else { 'Green' })
+        Write-Host "LIVE EXECUTION" -ForegroundColor Green
         Write-Host "=================================================" -ForegroundColor Cyan
         Write-Host ""
 
@@ -101,14 +100,9 @@ function Invoke-TelemetryDisable {
         $telemetryCount = $analysisResults.ActiveTelemetryCount
         Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Detected $telemetryCount active telemetry items" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ TelemetryCount = $telemetryCount }
 
-        if ($DryRun) {
-            Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message ' DRY-RUN: Simulating telemetry disable' -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $telemetryCount }
-            $processedCount = $telemetryCount
-        }
-        else {
-            Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Executing telemetry disable' -LogPath $executionLogPath -Operation 'Execute' -Metadata @{ ItemCount = $telemetryCount }
-            # Process telemetry items based on detected types
-            $processedCount = 0
+        Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Executing telemetry disable' -LogPath $executionLogPath -Operation 'Execute' -Metadata @{ ItemCount = $telemetryCount }
+        # Process telemetry items based on detected types
+        $processedCount = 0
             if ($analysisResults.ActiveTelemetryItems) {
                 foreach ($item in $analysisResults.ActiveTelemetryItems) {
                     Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Processing telemetry item: $($item.Type)" -LogPath $executionLogPath -Operation 'Process' -Target $item.Type -Metadata @{ ItemName = $item.Name }
@@ -134,7 +128,6 @@ function Invoke-TelemetryDisable {
                     }
                 }
             }
-        }
 
         Write-StructuredLogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Telemetry disable completed. Processed: $processedCount/$telemetryCount" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ ProcessedCount = $processedCount; TotalCount = $telemetryCount }
 
@@ -155,7 +148,7 @@ function Invoke-TelemetryDisable {
                 ItemsFailed    = 0
                 ItemsSkipped   = ($telemetryCount - $processedCount)
             }
-            ExecutionMode = if ($DryRun) { 'DryRun' } else { 'Live' }
+            ExecutionMode = 'Live'
             LogFiles      = @{
                 TextLog = $executionLogPath
                 JsonLog = $executionLogPath -replace '\.log$', '-data.json'
@@ -184,8 +177,7 @@ function Invoke-TelemetryDisable {
             -ItemsProcessed $processedCount `
             -DurationMilliseconds $executionTime.TotalMilliseconds `
             -LogPath $executionLogPath `
-            -ModuleName 'TelemetryDisable' `
-            -DryRun $DryRun.IsPresent
+            -ModuleName 'TelemetryDisable'
 
     }
     catch {
@@ -231,14 +223,11 @@ function Invoke-TelemetryDisable {
 .PARAMETER DisableLocationTracking
     Disable location tracking and services
 
-.PARAMETER DryRun
-    Simulate changes without applying them
-
 .EXAMPLE
     $results = Disable-WindowsTelemetry
 
 .EXAMPLE
-    $results = Disable-WindowsTelemetry -DisableCortana -DisableLocationTracking -DryRun
+    $results = Disable-WindowsTelemetry -DisableCortana -DisableLocationTracking
 #>
 function Disable-WindowsTelemetry {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
@@ -257,10 +246,7 @@ function Disable-WindowsTelemetry {
         [switch]$DisableCortana = $false,
 
         [Parameter()]
-        [switch]$DisableLocationTracking = $false,
-
-        [Parameter()]
-        [switch]$DryRun
+        [switch]$DisableLocationTracking = $false
     )
 
     Write-Information " Starting Windows telemetry and privacy hardening..." -InformationAction Continue
@@ -274,7 +260,6 @@ function Disable-WindowsTelemetry {
             DisableConsumerFeatures = $DisableConsumerFeatures.IsPresent
             DisableCortana          = $DisableCortana.IsPresent
             DisableLocationTracking = $DisableLocationTracking.IsPresent
-            DryRun                  = $DryRun.IsPresent
         }
         $perfContext = Start-PerformanceTracking -OperationName 'TelemetryPrivacyHardening' -Component 'TELEMETRY-DISABLE'
     }
@@ -299,17 +284,12 @@ function Disable-WindowsTelemetry {
             -ErrorMessage 'Administrator privileges required'
     }
 
-    if ($DryRun) {
-        Write-Information "   DRY RUN MODE - No changes will be applied" -InformationAction Continue
-    }
-
     # Initialize results tracking
     $results = @{
         TotalOperations = 0
         Successful      = 0
         Failed          = 0
         Skipped         = 0
-        DryRun          = $DryRun.IsPresent
         Details         = [List[PSCustomObject]]::new()
         Categories      = @{
             Registry      = @{ Applied = 0; Failed = 0 }
@@ -322,41 +302,41 @@ function Disable-WindowsTelemetry {
     try {
         # Apply core telemetry registry settings
         Write-Information "   Configuring telemetry registry settings..." -InformationAction Continue
-        $regResults = Set-TelemetryRegistrySetting -DryRun:$DryRun
+        $regResults = Set-TelemetryRegistrySetting
         Merge-Result -Results $results -NewResults $regResults -Category 'Registry'
 
         # Disable telemetry services
         if ($DisableServices) {
             Write-Information "   Disabling telemetry services..." -InformationAction Continue
-            $serviceResults = Disable-TelemetryService -DryRun:$DryRun
+            $serviceResults = Disable-TelemetryService
             Merge-Result -Results $results -NewResults $serviceResults -Category 'Services'
         }
 
         # Disable notifications and suggestions
         if ($DisableNotifications) {
             Write-Information "   Disabling notifications and suggestions..." -InformationAction Continue
-            $notifyResults = Disable-WindowsNotification -DryRun:$DryRun
+            $notifyResults = Disable-WindowsNotification
             Merge-Result -Results $results -NewResults $notifyResults -Category 'Notifications'
         }
 
         # Disable consumer features
         if ($DisableConsumerFeatures) {
             Write-Information "   Disabling consumer features..." -InformationAction Continue
-            $consumerResults = Disable-ConsumerFeature -DryRun:$DryRun
+            $consumerResults = Disable-ConsumerFeature
             Merge-Result -Results $results -NewResults $consumerResults -Category 'Features'
         }
 
         # Disable Cortana if requested
         if ($DisableCortana) {
             Write-Information "   Disabling Cortana..." -InformationAction Continue
-            $cortanaResults = Disable-CortanaFeature -DryRun:$DryRun
+            $cortanaResults = Disable-CortanaFeature
             Merge-Result -Results $results -NewResults $cortanaResults -Category 'Features'
         }
 
         # Disable location tracking if requested
         if ($DisableLocationTracking) {
             Write-Information "   Disabling location tracking..." -InformationAction Continue
-            $locationResults = Disable-LocationService -DryRun:$DryRun
+            $locationResults = Disable-LocationService
             Merge-Result -Results $results -NewResults $locationResults -Category 'Features'
         }
 
@@ -402,8 +382,7 @@ function Disable-WindowsTelemetry {
             -ItemsDetected $results.TotalOperations `
             -ItemsProcessed $results.Successful `
             -DurationMilliseconds $executionTime.TotalMilliseconds `
-            -ModuleName 'TelemetryDisable' `
-            -DryRun $DryRun.IsPresent
+            -ModuleName 'TelemetryDisable'
     }
     catch {
         $errorMessage = " Privacy hardening failed: $($_.Exception.Message)"
@@ -526,19 +505,11 @@ function Test-PrivacySetting {
 .DESCRIPTION
     Applies comprehensive registry modifications to disable telemetry data collection,
     feedback notifications, commercial data pipeline, device name sharing, content delivery,
-    consumer features, and cloud-optimized content. Supports dry-run mode for testing.
-
-.PARAMETER DryRun
-    When specified, simulates registry changes without actually applying them.
-    Useful for testing and validation before making permanent changes.
+    consumer features, and cloud-optimized content.
 
 .EXAMPLE
     $result = Set-TelemetryRegistrySetting
     Write-Information "Applied $($result.Applied) registry settings" -InformationAction Continue
-
-.EXAMPLE
-    $dryRunResult = Set-TelemetryRegistrySetting -DryRun
-    Write-Information "Would apply $($dryRunResult.Applied) registry changes" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Applied count, Failed count, and detailed operation results
@@ -558,14 +529,11 @@ function Test-PrivacySetting {
 function Set-TelemetryRegistrySetting {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
-    param(
-        [Parameter()]
-        [switch]$DryRun
-    )
+    param()
 
     # Start structured logging for registry settings operation
     try {
-        Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting telemetry registry settings configuration' -Data @{ DryRun = $DryRun.IsPresent }
+        Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting telemetry registry settings configuration'
     }
     catch {
         Write-Verbose "TELEMETRY-DISABLE: Registry settings logging failed - $_"
@@ -617,38 +585,27 @@ function Set-TelemetryRegistrySetting {
         try {
             # Check if path exists, create if not
             if (-not (Test-Path $registryPath)) {
-                if ($DryRun) {
-                    Write-Information "    [DRY RUN] Would create registry path: $registryPath" -InformationAction Continue
-                }
-                else {
-                    if ($PSCmdlet.ShouldProcess($registryPath, 'Create registry path')) {
-                        New-Item -Path $registryPath -Force | Out-Null
-                    }
+                if ($PSCmdlet.ShouldProcess($registryPath, 'Create registry path')) {
+                    New-Item -Path $registryPath -Force | Out-Null
                 }
             }
 
             $settings = $telemetrySettings[$registryPath]
             foreach ($setting in $settings.GetEnumerator()) {
                 try {
-                    if ($DryRun) {
-                        Write-Information "    [DRY RUN] Would set $($setting.Key) = $($setting.Value) in $registryPath" -InformationAction Continue
-                        $pathResult.Settings++
+                    # Check if value needs to be changed (idempotent operation)
+                    $currentValue = $null
+                    try {
+                        $currentValue = (Get-ItemProperty -Path $registryPath -Name $setting.Key -ErrorAction SilentlyContinue).$($setting.Key)
                     }
-                    else {
-                        # Check if value needs to be changed (idempotent operation)
+                    catch {
                         $currentValue = $null
-                        try {
-                            $currentValue = (Get-ItemProperty -Path $registryPath -Name $setting.Key -ErrorAction SilentlyContinue).$($setting.Key)
-                        }
-                        catch {
-                            $currentValue = $null
-                        }
+                    }
 
-                        if ($currentValue -ne $setting.Value) {
-                            if ($PSCmdlet.ShouldProcess("$registryPath\$($setting.Key)", "Set registry value to $($setting.Value)")) {
-                                Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
-                                $pathResult.Settings++
-                            }
+                    if ($currentValue -ne $setting.Value) {
+                        if ($PSCmdlet.ShouldProcess("$registryPath\$($setting.Key)", "Set registry value to $($setting.Value)")) {
+                            Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
+                            $pathResult.Settings++
                         }
                     }
 
@@ -690,17 +647,9 @@ function Set-TelemetryRegistrySetting {
     protocol management. Provides comprehensive service state management with rollback
     support and detailed operation reporting.
 
-.PARAMETER DryRun
-    When specified, simulates service changes without actually stopping or disabling them.
-    Shows which services would be affected and their current states.
-
 .EXAMPLE
     $result = Disable-TelemetryService
     Write-Information "Disabled $($result.Disabled) telemetry services" -InformationAction Continue
-
-.EXAMPLE
-    $dryRunResult = Disable-TelemetryService -DryRun
-    Write-Information "Would disable $($result.Disabled) services" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Disabled count, Failed count, and detailed service states
@@ -718,10 +667,7 @@ function Set-TelemetryRegistrySetting {
 function Disable-TelemetryService {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
     [OutputType([hashtable])]
-    param(
-        [Parameter()]
-        [switch]$DryRun
-    )
+    param()
 
     $results = @{
         Disabled = 0
@@ -767,14 +713,7 @@ function Disable-TelemetryService {
                     Type              = 'TelemetryService'
                 }
 
-                if ($DryRun) {
-                    $serviceResult.Action = 'Would Disable'
-                    $serviceResult.Success = $true
-                    Write-Information "    [DRY RUN] Would disable service: $serviceName" -InformationAction Continue
-                    Write-OperationSkipped -Component 'TELEMETRY-DISABLE' -Operation 'Disable' -Target $serviceName -Reason 'DryRun mode enabled'
-                }
-                else {
-                    if ($PSCmdlet.ShouldProcess($serviceName, 'Stop and disable telemetry service')) {
+                if ($PSCmdlet.ShouldProcess($serviceName, 'Stop and disable telemetry service')) {
                         # Stop the service if running
                         if ($service.Status -eq 'Running') {
                             Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Executing: Stop-Service -Name $serviceName"
@@ -818,7 +757,6 @@ function Disable-TelemetryService {
                             throw "Verification failed: Service not disabled"
                         }
                     }
-                }
 
                 $results.Disabled++
             }
@@ -850,17 +788,9 @@ function Disable-TelemetryService {
     Windows spotlight, and other intrusive notification mechanisms that compromise privacy
     and user experience.
 
-.PARAMETER DryRun
-    When specified, simulates notification disable operations without making actual changes.
-    Shows which notification settings would be modified.
-
 .EXAMPLE
     $result = Disable-WindowsNotification
     Write-Information "Disabled $($result.Disabled) notification settings" -InformationAction Continue
-
-.EXAMPLE
-    $dryRunResult = Disable-WindowsNotification -DryRun
-    Write-Information "Would disable $($dryRunResult.Disabled) notification types" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Disabled count, Failed count, and detailed operation results
@@ -880,10 +810,7 @@ function Disable-TelemetryService {
 function Disable-WindowsNotification {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
-    param(
-        [Parameter()]
-        [switch]$DryRun
-    )
+    param()
 
     $results = @{
         Disabled = 0
@@ -895,13 +822,8 @@ function Disable-WindowsNotification {
         $notificationPath = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings'
 
         if (-not (Test-Path $notificationPath)) {
-            if ($DryRun) {
-                Write-Information "    [DRY RUN] Would create notification settings path" -InformationAction Continue
-            }
-            else {
-                if ($PSCmdlet.ShouldProcess($notificationPath, 'Create notification settings registry path')) {
-                    New-Item -Path $notificationPath -Force | Out-Null
-                }
+            if ($PSCmdlet.ShouldProcess($notificationPath, 'Create notification settings registry path')) {
+                New-Item -Path $notificationPath -Force | Out-Null
             }
         }
 
@@ -914,14 +836,9 @@ function Disable-WindowsNotification {
 
         foreach ($setting in $globalSettings.GetEnumerator()) {
             try {
-                if ($DryRun) {
-                    Write-Information "    [DRY RUN] Would disable global notification: $($setting.Key)" -InformationAction Continue
-                }
-                else {
-                    if ($PSCmdlet.ShouldProcess("$notificationPath\$($setting.Key)", "Disable notification setting")) {
-                        Set-ItemProperty -Path $notificationPath -Name $setting.Key -Value $setting.Value -Force
-                        Write-Information "     Disabled notification setting: $($setting.Key)" -InformationAction Continue
-                    }
+                if ($PSCmdlet.ShouldProcess("$notificationPath\$($setting.Key)", "Disable notification setting")) {
+                    Set-ItemProperty -Path $notificationPath -Name $setting.Key -Value $setting.Value -Force
+                    Write-Information "     Disabled notification setting: $($setting.Key)" -InformationAction Continue
                 }
 
                 $results.Disabled++
@@ -938,12 +855,7 @@ function Disable-WindowsNotification {
 
         foreach ($app in $appNotifications) {
             try {
-                if ($DryRun) {
-                    Write-Information "    [DRY RUN] Would disable notifications for: $($app.PSChildName)" -InformationAction Continue
-                }
-                else {
-                    Set-ItemProperty -Path $app.PSPath -Name 'Enabled' -Value 0 -Force -ErrorAction SilentlyContinue
-                }
+                Set-ItemProperty -Path $app.PSPath -Name 'Enabled' -Value 0 -Force -ErrorAction SilentlyContinue
 
                 $results.Disabled++
             }
@@ -976,17 +888,9 @@ function Disable-WindowsNotification {
     sponsored tiles, and other consumer-oriented features that compromise professional
     environment privacy and productivity.
 
-.PARAMETER DryRun
-    When specified, simulates consumer feature disabling without making actual changes.
-    Shows which consumer features would be disabled.
-
 .EXAMPLE
     $result = Disable-ConsumerFeature
     Write-Information "Disabled $($result.Disabled) consumer features" -InformationAction Continue
-
-.EXAMPLE
-    $dryRunResult = Disable-ConsumerFeature -DryRun
-    Write-Information "Would disable $($dryRunResult.Disabled) consumer features" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Disabled count, Failed count, and detailed operation results
@@ -1007,10 +911,7 @@ function Disable-WindowsNotification {
 function Disable-ConsumerFeature {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
-    param(
-        [Parameter()]
-        [switch]$DryRun
-    )
+    param()
 
     $results = @{
         Disabled = 0
@@ -1036,26 +937,16 @@ function Disable-ConsumerFeature {
     foreach ($registryPath in $consumerSettings.Keys) {
         try {
             if (-not (Test-Path $registryPath)) {
-                if ($DryRun) {
-                    Write-Information "    [DRY RUN] Would create consumer features path: $registryPath" -InformationAction Continue
-                }
-                else {
-                    if ($PSCmdlet.ShouldProcess($registryPath, 'Create consumer features registry path')) {
-                        New-Item -Path $registryPath -Force | Out-Null
-                    }
+                if ($PSCmdlet.ShouldProcess($registryPath, 'Create consumer features registry path')) {
+                    New-Item -Path $registryPath -Force | Out-Null
                 }
             }
 
             $settings = $consumerSettings[$registryPath]
             foreach ($setting in $settings.GetEnumerator()) {
                 try {
-                    if ($DryRun) {
-                        Write-Information "    [DRY RUN] Would set $($setting.Key) = $($setting.Value)" -InformationAction Continue
-                    }
-                    else {
-                        if ($PSCmdlet.ShouldProcess("$registryPath\$($setting.Key)", "Disable consumer feature setting")) {
-                            Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
-                        }
+                    if ($PSCmdlet.ShouldProcess("$registryPath\$($setting.Key)", "Disable consumer feature setting")) {
+                        Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
                     }
 
                     $results.Disabled++
@@ -1088,17 +979,9 @@ function Disable-ConsumerFeature {
     web search integration, connected search functionality, and related privacy-invasive
     search features that send user queries to Microsoft servers.
 
-.PARAMETER DryRun
-    When specified, simulates Cortana disabling without making actual changes.
-    Shows which Cortana features would be disabled.
-
 .EXAMPLE
     $result = Disable-CortanaFeature
     Write-Information "Disabled $($result.Disabled) Cortana features" -InformationAction Continue
-
-.EXAMPLE
-    $dryRunResult = Disable-CortanaFeature -DryRun
-    Write-Information "Would disable Cortana features" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Disabled count, Failed count, and operation details
@@ -1117,9 +1000,7 @@ function Disable-ConsumerFeature {
 function Disable-CortanaFeature {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
-    param(
-        [switch]$DryRun
-    )
+    param()
 
     $results = @{ Disabled = 0; Failed = 0; Details = @() }
 
@@ -1134,21 +1015,14 @@ function Disable-CortanaFeature {
     foreach ($path in $cortanaSettings.Keys) {
         try {
             if (-not (Test-Path $path)) {
-                if (-not $DryRun) {
-                    if ($PSCmdlet.ShouldProcess($path, 'Create Cortana settings registry path')) {
-                        New-Item -Path $path -Force | Out-Null
-                    }
+                if ($PSCmdlet.ShouldProcess($path, 'Create Cortana settings registry path')) {
+                    New-Item -Path $path -Force | Out-Null
                 }
             }
 
             foreach ($setting in $cortanaSettings[$path].GetEnumerator()) {
-                if ($DryRun) {
-                    Write-Information "    [DRY RUN] Would disable Cortana setting: $($setting.Key)" -InformationAction Continue
-                }
-                else {
-                    if ($PSCmdlet.ShouldProcess("$path\$($setting.Key)", "Disable Cortana feature")) {
-                        Set-ItemProperty -Path $path -Name $setting.Key -Value $setting.Value -Force
-                    }
+                if ($PSCmdlet.ShouldProcess("$path\$($setting.Key)", "Disable Cortana feature")) {
+                    Set-ItemProperty -Path $path -Name $setting.Key -Value $setting.Value -Force
                 }
                 $results.Disabled++
             }
@@ -1171,17 +1045,9 @@ function Disable-CortanaFeature {
     location history, geofencing, and other location services that compromise user privacy
     by sharing geographical data with Microsoft and third-party applications.
 
-.PARAMETER DryRun
-    When specified, simulates location services disabling without making actual changes.
-    Shows which location tracking features would be disabled.
-
 .EXAMPLE
     $result = Disable-LocationService
     Write-Information "Disabled $($result.Disabled) location tracking features" -InformationAction Continue
-
-.EXAMPLE
-    $dryRunResult = Disable-LocationService -DryRun
-    Write-Information "Would disable location services" -InformationAction Continue
 
 .OUTPUTS
     [hashtable] Results containing Disabled count, Failed count, and operation details
@@ -1201,9 +1067,7 @@ function Disable-CortanaFeature {
 function Disable-LocationService {
     [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
-    param(
-        [switch]$DryRun
-    )
+    param()
 
     $results = @{ Disabled = 0; Failed = 0; Details = @() }
 
@@ -1217,21 +1081,14 @@ function Disable-LocationService {
     foreach ($path in $locationSettings.Keys) {
         try {
             if (-not (Test-Path $path)) {
-                if (-not $DryRun) {
-                    if ($PSCmdlet.ShouldProcess($path, 'Create location services registry path')) {
-                        New-Item -Path $path -Force | Out-Null
-                    }
+                if ($PSCmdlet.ShouldProcess($path, 'Create location services registry path')) {
+                    New-Item -Path $path -Force | Out-Null
                 }
             }
 
             foreach ($setting in $locationSettings[$path].GetEnumerator()) {
-                if ($DryRun) {
-                    Write-Information "    [DRY RUN] Would disable location setting: $($setting.Key)" -InformationAction Continue
-                }
-                else {
-                    if ($PSCmdlet.ShouldProcess("$path\$($setting.Key)", "Disable location service")) {
-                        Set-ItemProperty -Path $path -Name $setting.Key -Value $setting.Value -Force
-                    }
+                if ($PSCmdlet.ShouldProcess("$path\$($setting.Key)", "Disable location service")) {
+                    Set-ItemProperty -Path $path -Name $setting.Key -Value $setting.Value -Force
                 }
                 $results.Disabled++
             }

@@ -1381,14 +1381,12 @@ CALL :LOG_MESSAGE "Using PowerShell 7+ for orchestrator execution" "SUCCESS" "LA
 REM Parse command line arguments for the orchestrator
 SET "PS_ARGS="
 IF "%1"=="-NonInteractive" SET "PS_ARGS=%PS_ARGS% -NonInteractive"
-IF "%1"=="-DryRun" SET "PS_ARGS=%PS_ARGS% -DryRun"
 IF "%AUTO_NONINTERACTIVE%"=="YES" (
     IF NOT "%1"=="-NonInteractive" (
         SET "PS_ARGS=%PS_ARGS% -NonInteractive"
         CALL :LOG_MESSAGE "Auto-enabling non-interactive mode due to PowerShell 7+ availability" "INFO" "LAUNCHER"
     )
 )
-IF "%2"=="-DryRun" SET "PS_ARGS=%PS_ARGS% -DryRun"
 IF "%1"=="-TaskNumbers" SET "PS_ARGS=%PS_ARGS% -TaskNumbers %2"
 
 CALL :LOG_MESSAGE "Launching orchestrator with arguments: %PS_ARGS%" "INFO" "LAUNCHER"
@@ -1455,21 +1453,6 @@ REM ----------------------------------------------------------------------------
 :POST_ORCHESTRATOR_MENU
 ECHO.
 ECHO ===============================
-ECHO  Select Execution Mode (20s):
-ECHO ===============================
-ECHO 1. Execute script normally (unattended)
-ECHO 2. Execute script in dry-run mode (unattended)
-ECHO.
-ECHO Waiting for selection... (defaults to option 1 after 20 seconds)
-CHOICE /C 12 /N /T 20 /D 1 /M "Select option (1-2): "
-SET "MAIN_CHOICE=%ERRORLEVEL%"
-IF "%MAIN_CHOICE%"=="2" GOTO :DRYRUN_MENU
-REM Default or Option 1 selected
-GOTO :NORMAL_MENU
-
-:NORMAL_MENU
-ECHO.
-ECHO ===============================
 ECHO  Select Task Execution (20s):
 ECHO ===============================
 ECHO 1. Execute all tasks unattended
@@ -1479,7 +1462,7 @@ ECHO Waiting for selection... (defaults to option 1 after 20 seconds)
 CHOICE /C 12 /N /T 20 /D 1 /M "Select option (1-2): "
 SET "NORMAL_CHOICE=%ERRORLEVEL%"
 IF "%NORMAL_CHOICE%"=="2" GOTO :NORMAL_INSERTED
-REM Default or Sub-option 1 selected
+REM Default or Option 1 selected
 GOTO :EXECUTE_ALL
 
 :NORMAL_INSERTED
@@ -1490,30 +1473,6 @@ IF "%TASKNUMS%"=="" (
     GOTO :EXECUTE_ALL
 )
 GOTO :EXECUTE_INSERTED
-
-:DRYRUN_MENU
-ECHO.
-ECHO ===============================
-ECHO  Select Dry-Run Execution (20s):
-ECHO ===============================
-ECHO 1. Execute all tasks in dry-run unattended
-ECHO 2. Execute only specific task numbers in dry-run
-ECHO.
-ECHO Waiting for selection... (defaults to option 1 after 20 seconds)
-CHOICE /C 12 /N /T 20 /D 1 /M "Select option (1-2): "
-SET "DRYRUN_CHOICE=%ERRORLEVEL%"
-IF "%DRYRUN_CHOICE%"=="2" GOTO :DRYRUN_INSERTED
-REM Default or Sub-option 1 selected
-GOTO :EXECUTE_ALL_DRYRUN
-
-:DRYRUN_INSERTED
-ECHO.
-SET /P TASKNUMS="Enter task numbers (comma-separated, e.g., 1,3,5): "
-IF "%TASKNUMS%"=="" (
-    ECHO No task numbers entered. Executing all tasks in dry-run...
-    GOTO :EXECUTE_ALL_DRYRUN
-)
-GOTO :EXECUTE_INSERTED_DRYRUN
 
 :EXECUTE_ALL
 CALL :LOG_MESSAGE "Executing all tasks unattended..." "INFO" "LAUNCHER"
@@ -1526,20 +1485,6 @@ GOTO :FINAL_CLEANUP
 CALL :LOG_MESSAGE "Executing selected tasks: %TASKNUMS%..." "INFO" "LAUNCHER"
 CD /D "%WORKING_DIR%"
 "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -TaskNumbers "%TASKNUMS%"
-SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
-GOTO :FINAL_CLEANUP
-
-:EXECUTE_ALL_DRYRUN
-CALL :LOG_MESSAGE "Executing all tasks in dry-run unattended..." "INFO" "LAUNCHER"
-CD /D "%WORKING_DIR%"
-"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -DryRun
-SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
-GOTO :FINAL_CLEANUP
-
-:EXECUTE_INSERTED_DRYRUN
-CALL :LOG_MESSAGE "Executing selected tasks in dry-run: %TASKNUMS%..." "INFO" "LAUNCHER"
-CD /D "%WORKING_DIR%"
-"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -DryRun -TaskNumbers "%TASKNUMS%"
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 

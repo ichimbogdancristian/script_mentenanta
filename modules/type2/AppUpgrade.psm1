@@ -61,14 +61,8 @@ else {
 .PARAMETER Config
     Configuration hashtable from main-config.json
 
-.PARAMETER DryRun
-    If specified, simulates upgrade actions without making actual changes
-
 .EXAMPLE
     Invoke-AppUpgrade -Config $MainConfig
-
-.EXAMPLE
-    Invoke-AppUpgrade -Config $MainConfig -DryRun
 
 .OUTPUTS
     Hashtable with execution results:
@@ -84,10 +78,7 @@ function Invoke-AppUpgrade {
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
-        [hashtable]$Config,
-
-        [Parameter()]
-        [switch]$DryRun
+        [hashtable]$Config
     )
 
     Write-Information " Starting Application Upgrade Module..." -InformationAction Continue
@@ -116,7 +107,7 @@ function Invoke-AppUpgrade {
         Write-Host "  Type: " -NoNewline -ForegroundColor Gray
         Write-Host "Type 2 (System Modification)" -ForegroundColor Yellow
         Write-Host "  Mode: " -NoNewline -ForegroundColor Gray
-        Write-Host "$(if ($DryRun) { 'DRY-RUN (Simulation)' } else { 'LIVE EXECUTION' })" -ForegroundColor $(if ($DryRun) { 'Cyan' } else { 'Green' })
+        Write-Host "LIVE EXECUTION" -ForegroundColor Green
         Write-Host "=================================================" -ForegroundColor Cyan
         Write-Host ""
 
@@ -160,38 +151,15 @@ function Invoke-AppUpgrade {
         $executionLogPath = Get-SessionPath -Category 'logs' -SubCategory 'app-upgrade' -FileName 'execution.log'
         $executionLogDir = Split-Path -Parent $executionLogPath
 
-        Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "=== Application Upgrade Execution ===" -LogPath $executionLogPath -Operation 'Start' -Metadata @{ DetectedCount = $detectionResults.Count; FilteredCount = $diffList.Count; DryRun = $DryRun.IsPresent }
+        Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "=== Application Upgrade Execution ===" -LogPath $executionLogPath -Operation 'Start' -Metadata @{ DetectedCount = $detectionResults.Count; FilteredCount = $diffList.Count }
         Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Detected: $($detectionResults.Count) upgrades available" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ Count = $detectionResults.Count }
         Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Filtered: $($diffList.Count) upgrades to process" -LogPath $executionLogPath -Operation 'Filter' -Metadata @{ FilteredCount = $diffList.Count; ExcludedCount = ($detectionResults.Count - $diffList.Count) }
-        Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "DryRun: $DryRun" -LogPath $executionLogPath -Metadata @{ DryRun = $DryRun.IsPresent }
         Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "Start Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -LogPath $executionLogPath
 
-        # STEP 5: Process upgrades (with DryRun check)
+        # STEP 5: Process upgrades
         if ($diffList.Count -eq 0) {
             Write-Information "  ℹ  No upgrades to process" -InformationAction Continue
             Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "No upgrades required - all applications up to date" -LogPath $executionLogPath -Operation 'Complete' -Result 'NoItemsFound'
-        }
-        elseif ($DryRun) {
-            Write-Information "   DRY-RUN MODE: Simulating upgrades..." -InformationAction Continue
-            Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message " DRY-RUN: Simulating upgrades" -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $diffList.Count }
-
-            foreach ($upgrade in $diffList) {
-                Write-Information "    [DRY-RUN] Would upgrade: $($upgrade.Name) ($($upgrade.CurrentVersion) → $($upgrade.AvailableVersion))" -InformationAction Continue
-
-                # Use standardized DryRun logging
-                Write-OperationSkipped -Operation 'Upgrade' -Target $upgrade.Name -Component 'APP-UPGRADE' -Reason 'DryRun mode enabled' -LogPath $executionLogPath -AdditionalInfo @{
-                    CurrentVersion   = $upgrade.CurrentVersion
-                    AvailableVersion = $upgrade.AvailableVersion
-                    Source           = $upgrade.Source
-                    Id               = $upgrade.Id
-                    WouldExecute     = switch ($upgrade.Source) {
-                        'Winget' { "winget upgrade --id $($upgrade.Id) --silent" }
-                        'Chocolatey' { "choco upgrade $($upgrade.Name) -y" }
-                        default { "Unknown source: $($upgrade.Source)" }
-                    }
-                }
-                $itemsProcessed++
-            }
         }
         else {
             Write-Information "   Executing upgrades..." -InformationAction Continue
@@ -254,7 +222,7 @@ function Invoke-AppUpgrade {
                 ItemsFailed    = 0
                 ItemsSkipped   = ($diffList.Count - $itemsProcessed)
             }
-            ExecutionMode = if ($DryRun) { 'DryRun' } else { 'Live' }
+            ExecutionMode = 'Live'
             LogFiles      = @{
                 TextLog = $executionLogPath
                 JsonLog = $executionLogPath -replace '\.log$', '-data.json'
@@ -294,7 +262,6 @@ function Invoke-AppUpgrade {
             LogPath            = $executionLogPath
             ModuleName         = 'AppUpgrade'
             Error              = $null
-            DryRun             = $DryRun.IsPresent
             ExecutionTimestamp = Get-Date -Format 'o'
             AdditionalData     = @{}
         }
@@ -317,7 +284,6 @@ function Invoke-AppUpgrade {
             LogPath            = $executionLogPath
             ModuleName         = 'AppUpgrade'
             Error              = $_.Exception.Message
-            DryRun             = $DryRun.IsPresent
             ExecutionTimestamp = Get-Date -Format 'o'
             AdditionalData     = @{}
         }

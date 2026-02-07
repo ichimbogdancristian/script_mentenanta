@@ -3,6 +3,14 @@
 ## 🎯 Objective
 Perform a comprehensive audit and refactoring plan for the Windows Maintenance Automation System (v3.1.0). Analyze current architecture, identify issues, propose consolidations, and create a detailed roadmap for next-generation improvements.
 
+## 🔑 Key Questions to Address
+1. **OS-Specific Architecture**: Should the project have different execution types based on Windows 10 or 11?
+   - Option A: Different functions inside each module depending on OS type?
+   - Option B: Entirely different modules for each OS version?
+   - **Critical**: At what point in the execution flow should this OS split occur?
+
+2. **Module Consolidation**: Which modules have similar goals and can be consolidated to reduce duplication and improve maintainability?
+
 ---
 
 ## 📊 Phase 1: Comprehensive Module Analysis

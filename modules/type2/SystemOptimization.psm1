@@ -63,9 +63,7 @@ function Invoke-SystemOptimization {
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
-        [hashtable]$Config,
-        [Parameter()]
-        [switch]$DryRun
+        [hashtable]$Config
     )
 
     $perfContext = $null
@@ -88,7 +86,7 @@ function Invoke-SystemOptimization {
         Write-Host "  Type: " -NoNewline -ForegroundColor Gray
         Write-Host "Type 2 (System Modification)" -ForegroundColor Yellow
         Write-Host "  Mode: " -NoNewline -ForegroundColor Gray
-        Write-Host "$(if ($DryRun) { 'DRY-RUN (Simulation)' } else { 'LIVE EXECUTION' })" -ForegroundColor $(if ($DryRun) { 'Cyan' } else { 'Green' })
+        Write-Host "LIVE EXECUTION" -ForegroundColor Green
         Write-Host "=================================================" -ForegroundColor Cyan
         Write-Host ""
 
@@ -110,8 +108,7 @@ function Invoke-SystemOptimization {
                 -ItemsProcessed 0 `
                 -DurationMilliseconds $executionTime.TotalMilliseconds `
                 -LogPath "" `
-                -ModuleName 'SystemOptimization' `
-                -DryRun $DryRun.IsPresent
+                -ModuleName 'SystemOptimization'
         }
 
         # STEP 3: Setup execution logging directory
@@ -121,14 +118,7 @@ function Invoke-SystemOptimization {
 
         Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Detected $optimizationCount optimization opportunities" -LogPath $executionLogPath -Operation 'Detect' -Metadata @{ OpportunityCount = $optimizationCount }
 
-        if ($DryRun) {
-            Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message ' DRY-RUN: Simulating system optimization' -LogPath $executionLogPath -Operation 'Simulate' -Metadata @{ DryRun = $true; ItemCount = $optimizationCount }
-            $results = @{ ProcessedCount = $optimizationCount; Simulated = $true }
-            [void]$results
-            $processedCount = $optimizationCount
-        }
-        else {
-            Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Executing enhanced system optimization' -LogPath $executionLogPath -Operation 'Execute' -Metadata @{ OpportunityCount = $optimizationCount }
+        Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Executing enhanced system optimization' -LogPath $executionLogPath -Operation 'Execute' -Metadata @{ OpportunityCount = $optimizationCount }
 
             # Load enhanced configuration
             $enhancedConfig = Get-EnhancedOptimizationConfig
@@ -243,7 +233,7 @@ function Invoke-SystemOptimization {
                 ItemsFailed    = 0
                 ItemsSkipped   = ($optimizationCount - $processedCount)
             }
-            ExecutionMode = if ($DryRun) { 'DryRun' } else { 'Live' }
+            ExecutionMode = 'Live'
             LogFiles      = @{
                 TextLog = $executionLogPath
                 JsonLog = $executionLogPath -replace '\.log$', '-data.json'
@@ -271,8 +261,7 @@ function Invoke-SystemOptimization {
             -ItemsProcessed $processedCount `
             -DurationMilliseconds $executionTime.TotalMilliseconds `
             -LogPath $executionLogPath `
-            -ModuleName 'SystemOptimization' `
-            -DryRun $DryRun.IsPresent
+            -ModuleName 'SystemOptimization'
 
         Write-LogEntry -Level 'SUCCESS' -Component 'SYSTEM-OPTIMIZATION' -Message "System optimization completed. Processed: $processedCount/$optimizationCount"
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null }
@@ -326,14 +315,11 @@ function Invoke-SystemOptimization {
 .PARAMETER OptimizeNetwork
     Apply network performance optimizations
 
-.PARAMETER DryRun
-    Simulate optimizations without applying changes
-
 .EXAMPLE
     $results = Optimize-SystemPerformance
 
 .EXAMPLE
-    $results = Optimize-SystemPerformance -OptimizeStartup -OptimizeUI -DryRun
+    $results = Optimize-SystemPerformance -OptimizeStartup -OptimizeUI
 #>
 # DEPRECATED: Legacy function maintained for backward compatibility
 # Use Invoke-SystemOptimization instead (v3.0 API with enhanced optimization logic)
@@ -358,10 +344,7 @@ function Optimize-SystemPerformance {
         [switch]$OptimizeDisk,
 
         [Parameter()]
-        [switch]$OptimizeNetwork,
-
-        [Parameter()]
-        [switch]$DryRun
+        [switch]$OptimizeNetwork
     )
 
     Write-Information " Starting comprehensive system optimization..." -InformationAction Continue
@@ -376,7 +359,6 @@ function Optimize-SystemPerformance {
             OptimizeRegistry = $OptimizeRegistry.IsPresent
             OptimizeDisk     = $OptimizeDisk.IsPresent
             OptimizeNetwork  = $OptimizeNetwork.IsPresent
-            DryRun           = $DryRun.IsPresent
         }
         $perfContext = Start-PerformanceTracking -OperationName 'SystemPerformanceOptimization' -Component 'SYSTEM-OPTIMIZATION'
     }
@@ -394,17 +376,12 @@ function Optimize-SystemPerformance {
         return $false
     }
 
-    if ($DryRun) {
-        Write-Information "   DRY RUN MODE - No changes will be applied" -InformationAction Continue
-    }
-
     # Initialize results tracking
     $results = @{
         TotalOperations = 0
         Successful      = 0
         Failed          = 0
         SpaceFreed      = 0
-        DryRun          = $DryRun.IsPresent
         Details         = [System.Collections.ArrayList]::new()
         Categories      = @{
             TempCleanup          = @{ Success = 0; Failed = 0; SpaceFreed = 0 }
@@ -420,42 +397,42 @@ function Optimize-SystemPerformance {
         # Temporary files cleanup (default: enabled)
         if ($CleanupTemp -or (-not $PSBoundParameters.ContainsKey('CleanupTemp'))) {
             Write-Information "   Cleaning temporary files..." -InformationAction Continue
-            $tempResults = Clear-TemporaryFile -DryRun:$DryRun
+            $tempResults = Clear-TemporaryFile
             Merge-OptimizationResult -Results $results -NewResults $tempResults -Category 'TempCleanup'
         }
 
         # Startup optimization (default: enabled)
         if ($OptimizeStartup -or (-not $PSBoundParameters.ContainsKey('OptimizeStartup'))) {
             Write-Information "   Optimizing startup programs..." -InformationAction Continue
-            $startupResults = Optimize-StartupProgram -DryRun:$DryRun
+            $startupResults = Optimize-StartupProgram
             Merge-OptimizationResult -Results $results -NewResults $startupResults -Category 'StartupOptimization'
         }
 
         # UI optimization (default: enabled)
         if ($OptimizeUI -or (-not $PSBoundParameters.ContainsKey('OptimizeUI'))) {
             Write-Information "   Optimizing user interface..." -InformationAction Continue
-            $uiResults = Optimize-UserInterface -DryRun:$DryRun
+            $uiResults = Optimize-UserInterface
             Merge-OptimizationResult -Results $results -NewResults $uiResults -Category 'UIOptimization'
         }
 
         # Registry optimization (default: disabled)
         if ($OptimizeRegistry) {
             Write-Information "   Optimizing registry..." -InformationAction Continue
-            $registryResults = Optimize-WindowsRegistry -DryRun:$DryRun
+            $registryResults = Optimize-WindowsRegistry
             Merge-OptimizationResult -Results $results -NewResults $registryResults -Category 'RegistryOptimization'
         }
 
         # Disk optimization (default: enabled)
         if ($OptimizeDisk -or (-not $PSBoundParameters.ContainsKey('OptimizeDisk'))) {
             Write-Information "   Optimizing disk performance..." -InformationAction Continue
-            $diskResults = Optimize-DiskPerformance -DryRun:$DryRun
+            $diskResults = Optimize-DiskPerformance
             Merge-OptimizationResult -Results $results -NewResults $diskResults -Category 'DiskOptimization'
         }
 
         # Network optimization (default: disabled)
         if ($OptimizeNetwork) {
             Write-Information "   Optimizing network settings..." -InformationAction Continue
-            $networkResults = Optimize-NetworkSetting -DryRun:$DryRun
+            $networkResults = Optimize-NetworkSetting
             Merge-OptimizationResult -Results $results -NewResults $networkResults -Category 'NetworkOptimization'
         }
 
@@ -556,10 +533,7 @@ function Optimize-SystemPerformance {
 function Clear-TemporaryFile {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
     [OutputType([hashtable])]
-    param(
-        [Parameter()]
-        [switch]$DryRun
-    )
+    param()
 
     $results = @{
         Success    = 0
@@ -603,14 +577,8 @@ function Clear-TemporaryFile {
                 }
             }
 
-            if ($DryRun) {
-                $cleanupResult.SpaceFreed = $beforeSize ?? 0
-                $cleanupResult.Success = $true
-                Write-Information "    [DRY RUN] Would clean $($target.Name): $([math]::Round($cleanupResult.SpaceFreed/1MB, 2)) MB" -InformationAction Continue
-            }
-            else {
-                # Perform actual cleanup
-                if (Test-Path (Split-Path $target.Path -Parent)) {
+            # Perform actual cleanup
+            if (Test-Path (Split-Path $target.Path -Parent)) {
                     if ($target.Recurse) {
                         Remove-Item -Path $target.Path -Recurse -Force -ErrorAction SilentlyContinue
                     }
@@ -639,7 +607,6 @@ function Clear-TemporaryFile {
                 if ($cleanupResult.SpaceFreed -gt 0) {
                     Write-Information "     Cleaned $($target.Name): $([math]::Round($cleanupResult.SpaceFreed/1MB, 2)) MB" -InformationAction Continue
                 }
-            }
 
             $results.Success++
             $results.SpaceFreed += $cleanupResult.SpaceFreed
@@ -670,10 +637,7 @@ function Optimize-StartupProgram {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
     [Obsolete("This function is deprecated. Use Invoke-SystemOptimization instead. Will be removed in v4.0.", false)]
-    param(
-        [Parameter()]
-        [switch]$DryRun
-    )
+    param()
 
     $results = @{
         Success        = 0
@@ -745,41 +709,34 @@ function Optimize-StartupProgram {
                                     Type     = 'StartupProgram'
                                 }
 
-                                if ($DryRun) {
-                                    Write-Information "    [DRY RUN] Would disable startup item: $itemName" -InformationAction Continue
-                                    Write-OperationSkipped -Component 'SYSTEM-OPTIMIZATION' -Operation 'Disable' -Target $itemName -Reason 'DryRun mode enabled'
+                                # Backup the value before removing
+                                $backupPath = "$location\Backup"
+                                if (-not (Test-Path $backupPath)) {
+                                    New-Item -Path $backupPath -Force | Out-Null
+                                }
+                                Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Backing up startup item to: $backupPath"
+                                Set-ItemProperty -Path $backupPath -Name $itemName -Value $itemValue -Force
+
+                                # Remove from startup
+                                Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Executing: Remove-ItemProperty -Path $location -Name $itemName"
+                                Remove-ItemProperty -Path $location -Name $itemName -Force
+
+                                # Verification
+                                $stillExists = Get-ItemProperty -Path $location -Name $itemName -ErrorAction SilentlyContinue
+                                $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
+
+                                if (-not $stillExists) {
+                                    Write-OperationSuccess -Component 'SYSTEM-OPTIMIZATION' -Operation 'Disable' -Target $itemName -Metrics @{
+                                        Duration = $operationDuration
+                                        Location = $location
+                                        BackedUp = $true
+                                        Verified = $true
+                                    }
                                     $optimizationResult.Success = $true
+                                    Write-Information "     Disabled startup item: $itemName (${operationDuration}s)" -InformationAction Continue
                                 }
                                 else {
-                                    # Backup the value before removing
-                                    $backupPath = "$location\Backup"
-                                    if (-not (Test-Path $backupPath)) {
-                                        New-Item -Path $backupPath -Force | Out-Null
-                                    }
-                                    Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Backing up startup item to: $backupPath"
-                                    Set-ItemProperty -Path $backupPath -Name $itemName -Value $itemValue -Force
-
-                                    # Remove from startup
-                                    Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Executing: Remove-ItemProperty -Path $location -Name $itemName"
-                                    Remove-ItemProperty -Path $location -Name $itemName -Force
-
-                                    # Verification
-                                    $stillExists = Get-ItemProperty -Path $location -Name $itemName -ErrorAction SilentlyContinue
-                                    $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
-
-                                    if (-not $stillExists) {
-                                        Write-OperationSuccess -Component 'SYSTEM-OPTIMIZATION' -Operation 'Disable' -Target $itemName -Metrics @{
-                                            Duration = $operationDuration
-                                            Location = $location
-                                            BackedUp = $true
-                                            Verified = $true
-                                        }
-                                        $optimizationResult.Success = $true
-                                        Write-Information "     Disabled startup item: $itemName (${operationDuration}s)" -InformationAction Continue
-                                    }
-                                    else {
-                                        throw "Verification failed: Item still exists after removal"
-                                    }
+                                    throw "Verification failed: Item still exists after removal"
                                 }
 
                                 $results.Success++
@@ -821,10 +778,7 @@ function Optimize-UserInterface {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
     [OutputType([hashtable])]
     [Obsolete("This function is deprecated. Use Invoke-SystemOptimization instead. Will be removed in v4.0.", false)]
-    param(
-        [Parameter()]
-        [switch]$DryRun
-    )
+    param()
 
     $results = @{
         Success         = 0
@@ -885,29 +839,23 @@ function Optimize-UserInterface {
                     Type     = 'UIOptimization'
                 }
 
-                if ($DryRun) {
-                    Write-Information "    [DRY RUN] Would set $($setting.Key) = $($setting.Value) in $registryPath" -InformationAction Continue
-                    Write-OperationSkipped -Component 'SYSTEM-OPTIMIZATION' -Operation 'Modify' -Target "$registryPath\$($setting.Key)" -Reason 'DryRun mode enabled'
-                    $settingResult.Success = $true
+                # Ensure registry path exists
+                if (-not (Test-Path $registryPath)) {
+                    Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Creating registry path: $registryPath"
+                    New-Item -Path $registryPath -Force | Out-Null
                 }
-                else {
-                    # Ensure registry path exists
-                    if (-not (Test-Path $registryPath)) {
-                        Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Creating registry path: $registryPath"
-                        New-Item -Path $registryPath -Force | Out-Null
-                    }
 
-                    # Set the value
-                    Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Executing: Set-ItemProperty -Path $registryPath -Name $($setting.Key) -Value $($setting.Value)"
-                    Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
+                # Set the value
+                Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Executing: Set-ItemProperty -Path $registryPath -Name $($setting.Key) -Value $($setting.Value)"
+                Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
 
-                    # Verification
-                    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Operation 'Verify' -Target "$registryPath\$($setting.Key)" -Message 'Verifying registry value change'
+                # Verification
+                Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Operation 'Verify' -Target "$registryPath\$($setting.Key)" -Message 'Verifying registry value change'
 
-                    $newValue = (Get-ItemProperty -Path $registryPath -Name $setting.Key -ErrorAction SilentlyContinue).($setting.Key)
-                    $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
+                $newValue = (Get-ItemProperty -Path $registryPath -Name $setting.Key -ErrorAction SilentlyContinue).($setting.Key)
+                $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
 
-                    if ($newValue -eq $setting.Value) {
+                if ($newValue -eq $setting.Value) {
                         # Log successful verification
                         Write-OperationSuccess -Component 'SYSTEM-OPTIMIZATION' -Operation 'Verify' -Target "$registryPath\$($setting.Key)" -Metrics @{
                             ExpectedValue      = $setting.Value
@@ -930,7 +878,6 @@ function Optimize-UserInterface {
                         Write-OperationFailure -Component 'SYSTEM-OPTIMIZATION' -Operation 'Verify' -Target "$registryPath\$($setting.Key)" -Error (New-Object Exception("Expected value: $($setting.Value), Actual value: $newValue"))
                         throw "Verification failed: Value not set correctly"
                     }
-                }
 
                 $results.Success++
                 $results.SettingsChanged++
@@ -962,10 +909,7 @@ function Optimize-UserInterface {
 function Optimize-WindowsRegistry {
     [CmdletBinding()]
     [Obsolete("This function is deprecated. Use Invoke-SystemOptimization instead. Will be removed in v4.0.", false)]
-    param(
-        [Parameter()]
-        [switch]$DryRun
-    )
+    param()
 
     $results = @{
         Success          = 0
@@ -1001,20 +945,14 @@ function Optimize-WindowsRegistry {
 
         try {
             if (Test-Path $registryPath) {
-                if ($DryRun) {
-                    Write-Information "    [DRY RUN] Would $($optimization.Description.ToLower())" -InformationAction Continue
-                    $optimizationResult.Success = $true
+                # Clear registry entries safely
+                $items = Get-ChildItem -Path $registryPath -ErrorAction SilentlyContinue
+                foreach ($item in $items) {
+                    Remove-Item -Path $item.PSPath -Force -ErrorAction SilentlyContinue
                 }
-                else {
-                    # Clear registry entries safely
-                    $items = Get-ChildItem -Path $registryPath -ErrorAction SilentlyContinue
-                    foreach ($item in $items) {
-                        Remove-Item -Path $item.PSPath -Force -ErrorAction SilentlyContinue
-                    }
 
-                    $optimizationResult.Success = $true
-                    Write-Information "     $($optimization.Description)" -InformationAction Continue
-                }
+                $optimizationResult.Success = $true
+                Write-Information "     $($optimization.Description)" -InformationAction Continue
 
                 $results.Success++
                 $results.EntriesProcessed++
@@ -1045,10 +983,7 @@ function Optimize-WindowsRegistry {
 function Optimize-DiskPerformance {
     [CmdletBinding()]
     [Obsolete("This function is deprecated. Use Invoke-SystemOptimization instead. Will be removed in v4.0.", false)]
-    param(
-        [Parameter()]
-        [switch]$DryRun
-    )
+    param()
 
     $results = @{
         Success        = 0
@@ -1073,27 +1008,21 @@ function Optimize-DiskPerformance {
         }
 
         try {
-            if ($DryRun) {
-                Write-Information "    [DRY RUN] Would execute: $($task.Name)" -InformationAction Continue
-                $taskResult.Success = $true
-            }
-            else {
-                switch ($task.Action) {
-                    'DisableIndexing' {
-                        # This is a placeholder - actual implementation would be more complex
-                        Write-Information "     $($task.Name) (placeholder)" -InformationAction Continue
-                        $taskResult.Success = $true
-                    }
-                    'OptimizePageFile' {
-                        # This is a placeholder - actual implementation would be more complex
-                        Write-Information "     $($task.Name) (placeholder)" -InformationAction Continue
-                        $taskResult.Success = $true
-                    }
-                    'EnableWriteCache' {
-                        # This is a placeholder - actual implementation would be more complex
-                        Write-Information "     $($task.Name) (placeholder)" -InformationAction Continue
-                        $taskResult.Success = $true
-                    }
+            switch ($task.Action) {
+                'DisableIndexing' {
+                    # This is a placeholder - actual implementation would be more complex
+                    Write-Information "     $($task.Name) (placeholder)" -InformationAction Continue
+                    $taskResult.Success = $true
+                }
+                'OptimizePageFile' {
+                    # This is a placeholder - actual implementation would be more complex
+                    Write-Information "     $($task.Name) (placeholder)" -InformationAction Continue
+                    $taskResult.Success = $true
+                }
+                'EnableWriteCache' {
+                    # This is a placeholder - actual implementation would be more complex
+                    Write-Information "     $($task.Name) (placeholder)" -InformationAction Continue
+                    $taskResult.Success = $true
                 }
             }
 
@@ -1125,10 +1054,7 @@ function Optimize-DiskPerformance {
 function Optimize-NetworkSetting {
     [CmdletBinding()]
     [Obsolete("This function is deprecated. Use Invoke-SystemOptimization instead. Will be removed in v4.0.", false)]
-    param(
-        [Parameter()]
-        [switch]$DryRun
-    )
+    param()
 
     $results = @{
         Success         = 0
@@ -1156,19 +1082,13 @@ function Optimize-NetworkSetting {
             }
 
             try {
-                if ($DryRun) {
-                    Write-Information "    [DRY RUN] Would set network setting: $($setting.Key)" -InformationAction Continue
-                    $settingResult.Success = $true
+                if (-not (Test-Path $registryPath)) {
+                    New-Item -Path $registryPath -Force | Out-Null
                 }
-                else {
-                    if (-not (Test-Path $registryPath)) {
-                        New-Item -Path $registryPath -Force | Out-Null
-                    }
 
-                    Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
-                    $settingResult.Success = $true
-                    Write-Information "     Applied network optimization: $($setting.Key)" -InformationAction Continue
-                }
+                Set-ItemProperty -Path $registryPath -Name $setting.Key -Value $setting.Value -Force
+                $settingResult.Success = $true
+                Write-Information "     Applied network optimization: $($setting.Key)" -InformationAction Continue
 
                 $results.Success++
                 $results.SettingsApplied++
