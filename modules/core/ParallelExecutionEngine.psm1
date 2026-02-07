@@ -244,7 +244,12 @@ function Invoke-ModulesInParallel {
     finally {
         # Cleanup
         if ($runspacePool) {
-            try { $runspacePool.Dispose() } catch { }
+            try { 
+                $runspacePool.Dispose() 
+            } 
+            catch { 
+                Write-Verbose "Runspace pool disposal error (non-critical): $($_.Exception.Message)"
+            }
         }
     }
 }
@@ -372,7 +377,9 @@ function Wait-ParallelModuleCompletion {
                     $job.PowerShell.Stop()
                     $job.PowerShell.Dispose()
                 }
-                catch { }
+                catch { 
+                    Write-Verbose "PowerShell job disposal error (non-critical): $($_.Exception.Message)"
+                }
             }
         }
 

@@ -1813,6 +1813,81 @@ try {
     
     # Manual mode or fallback: Use existing hierarchical menu system
     if ($selectedExecutionMode -eq 'Manual' -and -not $NonInteractive -and -not $TaskNumbers) {
+        # v4.0: Optional Type1 audit module selection before Type2 tasks
+        Write-Host "`n" -NoNewline
+        Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Yellow
+        Write-Host "║          PRE-EXECUTION AUDIT MODULES (TYPE1)               ║" -ForegroundColor Yellow
+        Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "Do you want to run audit modules before task selection?" -ForegroundColor Cyan
+        Write-Host "Type1 modules perform read-only analysis (no system changes)" -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "  [Y] Yes - Select Type1 modules to run" -ForegroundColor Green
+        Write-Host "  [N] No  - Skip to Type2 task selection (default)" -ForegroundColor Yellow
+        Write-Host ""
+        
+        $type1Choice = Read-Host "Run Type1 audits? [Y/N]"
+        
+        if ($type1Choice -eq 'Y' -or $type1Choice -eq 'y') {
+            # Discover available Type1 modules
+            $type1Path = Join-Path $script:ModulesPath 'type1'
+            $type1ModulesAvailable = @()
+            
+            if (Test-Path $type1Path) {
+                $type1Files = Get-ChildItem -Path $type1Path -Filter "*.psm1"
+                foreach ($file in $type1Files) {
+                    $type1ModulesAvailable += @{
+                        Name = $file.BaseName
+                        Path = $file.FullName
+                    }
+                }
+            }
+            
+            if ($type1ModulesAvailable.Count -gt 0) {
+                # Show Type1 module selection menu
+                $type1SelectionResult = Show-Type1ModuleMenu `
+                    -CountdownSeconds 10 `
+                    -AvailableModules $type1ModulesAvailable
+                
+                # Execute selected Type1 modules
+                if ($type1SelectionResult -and $type1SelectionResult.SelectedModules.Count -gt 0) {
+                    Write-Host "`nExecuting selected Type1 audit modules..." -ForegroundColor Cyan
+                    
+                    foreach ($selectedModule in $type1SelectionResult.SelectedModules) {
+                        Write-Host "  → Running: $($selectedModule.Name)..." -NoNewline -ForegroundColor White
+                        
+                        try {
+                            Import-Module $selectedModule.Path -Force -ErrorAction Stop
+                            
+                            # Execute based on module type (call appropriate function)
+                            $functionName = "Get-$($selectedModule.Name -replace 'Audit$', '')"
+                            if (Get-Command -Name $functionName -ErrorAction SilentlyContinue) {
+                                & $functionName | Out-Null
+                                Write-Host " ✓" -ForegroundColor Green
+                            }
+                            else {
+                                Write-Host " ⚠ (No execution function found)" -ForegroundColor Yellow
+                            }
+                        }
+                        catch {
+                            Write-Host " ✗ (Error: $_)" -ForegroundColor Red
+                        }
+                    }
+                    
+                    Write-Host "`nType1 audit execution complete.`n" -ForegroundColor Green
+                }
+                else {
+                    Write-Host "`nNo Type1 modules selected. Continuing to task selection...`n" -ForegroundColor Yellow
+                }
+            }
+            else {
+                Write-Host "`nNo Type1 modules found in: $type1Path`n" -ForegroundColor Yellow
+            }
+        }
+        else {
+            Write-Host "`nSkipping Type1 audits. Proceeding to task selection...`n" -ForegroundColor Yellow
+        }
+        
         # Show hierarchical menu with integrated task selection
         $menuResult = Show-MainMenu -CountdownSeconds $MainConfig.execution.countdownSeconds -AvailableTasks $AvailableTasks
         
@@ -2465,6 +2540,18 @@ if ($finalReports.Count -gt 0) {
 else {
     Write-Warning "No reports were generated or copied. Check logs for errors."
 }
+
+#region Stop Transcript
+Write-Information "" -InformationAction Continue
+Write-Information " Finalizing transcript logging..." -InformationAction Continue
+try {
+    Stop-Transcript -ErrorAction Stop
+    Write-Information "  [OK] Transcript stopped and saved" -InformationAction Continue
+}
+catch {
+    Write-Verbose "Transcript stop error (expected if not started): $_"
+}
+#endregion
 
 # v3.2 Post-Execution Shutdown Sequence
 if (Get-Command -Name 'Start-MaintenanceCountdown' -ErrorAction SilentlyContinue) {

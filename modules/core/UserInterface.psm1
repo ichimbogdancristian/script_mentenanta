@@ -868,9 +868,138 @@ function ConvertFrom-TaskNumbers {
 
 #endregion
 
+<#
+.SYNOPSIS
+    Shows the Type1 module selection menu with countdown
+
+.DESCRIPTION
+    Displays an interactive menu for selecting Type1 (audit/inventory) modules to execute.
+    Option 0 runs all Type1 modules (default). Individual modules can be selected by number.
+    Auto-selects option 0 after countdown expires.
+
+.PARAMETER CountdownSeconds
+    Number of seconds for the countdown timer (default: 10)
+
+.PARAMETER AvailableModules
+    Array of available Type1 modules to display
+
+.OUTPUTS
+    [array] Selected module indices (0 = all modules)
+
+.EXAMPLE
+    $selection = Show-Type1ModuleMenu -CountdownSeconds 10 -AvailableModules $type1Modules
+    # Returns: @(0) for all modules, or @(1,3,5) for specific selections
+
+.NOTES
+    Phase 1 Implementation - Interactive Type1 Module Selection
+    Integrates with MaintenanceOrchestrator.ps1 for pre-execution audit phase
+#>
+function Show-Type1ModuleMenu {
+    [CmdletBinding()]
+    [OutputType([array])]
+    param(
+        [Parameter()]
+        [int]$CountdownSeconds = 10,
+
+        [Parameter()]
+        [array]$AvailableModules = @()
+    )
+
+    # Start performance tracking
+    $perfContext = $null
+    try {
+        $perfContext = Start-PerformanceTracking -OperationName 'Type1ModuleMenu' -Component 'USER-INTERFACE'
+    }
+    catch {
+        Write-Verbose "Performance tracking unavailable"
+    }
+
+    Write-Host "`n" -NoNewline
+    Write-Host "===================================================" -ForegroundColor Cyan
+    Write-Host "    STAGE 1: SYSTEM INVENTORY (Type1 Modules)" -ForegroundColor White
+    Write-Host "===================================================" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "Select modules to execute:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  [0] Run All Type1 Modules (Default)" -ForegroundColor Green
+    Write-Host ""
+
+    # Display available Type1 modules
+    if ($AvailableModules.Count -gt 0) {
+        for ($i = 0; $i -lt $AvailableModules.Count; $i++) {
+            $module = $AvailableModules[$i]
+            $moduleNumber = "[$($i+1)]"
+
+            if ($module -is [hashtable] -and $module.ContainsKey('Name')) {
+                $moduleName = $module.Name
+                $moduleDesc = if ($module.ContainsKey('Description')) { $module.Description } else { "Audit module" }
+                Write-Host "  $moduleNumber " -ForegroundColor Cyan -NoNewline
+                Write-Host "$moduleName" -ForegroundColor White
+                Write-Host "      - $moduleDesc" -ForegroundColor DarkGray
+            }
+            else {
+                Write-Host "  $moduleNumber " -ForegroundColor Cyan -NoNewline
+                Write-Host "$module" -ForegroundColor White
+            }
+        }
+        Write-Host ""
+    }
+
+    Write-Host "Tip: Enter 0 for all, or comma-separated numbers (e.g., 1,3,5)" -ForegroundColor DarkGray
+    Write-Host ""
+
+    # Countdown with auto-selection
+    $selection = Start-CountdownInput -CountdownSeconds $CountdownSeconds -DefaultValue "0"
+
+    # Parse selection
+    $selectedIndices = @()
+
+    if ($selection -eq "0") {
+        # All modules
+        $selectedIndices = @(0)
+        Write-Host ""
+        Write-Host "Selected: All Type1 modules ($($AvailableModules.Count) modules)" -ForegroundColor Green
+    }
+    else {
+        # Parse comma-separated list
+        try {
+            $numbers = $selection -split ',' | ForEach-Object { [int]$_.Trim() }
+            $validNumbers = $numbers | Where-Object { $_ -ge 1 -and $_ -le $AvailableModules.Count }
+
+            if ($validNumbers.Count -eq 0) {
+                Write-Host ""
+                Write-Host "No valid selections - defaulting to all modules" -ForegroundColor Yellow
+                $selectedIndices = @(0)
+            }
+            else {
+                $selectedIndices = $validNumbers
+                Write-Host ""
+                Write-Host "Selected Type1 modules: $($selectedIndices -join ', ')" -ForegroundColor Green
+            }
+        }
+        catch {
+            Write-Host ""
+            Write-Host "Invalid input - defaulting to all modules" -ForegroundColor Yellow
+            $selectedIndices = @(0)
+        }
+    }
+
+    # Complete performance tracking
+    try {
+        Complete-PerformanceTracking -Context $perfContext -Status 'Success' -ResultCount $selectedIndices.Count
+    }
+    catch {
+        Write-Verbose "Performance tracking completion failed"
+    }
+
+    Write-Host ""
+    return $selectedIndices
+}
+
 # Export public functions
 Export-ModuleMember -Function @(
     'Show-MainMenu',
+    'Show-Type1ModuleMenu',
     'Show-ConfirmationDialog',
     'Show-Progress',
     'Show-ProgressBar',

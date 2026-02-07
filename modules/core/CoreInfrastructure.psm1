@@ -4255,7 +4255,9 @@ function Start-MaintenanceCountdown {
                     return @{ Action = "Abort"; RebootRequired = $false; CleanupPerformed = $false }
                 }
             }
-            catch { }
+            catch { 
+                Write-Verbose "Keypress detection error (non-critical): $($_.Exception.Message)"
+            }
 
             $remainingSeconds--
             Start-Sleep -Seconds 1
@@ -4308,7 +4310,9 @@ function Show-ShutdownAbortMenu {
         $choiceInt = [int]$choice.Trim()
         if ($choiceInt -ge 1 -and $choiceInt -le 3) { return $choiceInt }
     }
-    catch { }
+    catch { 
+        Write-Verbose "Invalid choice conversion (defaulting to 1): $($_.Exception.Message)"
+    }
     
     return 1
 }
