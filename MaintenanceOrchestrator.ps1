@@ -1257,31 +1257,31 @@ try {
                     # Call the audit function based on module name
                     switch ($moduleName) {
                         'BloatwareDetectionAudit' {
-                            $result = Invoke-BloatwareDetectionAudit
+                            $result = Get-BloatwareAnalysis
                             $auditResults[$auditKey] = $result
                         }
                         'EssentialAppsAudit' {
-                            $result = Invoke-EssentialAppsAudit
+                            $result = Get-EssentialAppsAnalysis
                             $auditResults[$auditKey] = $result
                         }
                         'SystemOptimizationAudit' {
-                            $result = Invoke-SystemOptimizationAudit
+                            $result = Get-SystemOptimizationAnalysis
                             $auditResults[$auditKey] = $result
                         }
                         'TelemetryAudit' {
-                            $result = Invoke-TelemetryAudit
+                            $result = Get-TelemetryAnalysis
                             $auditResults[$auditKey] = $result
                         }
                         'SecurityAudit' {
-                            $result = Invoke-SecurityAudit
+                            $result = Get-SecurityAuditAnalysis
                             $auditResults[$auditKey] = $result
                         }
                         'WindowsUpdatesAudit' {
-                            $result = Invoke-WindowsUpdatesAudit
+                            $result = Get-WindowsUpdatesAnalysis
                             $auditResults[$auditKey] = $result
                         }
                         'AppUpgradeAudit' {
-                            $result = Invoke-AppUpgradeAudit
+                            $result = Get-AppUpgradeAnalysis
                             $auditResults[$auditKey] = $result
                         }
                     }
@@ -1460,31 +1460,31 @@ try {
                             $auditResults[$auditKey] = $result
                         }
                         'BloatwareDetectionAudit' {
-                            $result = Invoke-BloatwareDetectionAudit
+                            $result = Get-BloatwareAnalysis
                             $auditResults[$auditKey] = $result
                         }
                         'EssentialAppsAudit' {
-                            $result = Invoke-EssentialAppsAudit
+                            $result = Get-EssentialAppsAnalysis
                             $auditResults[$auditKey] = $result
                         }
                         'SystemOptimizationAudit' {
-                            $result = Invoke-SystemOptimizationAudit
+                            $result = Get-SystemOptimizationAnalysis
                             $auditResults[$auditKey] = $result
                         }
                         'TelemetryAudit' {
-                            $result = Invoke-TelemetryAudit
+                            $result = Get-TelemetryAnalysis
                             $auditResults[$auditKey] = $result
                         }
                         'SecurityAudit' {
-                            $result = Invoke-SecurityAudit
+                            $result = Get-SecurityAuditAnalysis
                             $auditResults[$auditKey] = $result
                         }
                         'WindowsUpdatesAudit' {
-                            $result = Invoke-WindowsUpdatesAudit
+                            $result = Get-WindowsUpdatesAnalysis
                             $auditResults[$auditKey] = $result
                         }
                         'AppUpgradeAudit' {
-                            $result = Invoke-AppUpgradeAudit
+                            $result = Get-AppUpgradeAnalysis
                             $auditResults[$auditKey] = $result
                         }
                     }
@@ -1853,9 +1853,16 @@ try {
     }
     #endregion
     
+    # Initialize StartTime for all execution paths to prevent null reference errors
+    $StartTime = Get-Date
+    
     # Skip task execution if Intelligent or Audit-Only mode already completed
     if ($ExecutionParams.Mode -eq 'IntelligentComplete' -or $ExecutionParams.Mode -eq 'AuditOnlyComplete') {
         Write-Information "`n=== Skipping manual task execution (completed via $($ExecutionParams.Mode)) ===" -InformationAction Continue
+        # Initialize empty TaskResults for report generation
+        if (-not $TaskResults) {
+            $TaskResults = @()
+        }
         # Jump to report generation (below)
     }
     else {
@@ -1933,7 +1940,7 @@ try {
         }
         # Initialize execution tracking
         $TaskResults = @()
-        $StartTime = Get-Date
+        # $StartTime already initialized above for all execution paths
         Write-Information "`nExecuting tasks..." -InformationAction Continue
         Write-Information "" -InformationAction Continue
         for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
