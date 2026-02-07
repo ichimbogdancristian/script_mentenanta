@@ -114,6 +114,16 @@ else {
     Write-Warning "TemplateEngine module not found at: $TemplateEnginePath - Using legacy template functions"
 }
 
+# Import OSRecommendations for OS-specific enhancements (Phase C.4)
+$OSRecommendationsPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\OSRecommendations.psm1'
+if (Test-Path $OSRecommendationsPath) {
+    Import-Module $OSRecommendationsPath -Force
+    Write-Verbose "OSRecommendations module loaded for OS-specific reporting (Phase C.4)"
+}
+else {
+    Write-Warning "OSRecommendations module not found at: $OSRecommendationsPath - Skipping OS-specific enhancements"
+}
+
 # Ensure path discovery is initialized (if not already done by orchestrator)
 # This handles the case where ReportGenerator is called in a new scope
 try {
@@ -805,6 +815,11 @@ function New-MaintenanceReport {
     try {
         $startTime = Get-Date
 
+        # Phase C.4: Get OS context for report enhancements
+        Write-Information "✓ Detecting operating system context..." -InformationAction Continue
+        $osContext = Get-WindowsVersionContext
+        Write-Verbose "OS Detection: $($osContext.DisplayText)"
+
         # Load processed data with enhanced parameters
         Write-Information "✓ Loading processed log data..." -InformationAction Continue
         $processedDataParams = @{}
@@ -889,6 +904,24 @@ function New-MaintenanceReport {
             Write-Information "✓ Building action items..." -InformationAction Continue
             $actionItemsHtml = Build-ActionItems -AggregatedResults $aggregatedSource -MaxItems 10
 
+            # Phase C.4: Build OS-specific recommendations section
+            Write-Information "✓ Generating OS-specific recommendations..." -InformationAction Continue
+            $osRecommendationsHtml = ""
+            if (Get-Command -Name 'Build-OSContextSection' -ErrorAction SilentlyContinue) {
+                try {
+                    $osRecommendationsHtml = Build-OSContextSection -OSContext $osContext -MaintenanceResults $aggregatedSource -MaxRecommendations 8
+                    Write-Verbose "OS recommendations section generated successfully"
+                }
+                catch {
+                    Write-LogEntry -Level 'WARNING' -Component 'REPORT-GENERATOR' -Message "Failed to generate OS recommendations: $($_.Exception.Message)"
+                    $osRecommendationsHtml = "<!-- OS recommendations unavailable -->"
+                }
+            }
+            else {
+                Write-Verbose "OS recommendations module not available - skipping OS section"
+                $osRecommendationsHtml = "<!-- OS recommendations module not loaded -->"
+            }
+
             Write-Information "✓ Collecting system information..." -InformationAction Continue
             $systemInfo = Get-SystemInformation
 
@@ -905,6 +938,14 @@ function New-MaintenanceReport {
             $reportHtml = $reportHtml -replace '{{REPORT_DATE}}', (Get-Date -Format "MMMM dd, yyyy")
             $reportHtml = $reportHtml -replace '{{COMPUTER_NAME}}', $env:COMPUTERNAME
             $reportHtml = $reportHtml -replace '{{USER_NAME}}', $env:USERNAME
+            
+            # Phase C.4: Replace OS context tokens
+            $reportHtml = $reportHtml -replace '{{OS_VERSION}}', $osContext.DisplayText
+            $reportHtml = $reportHtml -replace '{{OS_BUILD}}', $osContext.BuildNumber
+            $reportHtml = $reportHtml -replace '{{OS_ARCHITECTURE}}', $osContext.Architecture
+            $reportHtml = $reportHtml -replace '{{OS_CAPTION}}', $osContext.Caption
+            $reportHtml = $reportHtml -replace '{{OS_IS_WINDOWS11}}', $(if ($osContext.IsWindows11) { 'Yes' } else { 'No' })
+            $reportHtml = $reportHtml -replace '{{OS_IS_WINDOWS10}}', $(if ($osContext.IsWindows10) { 'Yes' } else { 'No' })
             $executionMode = if ($processedData.MetricsSummary -and $processedData.MetricsSummary.ExecutionSummary -and $processedData.MetricsSummary.ExecutionSummary.ExecutionMode) {
                 $processedData.MetricsSummary.ExecutionSummary.ExecutionMode
             }
@@ -952,6 +993,9 @@ function New-MaintenanceReport {
             $reportHtml = $reportHtml -replace '{{ERROR_ANALYSIS}}', $errorAnalysisHtml
             $reportHtml = $reportHtml -replace '{{EXECUTION_TIMELINE}}', $timelineHtml
             $reportHtml = $reportHtml -replace '{{ACTION_ITEMS}}', $actionItemsHtml
+            
+            # Phase C.4: Replace OS recommendations section
+            $reportHtml = $reportHtml -replace '{{OS_RECOMMENDATIONS}}', $osRecommendationsHtml
 
             # Replace system info tokens
             foreach ($key in $systemInfo.Keys) {

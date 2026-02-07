@@ -19,6 +19,12 @@
 
 using namespace System.Collections.Generic
 
+# Import CommonUtilities for shared functions (Phase B.3 consolidation)
+$commonUtilsPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CommonUtilities.psm1'
+if (Test-Path $commonUtilsPath) {
+    Import-Module $commonUtilsPath -Force -Global
+}
+
 # v3.0 Type 1 module - imported by Type 2 modules
 # Note: CoreInfrastructure should be loaded by the Type 2 module before importing this module
 # Check if CoreInfrastructure functions are available (loaded by Type2 module)
@@ -604,35 +610,24 @@ function Get-PrivacyScore {
         [hashtable]$AuditResults
     )
 
-    $baseScore = 100
-    $deductions = 0
-
-    # Deduct points based on privacy issues
-    foreach ($issue in $AuditResults.PrivacyIssues) {
-        switch ($issue.Impact) {
-            'High' { $deductions += 20 }
-            'Medium' { $deductions += 10 }
-            'Low' { $deductions += 5 }
-        }
-    }
-
-    $overallScore = [math]::Max(0, $baseScore - $deductions)
-
-    return [PSCustomObject]@{
-        Overall    = $overallScore
-        MaxScore   = $baseScore
-        Deductions = $deductions
-        IssueCount = $AuditResults.PrivacyIssues.Count
-        Category   = if ($overallScore -ge 90) { 'Excellent Privacy' }
-        elseif ($overallScore -ge 70) { 'Good Privacy' }
-        elseif ($overallScore -ge 50) { 'Fair Privacy' }
-        else { 'Poor Privacy - Needs Attention' }
-    }
+    # Use generic scoring function from CommonUtilities (Phase B.3 consolidation)
+    return Get-GenericHealthScore `
+        -Issues $AuditResults.PrivacyIssues `
+        -ScoreType 'Privacy' `
+        -DeductionMap @{ High = 20; Medium = 10; Low = 5 }
 }
 
 <#
 .SYNOPSIS
     Generates privacy improvement recommendations
+#>
+<#
+.SYNOPSIS
+    Generates privacy recommendations based on audit results
+
+.DESCRIPTION
+    Uses generic New-ImpactBasedRecommendations from CommonUtilities.
+    Phase B.3 consolidation - reduced from ~45 lines to ~15 lines.
 #>
 function New-PrivacyRecommendations {
     [CmdletBinding()]
@@ -642,38 +637,17 @@ function New-PrivacyRecommendations {
         [hashtable]$AuditResults
     )
 
-    $recommendations = @()
-
-    # Count issues by impact
-    $highImpact = $AuditResults.PrivacyIssues | Where-Object { $_.Impact -eq 'High' }
-    $mediumImpact = $AuditResults.PrivacyIssues | Where-Object { $_.Impact -eq 'Medium' }
-    $lowImpact = $AuditResults.PrivacyIssues | Where-Object { $_.Impact -eq 'Low' }
-
-    if ($highImpact.Count -gt 0) {
-        $recommendations += " Critical: Address $($highImpact.Count) high-impact privacy issues immediately"
-        $recommendations += "   Focus on telemetry services, data collection settings, and consumer features"
-    }
-
-    if ($mediumImpact.Count -gt 0) {
-        $recommendations += " Important: Fix $($mediumImpact.Count) medium-impact privacy settings"
-        $recommendations += "   Review advertising settings, app permissions, and feature configurations"
-    }
-
-    if ($lowImpact.Count -gt 0) {
-        $recommendations += " Optional: Optimize $($lowImpact.Count) low-impact settings for enhanced privacy"
-    }
-
-    # Specific recommendations based on active services
-    if ($AuditResults.ActiveServices.Count -gt 0) {
-        $recommendations += " Services: Consider disabling $($AuditResults.ActiveServices.Count) telemetry services"
-    }
-
-    if ($AuditResults.PrivacyIssues.Count -eq 0) {
-        $recommendations += " Excellent! Your system has strong privacy protections in place"
-        $recommendations += " Continue monitoring and reviewing new Windows updates for privacy changes"
-    }
-
-    return $recommendations
+    return New-ImpactBasedRecommendations `
+        -Issues $AuditResults.PrivacyIssues `
+        -IssueType 'privacy' `
+        -SpecificChecks @{
+            ActiveServices = { param($results) 
+                if ($results.ActiveServices.Count -gt 0) {
+                    " Services: Consider disabling $($results.ActiveServices.Count) telemetry services"
+                }
+            }
+        } `
+        -AuditResults $AuditResults
 }
 
 <#

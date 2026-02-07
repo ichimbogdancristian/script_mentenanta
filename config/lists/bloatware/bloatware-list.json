@@ -1,5 +1,6 @@
 {
-  "all": [
+  "_comment": "v4.0 - OS-Specific bloatware configuration. Use 'common' for all Windows versions, 'windows10' or 'windows11' for OS-specific apps.",
+  "common": [
     "2414FC7A.Viber",
     "41038Axilesoft.ACGMediaPlayer",
     "46928bounde.EclipseManager",
@@ -237,5 +238,20 @@
     "XINGAG.XING",
     "Yontoo.Yontoo",
     "Zugo.Zugo"
+  ],
+  "windows10": [
+    "Microsoft.3DBuilder",
+    "Microsoft.WindowsReadingList"
+  ],
+  "windows11": [
+    "MicrosoftWindows.Client.WebExperience",
+    "MicrosoftTeams",
+    "Microsoft.Todos",
+    "Microsoft.PowerAutomateDesktop",
+    "Microsoft.GetHelp",
+    "Clipchamp.Clipchamp",
+    "Microsoft.YourPhone",
+    "Microsoft.Windows.DevHome",
+    "Microsoft.GamingServices"
   ]
 }

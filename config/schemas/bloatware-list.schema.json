@@ -2,13 +2,15 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://maintenance-automation/schemas/bloatware-list.schema.json",
   "title": "Bloatware Detection List Schema",
-  "description": "Schema for bloatware package names and patterns",
+  "description": "Schema for bloatware package names and patterns (v4.0 - OS-Specific)",
   "type": "object",
-  "required": ["all"],
+  "required": [
+    "common"
+  ],
   "properties": {
-    "all": {
+    "common": {
       "type": "array",
-      "description": "Master list of bloatware package names/patterns",
+      "description": "Bloatware common to all Windows versions",
       "minItems": 1,
       "items": {
         "type": "string",
@@ -16,6 +18,39 @@
         "maxLength": 200,
         "pattern": "^[A-Za-z0-9._-]+$",
         "description": "Package name or pattern (e.g., 'Acer.AcerPowerManagement', 'Microsoft.BingNews')"
+      },
+      "uniqueItems": true
+    },
+    "windows10": {
+      "type": "array",
+      "description": "Windows 10 specific bloatware",
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 200,
+        "pattern": "^[A-Za-z0-9._-]+$"
+      },
+      "uniqueItems": true
+    },
+    "windows11": {
+      "type": "array",
+      "description": "Windows 11 specific bloatware (Widgets, Chat, DevHome, etc.)",
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 200,
+        "pattern": "^[A-Za-z0-9._-]+$"
+      },
+      "uniqueItems": true
+    },
+    "all": {
+      "type": "array",
+      "description": "[DEPRECATED v3.x] Use 'common' instead. Maintained for backward compatibility.",
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 200,
+        "pattern": "^[A-Za-z0-9._-]+$"
       },
       "uniqueItems": true
     },

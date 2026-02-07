@@ -28,7 +28,7 @@
                 <div>
                     <h1>🛠️ {{COMPUTER_NAME}} System Maintenance</h1>
                     <div class="dashboard-subtitle">
-                        Generated on {{GENERATION_DATE}} | Session: {{SESSION_ID}} | v{{VERSION}}
+                        {{OS_VERSION}} | Generated on {{GENERATION_DATE}} | Session: {{SESSION_ID}} | v{{VERSION}}
                     </div>
                 </div>
                 <div class="dashboard-controls">
@@ -116,6 +116,9 @@
                     </div>
                 </div>
             </section>
+
+            <!-- OS-Specific Recommendations (Phase C.4) -->
+            {{OS_RECOMMENDATIONS}}
 
             <!-- Project Resume -->
             <section class="card" id="projectResume">

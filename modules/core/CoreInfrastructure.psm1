@@ -78,6 +78,132 @@ using namespace System.IO
 
 Write-Verbose "CoreInfrastructure: Consolidated module loading (Path B refactoring)"
 
+# Import CommonUtilities for shared helper functions (Phase B.4.1)
+$ModuleRoot = Split-Path -Parent $PSScriptRoot
+$CommonUtilitiesPath = Join-Path $ModuleRoot 'core\CommonUtilities.psm1'
+if (Test-Path $CommonUtilitiesPath) {
+    Import-Module $CommonUtilitiesPath -Force -Global -ErrorAction SilentlyContinue
+    Write-Verbose "CoreInfrastructure: CommonUtilities imported"
+}
+
+#endregion
+
+#region OS Version Detection (Phase C.1 - v4.0)
+
+<#
+.SYNOPSIS
+    Detects Windows version and provides comprehensive OS context
+
+.DESCRIPTION
+    Determines if system is running Windows 10 or Windows 11 based on build number.
+    Provides structured OS context object for use throughout the maintenance system.
+
+    Build Number Mapping:
+    - Windows 11: Build 22000+
+    - Windows 10: Build 10240-21999
+    - Older: Below 10240 (not supported)
+
+.OUTPUTS
+    PSCustomObject with OS version details:
+    - Version: String ('10', '11', 'Unknown')
+    - BuildNumber: Integer (OS build number)
+    - Caption: String (full OS name)
+    - Architecture: String (x64, x86, ARM64)
+    - IsWindows11: Boolean
+    - IsWindows10: Boolean
+    - DisplayText: String (human-readable version)
+    - DetectionTime: DateTime
+    - SupportedFeatures: Hashtable (OS-specific feature flags)
+
+.EXAMPLE
+    PS> $osContext = Get-WindowsVersionContext
+    PS> if ($osContext.IsWindows11) {
+    >>     # Windows 11 specific logic
+    >>     Write-Host "Running on $($osContext.DisplayText)"
+    >> }
+
+.EXAMPLE
+    PS> $osContext = Get-WindowsVersionContext
+    PS> $osContext.SupportedFeatures.ModernUI
+    True  # Windows 11 has modern UI
+
+.NOTES
+    Module: CoreInfrastructure
+    Architecture: v4.0 - Phase C.1 OS-Aware Foundation
+    Used By: All modules requiring OS-specific behavior
+#>
+function Get-WindowsVersionContext {
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param()
+
+    try {
+        # Get OS information via CIM
+        $osInfo = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        $buildNumber = [int]$osInfo.BuildNumber
+
+        # Determine Windows version based on build number
+        # Reference: https://learn.microsoft.com/windows/release-health/windows11-release-information
+        $version = if ($buildNumber -ge 22000) {
+            '11'  # Windows 11 starts at build 22000
+        }
+        elseif ($buildNumber -ge 10240) {
+            '10'  # Windows 10 starts at build 10240
+        }
+        else {
+            'Unknown'  # Older or unsupported OS
+        }
+
+        # Build comprehensive context object
+        $osContext = [PSCustomObject]@{
+            Version           = $version
+            BuildNumber       = $buildNumber
+            Caption           = $osInfo.Caption
+            Architecture      = $osInfo.OSArchitecture
+            IsWindows11       = ($version -eq '11')
+            IsWindows10       = ($version -eq '10')
+            DisplayText       = "Windows $version (Build $buildNumber)"
+            DetectionTime     = Get-Date
+            SupportedFeatures = @{
+                # Windows 11 exclusive features
+                ModernUI         = ($version -eq '11')
+                TPM2Required     = ($version -eq '11')
+                WidgetsPanel     = ($version -eq '11')
+                TeamsIntegration = ($version -eq '11')
+                SnapLayouts      = ($version -eq '11')
+                DirectStorage    = ($version -eq '11')
+                AndroidApps      = ($version -eq '11')
+                TaskbarAlignment = ($version -eq '11')
+                
+                # Windows 10 features
+                LegacyStartMenu  = ($version -eq '10')
+                LiveTiles        = ($version -eq '10')
+                ClassicTaskbar   = ($version -eq '10')
+            }
+        }
+
+        Write-Verbose "OS Detection: $($osContext.DisplayText) [$($osContext.Architecture)]"
+        
+        return $osContext
+    }
+    catch {
+        Write-Warning "OS detection failed: $_. Returning fallback context."
+        
+        # Return fallback context for unknown OS
+        return [PSCustomObject]@{
+            Version           = 'Unknown'
+            BuildNumber       = 0
+            Caption           = 'Unknown OS'
+            Architecture      = 'Unknown'
+            IsWindows11       = $false
+            IsWindows10       = $false
+            DisplayText       = 'Unknown Windows Version'
+            DetectionTime     = Get-Date
+            SupportedFeatures = @{}
+        }
+    }
+}
+
 #endregion
 
 #region Helper Functions
@@ -470,7 +596,7 @@ function Get-JsonConfiguration {
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('Main', 'Bloatware', 'EssentialApps', 'AppUpgrade', 'SystemOptimization', 'Security', 'Logging', 'ReportTemplates')]
+        [ValidateSet('Main', 'Bloatware', 'EssentialApps', 'AppUpgrade', 'SystemOptimization', 'Security', 'Logging', 'ReportTemplates', 'ModuleDependencies')]
         [string]$ConfigType,
 
         [Parameter()]
@@ -488,6 +614,7 @@ function Get-JsonConfiguration {
         'EssentialApps'      = 'lists\essential-apps\essential-apps.json'
         'AppUpgrade'         = 'lists\app-upgrade\app-upgrade-config.json'
         'SystemOptimization' = 'lists\system-optimization\system-optimization-config.json'
+        'ModuleDependencies' = 'settings\module-dependencies.json'
         'Security'           = 'settings\security-config.json'
         'Logging'            = 'settings\logging-config.json'
         'ReportTemplates'    = 'templates\report-templates-config.json'
@@ -707,10 +834,22 @@ function Get-BloatwareConfiguration {
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory = $false)]
-        [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
+        [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT,
+
+        [Parameter(Mandatory = $false)]
+        [PSCustomObject]$OSContext
     )
 
-    return Get-JsonConfiguration -ConfigType 'Bloatware' -ConfigPath $ConfigPath
+    # Load full configuration (v4.0 structure with common/windows10/windows11)
+    $config = Get-JsonConfiguration -ConfigType 'Bloatware' -ConfigPath $ConfigPath
+
+    # Use generic OS-aware merge (Phase B.4.1 consolidation)
+    return Invoke-OSAwareConfigMerge `
+        -ConfigData $config `
+        -OSContext $OSContext `
+        -MergeStrategy 'Simple' `
+        -ReturnFormat 'Hashtable' `
+        -FallbackProperty 'all'
 }
 
 <#
@@ -783,10 +922,21 @@ function Get-SystemOptimizationConfiguration {
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory = $false)]
-        [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
+        [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT,
+
+        [Parameter(Mandatory = $false)]
+        [PSCustomObject]$OSContext
     )
 
-    return Get-JsonConfiguration -ConfigType 'SystemOptimization' -ConfigPath $ConfigPath
+    # Load full configuration (v4.0 structure with common/windows10/windows11)
+    $config = Get-JsonConfiguration -ConfigType 'SystemOptimization' -ConfigPath $ConfigPath
+
+    # Use generic OS-aware merge with complex strategy (Phase B.4.1 consolidation)
+    return Invoke-OSAwareConfigMerge `
+        -ConfigData $config `
+        -OSContext $OSContext `
+        -MergeStrategy 'Complex' `
+        -ReturnFormat 'Direct'
 }
 
 <#
@@ -829,6 +979,32 @@ function Get-LoggingConfiguration {
     )
 
     return Get-JsonConfiguration -ConfigType 'Logging' -ConfigPath $ConfigPath
+}
+
+<#
+.SYNOPSIS
+    Gets module dependencies configuration
+
+.DESCRIPTION
+    Loads module-dependencies.json configuration for intelligent orchestration (v4.0)
+    Defines module execution dependencies and parallelization capabilities
+
+.OUTPUTS
+    Hashtable with module dependencies configuration
+
+.EXAMPLE
+    $deps = Get-ModuleDependenciesConfiguration
+    $deps.dependencies.BloatwareRemoval.DependsOn
+#>
+function Get-ModuleDependenciesConfiguration {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory = $false)]
+        [string]$ConfigPath = $env:MAINTENANCE_CONFIG_ROOT
+    )
+
+    return Get-JsonConfiguration -ConfigType 'ModuleDependencies' -ConfigPath $ConfigPath
 }
 
 <#
@@ -4218,12 +4394,153 @@ function Invoke-MaintenanceCleanup {
 
 #endregion
 
+#region OS Version Detection (v4.0 - Phase A.1)
+
+<#
+.SYNOPSIS
+    Detects Windows version and provides comprehensive OS context
+
+.DESCRIPTION
+    Determines if system is running Windows 10 or Windows 11 based on build number.
+    Provides structured OS context object for use throughout the system.
+    
+    Windows 11: Build 22000+
+    Windows 10: Build 10240-21999
+    
+    This function is the foundation for OS-specific behavior in v4.0.
+
+.OUTPUTS
+    PSCustomObject with OS version details including:
+    - Version: '10', '11', or 'Unknown'
+    - BuildNumber: Actual Windows build number
+    - IsWindows11: Boolean flag
+    - IsWindows10: Boolean flag
+    - DisplayText: Human-readable OS description
+    - SupportedFeatures: Hashtable of OS-specific features
+
+.EXAMPLE
+    $osContext = Get-WindowsVersionContext
+    if ($osContext.IsWindows11) {
+        # Windows 11 specific logic (Widgets, Chat, etc.)
+    }
+
+.EXAMPLE
+    $osContext = Get-WindowsVersionContext
+    Write-Host "Running on: $($osContext.DisplayText)"
+    # Output: "Running on: Windows 11 (Build 22621)"
+
+.NOTES
+    Added in v4.0 - Phase A.1 (OS-Specific Architecture)
+    This enables all modules to make OS-aware decisions.
+#>
+function Get-WindowsVersionContext {
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param()
+
+    try {
+        # Get OS information via CIM
+        $osInfo = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+        $buildNumber = [int]$osInfo.BuildNumber
+
+        # Determine Windows version based on build number
+        # Windows 11 = Build 22000+ (first release: 22000)
+        # Windows 10 = Build 10240-21999 (first release: 10240)
+        $version = if ($buildNumber -ge 22000) { 
+            '11' 
+        } 
+        elseif ($buildNumber -ge 10240) { 
+            '10' 
+        } 
+        else { 
+            'Unknown' 
+        }
+
+        # Build comprehensive context object
+        $osContext = [PSCustomObject]@{
+            Version           = $version
+            BuildNumber       = $buildNumber
+            Caption           = $osInfo.Caption
+            Architecture      = $osInfo.OSArchitecture
+            IsWindows11       = ($version -eq '11')
+            IsWindows10       = ($version -eq '10')
+            DisplayText       = "Windows $version (Build $buildNumber)"
+            DetectionTime     = Get-Date
+            SupportedFeatures = @{
+                # UI Features
+                ModernUI         = ($version -eq '11')
+                WidgetsPanel     = ($version -eq '11')
+                CenteredTaskbar  = ($version -eq '11')
+                SnapLayouts      = ($version -eq '11')
+                LegacyStartMenu  = ($version -eq '10')
+                
+                # System Features
+                TPM2Required     = ($version -eq '11')
+                DirectStorage    = ($version -eq '11')
+                AndroidApps      = ($version -eq '11')
+                
+                # Integration Features
+                TeamsIntegration = ($version -eq '11')
+                WidgetsBoard     = ($version -eq '11')
+                
+                # Security Features
+                VBS              = ($version -eq '11')  # Virtualization-based security
+                HVCI             = ($version -eq '11')  # Hypervisor-protected code integrity
+            }
+        }
+
+        Write-LogEntry -Level 'INFO' -Component 'OS-DETECTION' -Message "Detected: $($osContext.DisplayText)" -Data @{
+            Version      = $version
+            BuildNumber  = $buildNumber
+            Architecture = $osInfo.OSArchitecture
+            IsWindows11  = $osContext.IsWindows11
+            IsWindows10  = $osContext.IsWindows10
+        }
+
+        return $osContext
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'OS-DETECTION' -Message "Failed to detect OS version: $_" -Data @{
+            Error      = $_.Exception.Message
+            StackTrace = $_.ScriptStackTrace
+        }
+
+        # Return fallback context with safe defaults
+        return [PSCustomObject]@{
+            Version           = 'Unknown'
+            BuildNumber       = 0
+            Caption           = 'Unknown Windows Version'
+            Architecture      = 'Unknown'
+            IsWindows11       = $false
+            IsWindows10       = $false
+            DisplayText       = 'Unknown Windows Version'
+            DetectionTime     = Get-Date
+            SupportedFeatures = @{
+                ModernUI         = $false
+                WidgetsPanel     = $false
+                CenteredTaskbar  = $false
+                SnapLayouts      = $false
+                LegacyStartMenu  = $false
+                TPM2Required     = $false
+                DirectStorage    = $false
+                AndroidApps      = $false
+                TeamsIntegration = $false
+                WidgetsBoard     = $false
+                VBS              = $false
+                HVCI             = $false
+            }
+        }
+    }
+}
+
+#endregion
+
 #region Module Exports
 
 Export-ModuleMember -Function @(
     'Initialize-GlobalPathDiscovery', 'Get-MaintenancePaths', 'Get-MaintenancePath', 'Test-MaintenancePathsIntegrity',
     'Initialize-ConfigurationSystem', 'Get-ConfigFilePath', 'Get-JsonConfiguration', 'Get-MainConfiguration', 'Get-LoggingConfiguration',
-    'Get-BloatwareConfiguration', 'Get-EssentialAppsConfiguration', 'Get-AppUpgradeConfiguration', 'Get-SystemOptimizationConfiguration', 'Get-SecurityConfiguration', 'Get-ReportTemplatesConfiguration',
+    'Get-BloatwareConfiguration', 'Get-EssentialAppsConfiguration', 'Get-AppUpgradeConfiguration', 'Get-SystemOptimizationConfiguration', 'Get-SecurityConfiguration', 'Get-ReportTemplatesConfiguration', 'Get-ModuleDependenciesConfiguration',
     'Get-CachedConfiguration', 'Test-ConfigurationIntegrity', 'Test-ConfigurationSchema', 'Get-NestedProperty',
     'Test-ConfigurationWithJsonSchema', 'Test-AllConfigurationsWithSchema',
     'Initialize-LoggingSystem', 'Write-ModuleLogEntry', 'Write-OperationStart', 'Write-OperationSuccess', 'Write-OperationFailure',
@@ -4239,7 +4556,8 @@ Export-ModuleMember -Function @(
     'Test-SystemRequirements', 'Test-SystemReadiness', 'Enable-SystemProtection', 'Set-SystemRestoreStorage', 'New-SystemRestorePoint',
     'Invoke-WithTimeout', 'Invoke-ModuleWithTimeout',
     'Register-SystemChange', 'Undo-AllChanges', 'Clear-ChangeLog', 'Get-ChangeLog',
-    'Start-MaintenanceCountdown', 'Show-ShutdownAbortMenu', 'Invoke-MaintenanceShutdownChoice', 'Invoke-MaintenanceCleanup'
+    'Start-MaintenanceCountdown', 'Show-ShutdownAbortMenu', 'Invoke-MaintenanceShutdownChoice', 'Invoke-MaintenanceCleanup',
+    'Get-WindowsVersionContext'
 ) -Alias @('Write-LogEntry')
 
 #endregion

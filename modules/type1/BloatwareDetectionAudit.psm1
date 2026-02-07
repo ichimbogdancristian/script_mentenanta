@@ -81,15 +81,32 @@ function Find-InstalledBloatware {
     Write-Information " Scanning for installed bloatware..." -InformationAction Continue
     $startTime = Get-Date
 
+    # v4.0: Check for OS context (set by orchestrator)
+    $osContext = $null
+    if (Get-Variable -Name 'OSContext' -Scope Global -ErrorAction SilentlyContinue) {
+        $osContext = $global:OSContext
+        Write-Information "   OS Context: $($osContext.DisplayText)" -InformationAction Continue
+    }
+
     # Start performance tracking and centralized logging
     $perfContext = $null
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'BloatwareDetection' -Component 'BLOATWARE-DETECTION'
-        Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message 'Starting comprehensive bloatware detection' -Data @{
+        
+        $logData = @{
             Categories = $Categories -join ', '
             UseCache   = $UseCache
             Context    = $Context
         }
+        
+        # v4.0: Add OS context to log data if available
+        if ($osContext) {
+            $logData.OSVersion = $osContext.Version
+            $logData.OSBuild = $osContext.BuildNumber
+            $logData.IsWindows11 = $osContext.IsWindows11
+        }
+        
+        Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message 'Starting comprehensive bloatware detection' -Data $logData
     }
     catch {
         Write-Verbose "BLOATWARE-DETECTION: Logging initialization failed - $_"
@@ -97,13 +114,19 @@ function Find-InstalledBloatware {
     }
 
     try {
-        # Get bloatware patterns from configuration
+        # Get bloatware patterns from configuration (v4.0: OS-aware, auto-merged)
         $bloatwareList = $null
         try {
             # Handle multiple categories by combining results
             if ($Categories.Count -eq 1 -and $Categories[0] -eq 'all') {
+                # v4.0: Get-BloatwareConfiguration now returns OS-specific merged list
                 $bloatwareConfig = Get-BloatwareConfiguration
                 $bloatwareList = if ($bloatwareConfig.all) { $bloatwareConfig.all } else { @() }
+                
+                # v4.0: Log OS-aware configuration loading
+                if ($osContext) {
+                    Write-Verbose "Loaded OS-aware bloatware configuration for Windows $($osContext.Version)"
+                }
             }
             else {
                 $bloatwareList = @()
@@ -183,15 +206,15 @@ function Find-InstalledBloatware {
                 if ($appxPackages) {
                     $appxItems = $appxPackages | ForEach-Object {
                         [PSCustomObject]@{
-                            Name             = $_.Name
-                            DisplayName      = $_.Name
-                            Version          = $_.Version
-                            Publisher        = $_.Publisher
-                            InstallDate      = $null
-                            InstallLocation  = $_.InstallLocation
-                            PackageFullName  = $_.PackageFullName
-                            PackageFamilyName= $_.PackageFamilyName
-                            Source           = 'AppX'
+                            Name              = $_.Name
+                            DisplayName       = $_.Name
+                            Version           = $_.Version
+                            Publisher         = $_.Publisher
+                            InstallDate       = $null
+                            InstallLocation   = $_.InstallLocation
+                            PackageFullName   = $_.PackageFullName
+                            PackageFamilyName = $_.PackageFamilyName
+                            Source            = 'AppX'
                         }
                     }
                     $installedPrograms += $appxItems
@@ -293,12 +316,20 @@ function Find-InstalledBloatware {
                 Complete-PerformanceTracking -PerformanceContext $perfContext -Success $true
             }
 
-            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message 'Bloatware detection completed successfully' -Data @{
+            $completionData = @{
                 BloatwareItemsFound = $resultArray.Count
                 ExecutionTime       = [math]::Round($duration, 2)
                 Sources             = $sourceStats -join ', '
                 Categories          = $Categories -join ', '
             }
+            
+            # v4.0: Add OS context to completion log if available
+            if ($osContext) {
+                $completionData.OSVersion = $osContext.Version
+                $completionData.OSBuild = $osContext.BuildNumber
+            }
+
+            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message 'Bloatware detection completed successfully' -Data $completionData
         }
         catch {
             Write-Verbose "BLOATWARE-DETECTION: Logging completion failed - $_"
@@ -567,12 +598,12 @@ function Get-WingetBloatware {
                 $data = if ($parsed.Data) { $parsed.Data } elseif ($parsed -is [array]) { $parsed } else { @() }
                 $wingetApps = $data | ForEach-Object {
                     [PSCustomObject]@{
-                        Name       = $_.Id
-                        DisplayName= $_.Name
-                        Version    = $_.Version
-                        Publisher  = $_.Publisher
-                        Source     = 'Winget'
-                        WingetId   = $_.Id
+                        Name        = $_.Id
+                        DisplayName = $_.Name
+                        Version     = $_.Version
+                        Publisher   = $_.Publisher
+                        Source      = 'Winget'
+                        WingetId    = $_.Id
                     }
                 }
             }
@@ -728,13 +759,13 @@ function Get-ChocolateyBloatware {
                     if ([string]::IsNullOrWhiteSpace($line)) { continue }
                     $parts = $line -split '\|', 2
                     $chocoApps += [PSCustomObject]@{
-                        Name        = $parts[0]
-                        DisplayName = $parts[0]
-                        Version     = if ($parts.Count -gt 1) { $parts[1] } else { $null }
-                        Publisher   = $null
-                        InstallDate = $null
-                        Source      = 'Chocolatey'
-                        ChocolateyId= $parts[0]
+                        Name         = $parts[0]
+                        DisplayName  = $parts[0]
+                        Version      = if ($parts.Count -gt 1) { $parts[1] } else { $null }
+                        Publisher    = $null
+                        InstallDate  = $null
+                        Source       = 'Chocolatey'
+                        ChocolateyId = $parts[0]
                     }
                 }
             }

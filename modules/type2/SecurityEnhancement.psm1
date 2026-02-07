@@ -485,43 +485,43 @@ function Set-PowerShellExecutionPolicy {
     $targetScope = if ($isAdmin) { 'LocalMachine' } else { 'CurrentUser' }
 
     try {
-            $machinePolicy = Get-ExecutionPolicy -Scope MachinePolicy -ErrorAction SilentlyContinue
-            $userPolicy = Get-ExecutionPolicy -Scope UserPolicy -ErrorAction SilentlyContinue
-            if (($machinePolicy -and $machinePolicy -ne 'Undefined') -or ($userPolicy -and $userPolicy -ne 'Undefined')) {
-                Write-Information "      [SKIP] Execution policy enforced by Group Policy (MachinePolicy=$machinePolicy, UserPolicy=$userPolicy)" -InformationAction Continue
-                return New-ModuleExecutionResult -Success $true -ItemsDetected 1 -ItemsProcessed 0 -DurationMilliseconds 0 -AdditionalData @{ Skipped = $true; Reason = 'Execution policy enforced by Group Policy' }
-            }
-            try {
-                Set-ExecutionPolicy -ExecutionPolicy $policy -Scope $targetScope -Force -ErrorAction Stop
-                $itemsProcessed++
-                Write-Information "      [OK] Execution policy set to: $policy (Scope=$targetScope)" -InformationAction Continue
-            }
-            catch [System.Security.SecurityException] {
-                if ($targetScope -eq 'LocalMachine') {
-                    Write-Warning "      Security error setting LocalMachine policy. Retrying with CurrentUser scope."
-                    try {
-                        Set-ExecutionPolicy -ExecutionPolicy $policy -Scope CurrentUser -Force -ErrorAction Stop
-                        $itemsProcessed++
-                        Write-Information "      [OK] Execution policy set to: $policy (Scope=CurrentUser)" -InformationAction Continue
-                    }
-                    catch {
-                        Write-Warning "      Failed to set CurrentUser policy: $($_.Exception.Message)"
-                        Write-Information "      [SKIP] Execution policy may be restricted by system configuration" -InformationAction Continue
-                        # Return success with 0 processed - not a critical failure
-                        return New-ModuleExecutionResult -Success $true -ItemsDetected 1 -ItemsProcessed 0 -DurationMilliseconds 0 -AdditionalData @{ Skipped = $true; Reason = "Unable to modify execution policy: $($_.Exception.Message)" }
-                    }
+        $machinePolicy = Get-ExecutionPolicy -Scope MachinePolicy -ErrorAction SilentlyContinue
+        $userPolicy = Get-ExecutionPolicy -Scope UserPolicy -ErrorAction SilentlyContinue
+        if (($machinePolicy -and $machinePolicy -ne 'Undefined') -or ($userPolicy -and $userPolicy -ne 'Undefined')) {
+            Write-Information "      [SKIP] Execution policy enforced by Group Policy (MachinePolicy=$machinePolicy, UserPolicy=$userPolicy)" -InformationAction Continue
+            return New-ModuleExecutionResult -Success $true -ItemsDetected 1 -ItemsProcessed 0 -DurationMilliseconds 0 -AdditionalData @{ Skipped = $true; Reason = 'Execution policy enforced by Group Policy' }
+        }
+        try {
+            Set-ExecutionPolicy -ExecutionPolicy $policy -Scope $targetScope -Force -ErrorAction Stop
+            $itemsProcessed++
+            Write-Information "      [OK] Execution policy set to: $policy (Scope=$targetScope)" -InformationAction Continue
+        }
+        catch [System.Security.SecurityException] {
+            if ($targetScope -eq 'LocalMachine') {
+                Write-Warning "      Security error setting LocalMachine policy. Retrying with CurrentUser scope."
+                try {
+                    Set-ExecutionPolicy -ExecutionPolicy $policy -Scope CurrentUser -Force -ErrorAction Stop
+                    $itemsProcessed++
+                    Write-Information "      [OK] Execution policy set to: $policy (Scope=CurrentUser)" -InformationAction Continue
                 }
-                else {
-                    throw
+                catch {
+                    Write-Warning "      Failed to set CurrentUser policy: $($_.Exception.Message)"
+                    Write-Information "      [SKIP] Execution policy may be restricted by system configuration" -InformationAction Continue
+                    # Return success with 0 processed - not a critical failure
+                    return New-ModuleExecutionResult -Success $true -ItemsDetected 1 -ItemsProcessed 0 -DurationMilliseconds 0 -AdditionalData @{ Skipped = $true; Reason = "Unable to modify execution policy: $($_.Exception.Message)" }
                 }
+            }
+            else {
+                throw
             }
         }
-        return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed -DurationMilliseconds 0
     }
-    catch {
-        Write-Warning "      Failed to set execution policy: $($_.Exception.Message)"
-        return New-ModuleExecutionResult -Success $false -ItemsDetected 0 -ItemsProcessed 0 -DurationMilliseconds 0 -ErrorMessage $_.Exception.Message
-    }
+    return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed -DurationMilliseconds 0
+}
+catch {
+    Write-Warning "      Failed to set execution policy: $($_.Exception.Message)"
+    return New-ModuleExecutionResult -Success $false -ItemsDetected 0 -ItemsProcessed 0 -DurationMilliseconds 0 -ErrorMessage $_.Exception.Message
+}
 }
 
 <#
@@ -577,26 +577,25 @@ function Set-NetworkSecurityConfiguration {
     $itemsProcessed = 0
 
     try {
-            # Disable SMBv1
-            Disable-WindowsOptionalFeature -Online -FeatureName "SMB1Protocol" -NoRestart -ErrorAction SilentlyContinue | Out-Null
-            $itemsProcessed++
+        # Disable SMBv1
+        Disable-WindowsOptionalFeature -Online -FeatureName "SMB1Protocol" -NoRestart -ErrorAction SilentlyContinue | Out-Null
+        $itemsProcessed++
 
-            # Disable LLMNR
-            $llmnrPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient"
-            if (-not (Test-Path $llmnrPath)) {
-                New-Item -Path $llmnrPath -Force | Out-Null
-            }
-            Set-ItemProperty -Path $llmnrPath -Name "EnableMulticast" -Value 0 -Type DWord -ErrorAction SilentlyContinue
-            $itemsProcessed++
-
-            # Disable NetBIOS over TCP/IP
-            $adapters = Get-CimInstance Win32_NetworkAdapterConfiguration -Filter "IPEnabled=True" -ErrorAction SilentlyContinue
-            foreach ($adapter in $adapters) {
-                Invoke-CimMethod -InputObject $adapter -MethodName SetTcpipNetbios -Arguments @{TcpipNetbiosOptions = 2 } -ErrorAction SilentlyContinue | Out-Null  # 2 = Disable
-            }
-            $itemsProcessed++
-            Write-Information "      [OK] Network security configured successfully" -InformationAction Continue
+        # Disable LLMNR
+        $llmnrPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient"
+        if (-not (Test-Path $llmnrPath)) {
+            New-Item -Path $llmnrPath -Force | Out-Null
         }
+        Set-ItemProperty -Path $llmnrPath -Name "EnableMulticast" -Value 0 -Type DWord -ErrorAction SilentlyContinue
+        $itemsProcessed++
+
+        # Disable NetBIOS over TCP/IP
+        $adapters = Get-CimInstance Win32_NetworkAdapterConfiguration -Filter "IPEnabled=True" -ErrorAction SilentlyContinue
+        foreach ($adapter in $adapters) {
+            Invoke-CimMethod -InputObject $adapter -MethodName SetTcpipNetbios -Arguments @{TcpipNetbiosOptions = 2 } -ErrorAction SilentlyContinue | Out-Null  # 2 = Disable
+        }
+        $itemsProcessed++
+        Write-Information "      [OK] Network security configured successfully" -InformationAction Continue
         return New-ModuleExecutionResult -Success $true -ItemsDetected $itemsProcessed -ItemsProcessed $itemsProcessed -DurationMilliseconds 0
     }
     catch {

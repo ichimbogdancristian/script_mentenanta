@@ -1,0 +1,107 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://maintenance-automation/schemas/module-dependencies.schema.json",
+    "title": "Module Dependencies Configuration Schema",
+    "description": "Schema for defining module execution dependencies and parallelization (v4.0)",
+    "type": "object",
+    "required": [
+        "dependencies"
+    ],
+    "properties": {
+        "dependencies": {
+            "type": "object",
+            "description": "Module dependency definitions",
+            "patternProperties": {
+                "^[A-Za-z0-9_-]+$": {
+                    "type": "object",
+                    "required": [
+                        "DependsOn",
+                        "CanRunInParallel",
+                        "Description"
+                    ],
+                    "properties": {
+                        "DependsOn": {
+                            "type": "array",
+                            "description": "Array of module names this module depends on (must complete before this module runs)",
+                            "items": {
+                                "type": "string",
+                                "minLength": 1,
+                                "pattern": "^[A-Za-z0-9_-]+$"
+                            },
+                            "uniqueItems": true
+                        },
+                        "CanRunInParallel": {
+                            "type": "boolean",
+                            "description": "Whether this module can run in parallel with other modules at the same execution level"
+                        },
+                        "Description": {
+                            "type": "string",
+                            "description": "Human-readable description of module's purpose and dependencies",
+                            "minLength": 10,
+                            "maxLength": 500
+                        },
+                        "Priority": {
+                            "type": "integer",
+                            "description": "Execution priority (1=highest, 3=lowest)",
+                            "minimum": 1,
+                            "maximum": 5
+                        },
+                        "EstimatedDurationSeconds": {
+                            "type": "integer",
+                            "description": "Estimated execution time in seconds",
+                            "minimum": 1,
+                            "maximum": 3600
+                        }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
+        },
+        "executionLevels": {
+            "type": "object",
+            "description": "Pre-calculated execution levels (optional, auto-calculated if missing)",
+            "patternProperties": {
+                "^level[0-9]+$": {
+                    "type": "object",
+                    "properties": {
+                        "modules": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "canRunInParallel": {
+                            "type": "boolean"
+                        },
+                        "description": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "validation": {
+            "type": "object",
+            "description": "Validation rules for dependency graph",
+            "properties": {
+                "allowCircularDependencies": {
+                    "type": "boolean",
+                    "description": "Allow circular dependencies (not recommended)",
+                    "default": false
+                },
+                "enforceAvailabilityCheck": {
+                    "type": "boolean",
+                    "description": "Verify all modules in graph are available",
+                    "default": true
+                },
+                "failOnMissingDependency": {
+                    "type": "boolean",
+                    "description": "Fail execution if dependency module missing",
+                    "default": true
+                }
+            }
+        }
+    },
+    "additionalProperties": false
+}

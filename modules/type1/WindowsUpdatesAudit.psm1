@@ -19,6 +19,12 @@
 
 using namespace System.Collections.Generic
 
+# Import CommonUtilities for shared functions (Phase B.3 consolidation)
+$commonUtilsPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CommonUtilities.psm1'
+if (Test-Path $commonUtilsPath) {
+    Import-Module $commonUtilsPath -Force -Global
+}
+
 # v3.0 Type 1 module - imported by Type 2 modules
 # Note: CoreInfrastructure should be loaded by the Type 2 module before importing this module
 # Check if CoreInfrastructure functions are available (loaded by Type2 module)
@@ -693,45 +699,55 @@ function Get-UpdateHealthScore {
         [hashtable]$AuditResults
     )
 
-    $baseScore = 100
-    $deductions = 0
-
-    # Deduct points based on update issues
+    # Combine all issues for scoring (Phase B.3 consolidation)
+    $allIssues = @()
+    
+    # Update issues with increased severity weights
     foreach ($issue in $AuditResults.UpdateIssues) {
+        $weightedIssue = $issue.PSObject.Copy()
         switch ($issue.Impact) {
-            'High' { $deductions += 25 }
-            'Medium' { $deductions += 15 }
-            'Low' { $deductions += 5 }
+            'High' { $weightedIssue.Impact = 'High'; $weightedIssue.Weight = 25 }
+            'Medium' { $weightedIssue.Impact = 'Medium'; $weightedIssue.Weight = 15 }
+            'Low' { $weightedIssue.Impact = 'Low'; $weightedIssue.Weight = 5 }
         }
+        $allIssues += $weightedIssue
     }
-
-    # Additional deductions for security findings
+    
+    # Security findings with higher severity
     foreach ($finding in $AuditResults.SecurityFindings) {
+        $weightedFinding = $finding.PSObject.Copy()
         switch ($finding.Impact) {
-            'High' { $deductions += 30 }
-            'Medium' { $deductions += 20 }
-            'Low' { $deductions += 10 }
+            'High' { $weightedFinding.Impact = 'High'; $weightedFinding.Weight = 30 }
+            'Medium' { $weightedFinding.Impact = 'Medium'; $weightedFinding.Weight = 20 }
+            'Low' { $weightedFinding.Impact = 'Low'; $weightedFinding.Weight = 10 }
         }
+        $allIssues += $weightedFinding
     }
 
-    $overallScore = [math]::Max(0, $baseScore - $deductions)
-
-    return [PSCustomObject]@{
-        Overall            = $overallScore
-        MaxScore           = $baseScore
-        Deductions         = $deductions
-        IssueCount         = $AuditResults.UpdateIssues.Count
-        SecurityIssueCount = $AuditResults.SecurityFindings.Count
-        Category           = if ($overallScore -ge 90) { 'Excellent Update Health' }
-        elseif ($overallScore -ge 70) { 'Good Update Health' }
-        elseif ($overallScore -ge 50) { 'Fair Update Health' }
-        else { 'Poor Update Health - Immediate Action Required' }
-    }
+    # Use generic scoring function with custom deduction map
+    $score = Get-GenericHealthScore `
+        -Issues $allIssues `
+        -ScoreType 'Update Health' `
+        -DeductionMap @{ High = 25; Medium = 15; Low = 5 }
+    
+    # Add additional metadata specific to Windows Updates
+    $score | Add-Member -NotePropertyName 'UpdateIssueCount' -NotePropertyValue $AuditResults.UpdateIssues.Count -Force
+    $score | Add-Member -NotePropertyName 'SecurityIssueCount' -NotePropertyValue $AuditResults.SecurityFindings.Count -Force
+    
+    return $score
 }
 
 <#
 .SYNOPSIS
     Generates Windows Update recommendations
+#>
+<#
+.SYNOPSIS
+    Generates update recommendations based on audit results
+
+.DESCRIPTION
+    Uses generic New-ImpactBasedRecommendations from CommonUtilities.
+    Phase B.3 consolidation - reduced from ~50 lines to ~25 lines.
 #>
 function New-UpdateRecommendations {
     [CmdletBinding()]
@@ -741,43 +757,29 @@ function New-UpdateRecommendations {
         [hashtable]$AuditResults
     )
 
-    $recommendations = @()
-
-    # Count issues by impact
-    $highImpact = ($AuditResults.UpdateIssues + $AuditResults.SecurityFindings) | Where-Object { $_.Impact -eq 'High' }
-    $mediumImpact = ($AuditResults.UpdateIssues + $AuditResults.SecurityFindings) | Where-Object { $_.Impact -eq 'Medium' }
-    $securityIssues = $AuditResults.SecurityFindings
-
-    if ($highImpact.Count -gt 0) {
-        $recommendations += " Critical: Address $($highImpact.Count) high-impact update issues immediately"
-        $recommendations += "   Priority: Security updates, service configuration, and failed installations"
-    }
-
-    if ($securityIssues.Count -gt 0) {
-        $recommendations += " Security: $($securityIssues.Count) security-related findings require attention"
-        $recommendations += "   Focus on OS support status and missing security patches"
-    }
-
-    if ($mediumImpact.Count -gt 0) {
-        $recommendations += " Important: Resolve $($mediumImpact.Count) medium-impact update issues"
-        $recommendations += "   Review update policies and installation schedules"
-    }
-
-    # Specific recommendations
-    if ($AuditResults.PendingAudit -and $AuditResults.PendingAudit.SecurityUpdates -gt 0) {
-        $recommendations += " Action: Install $($AuditResults.PendingAudit.SecurityUpdates) pending security updates"
-    }
-
-    if ($AuditResults.UpdateStatus -and $AuditResults.UpdateStatus.RebootPending) {
-        $recommendations += " Action: System reboot required to complete previous updates"
-    }
-
-    if (($AuditResults.UpdateIssues + $AuditResults.SecurityFindings).Count -eq 0) {
-        $recommendations += " Excellent! Windows Update system is healthy and current"
-        $recommendations += " Continue monitoring for new updates and maintain regular update schedule"
-    }
-
-    return $recommendations
+    return New-ImpactBasedRecommendations `
+        -Issues $AuditResults.UpdateIssues `
+        -AdditionalIssues $AuditResults.SecurityFindings `
+        -IssueType 'update' `
+        -SpecificChecks @{
+            SecurityFindings = { param($results)
+                if ($results.SecurityFindings.Count -gt 0) {
+                    " Security: $($results.SecurityFindings.Count) security-related findings require attention"
+                    "   Focus on OS support status and missing security patches"
+                }
+            }
+            PendingUpdates = { param($results)
+                if ($results.PendingAudit -and $results.PendingAudit.SecurityUpdates -gt 0) {
+                    " Action: Install $($results.PendingAudit.SecurityUpdates) pending security updates"
+                }
+            }
+            RebootRequired = { param($results)
+                if ($results.UpdateStatus -and $results.UpdateStatus.RebootPending) {
+                    " Action: System reboot required to complete previous updates"
+                }
+            }
+        } `
+        -AuditResults $AuditResults
 }
 
 <#

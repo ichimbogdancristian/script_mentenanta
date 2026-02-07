@@ -138,15 +138,15 @@ Write-Information "Log File: $LogFilePath" -InformationAction Continue
 #region Module Loading
 Write-Information "`nLoading modules..." -InformationAction Continue
 # Import core modules (always relative to script location)
-$ModulesPath = Join-Path $ScriptRoot 'modules'
-if (-not (Test-Path $ModulesPath)) {
+$script:ModulesPath = Join-Path $ScriptRoot 'modules'
+if (-not (Test-Path $script:ModulesPath)) {
     # Fallback to working directory if set by batch script
     $fallbackModulesPath = Join-Path $WorkingDirectory 'modules'
     if (Test-Path $fallbackModulesPath) {
-        $ModulesPath = $fallbackModulesPath
+        $script:ModulesPath = $fallbackModulesPath
     }
 }
-Write-Information "Modules Path: $ModulesPath" -InformationAction Continue
+Write-Information "Modules Path: $script:ModulesPath" -InformationAction Continue
 # v3.1 Split Architecture + Phase 1 Module Registry: Load essential core modules
 $CoreModules = @(
     'CoreInfrastructure',  # Foundation (now includes ShutdownManager functions)
@@ -168,10 +168,10 @@ $Type2Modules = @(
     'WindowsUpdates',
     'AppUpgrade'
 )
-$Type2ModulesPath = Join-Path $ModulesPath 'type2'
-$CoreModulesPath = Join-Path $ModulesPath 'core'
+$Type2ModulesPath = Join-Path $script:ModulesPath 'type2'
+$script:CoreModulesPath = Join-Path $script:ModulesPath 'core'
 foreach ($moduleName in $CoreModules) {
-    $modulePath = Join-Path $CoreModulesPath "$moduleName.psm1"
+    $modulePath = Join-Path $script:CoreModulesPath "$moduleName.psm1"
     try {
         if (-not (Test-Path $modulePath)) {
             throw "Module file not found: $modulePath"
@@ -407,6 +407,47 @@ try {
 catch {
     Write-Error "Failed to initialize global path discovery: $($_.Exception.Message)"
     exit 1
+}
+#endregion
+
+#region OS Version Detection (v4.0 - Phase A.1.2)
+Write-Information "`n🔍 Detecting Windows Version..." -InformationAction Continue
+try {
+    # Detect OS version for OS-specific operations
+    $global:OSContext = Get-WindowsVersionContext
+    
+    if ($OSContext) {
+        Write-Host "   Detected: " -NoNewline -ForegroundColor Gray
+        Write-Host "$($OSContext.DisplayText)" -ForegroundColor Yellow
+        Write-Host "   Architecture: $($OSContext.Architecture)" -ForegroundColor Gray
+        
+        # Store in script scope for later use
+        $script:OSContext = $OSContext
+        
+        Write-Information "   OS detection completed successfully" -InformationAction Continue
+    }
+    else {
+        Write-Warning "OS detection returned null - using safe defaults"
+        # Create minimal context for failsafe operation
+        $script:OSContext = [PSCustomObject]@{
+            Version     = 'Unknown'
+            IsWindows11 = $false
+            IsWindows10 = $false
+            DisplayText = 'Unknown Windows Version'
+        }
+    }
+}
+catch {
+    Write-Warning "OS detection failed: $($_.Exception.Message)"
+    Write-Information "   Continuing with OS-agnostic operation..." -InformationAction Continue
+    
+    # Create minimal context for failsafe operation
+    $script:OSContext = [PSCustomObject]@{
+        Version     = 'Unknown'
+        IsWindows11 = $false
+        IsWindows10 = $false
+        DisplayText = 'Unknown Windows Version'
+    }
 }
 #endregion
 
@@ -732,6 +773,14 @@ try {
             if (-not $MainConfig) {
                 throw "Main configuration is null or empty"
             }
+            
+            # Add OS context to configuration (v4.0 - Phase A.1.2)
+            # This makes OS information available to all modules
+            if ($script:OSContext) {
+                $MainConfig | Add-Member -NotePropertyName 'OSContext' -NotePropertyValue $script:OSContext -Force
+                Write-Information "   OS context added to configuration ($($script:OSContext.DisplayText))" -InformationAction Continue
+            }
+            
             Write-Information "   Main configuration loaded (converted to hashtable)" -InformationAction Continue
         }
         catch {
@@ -1047,6 +1096,432 @@ try {
             }
         }
     }
+    
+    #region v4.0: Intelligent Orchestration Functions (Phase C.3)
+    
+    <#
+.SYNOPSIS
+    Shows execution mode selection menu (v4.0)
+.DESCRIPTION
+    Presents three execution modes:
+    1. Intelligent Mode (Recommended) - Audit first, run only what's needed
+    2. Manual Task Selection - Traditional mode with task picker
+    3. Full System Audit Only - Scan without modifications
+.OUTPUTS
+    String indicating selected mode: 'Intelligent', 'Manual', or 'AuditOnly'
+#>
+    function Show-ExecutionModeMenu {
+        [CmdletBinding()]
+        [OutputType([string])]
+        param()
+        
+        Write-Host "`n" -NoNewline
+        Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+        Write-Host "║          WINDOWS MAINTENANCE SYSTEM v4.0                   ║" -ForegroundColor Cyan
+        Write-Host "║          Intelligent Orchestration Ready                   ║" -ForegroundColor Cyan
+        Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+        Write-Host ""
+        
+        Write-Host "Select Execution Mode:" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  1. " -NoNewline -ForegroundColor White
+        Write-Host "Intelligent Mode " -NoNewline -ForegroundColor Green
+        Write-Host "(Recommended)" -ForegroundColor DarkGray
+        Write-Host "     → Audit system first, then run only required tasks" -ForegroundColor DarkCyan
+        Write-Host "     → Saves time by skipping modules with nothing to do" -ForegroundColor DarkCyan
+        Write-Host "     → Shows execution plan before starting" -ForegroundColor DarkCyan
+        Write-Host ""
+        
+        Write-Host "  2. " -NoNewline -ForegroundColor White
+        Write-Host "Manual Task Selection" -ForegroundColor Cyan
+        Write-Host "     → Choose specific tasks to run" -ForegroundColor DarkCyan
+        Write-Host "     → Traditional mode with full control" -ForegroundColor DarkCyan
+        Write-Host ""
+        
+        Write-Host "  3. " -NoNewline -ForegroundColor White
+        Write-Host "Full System Audit Only" -ForegroundColor Magenta
+        Write-Host "     → Scan system without making changes" -ForegroundColor DarkCyan
+        Write-Host "     → Generate comprehensive audit report" -ForegroundColor DarkCyan
+        Write-Host ""
+        
+        Write-Host "  0. " -NoNewline -ForegroundColor DarkRed
+        Write-Host "Exit" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
+        Write-Host ""
+        
+        $validChoice = $false
+        $selectedMode = 'Intelligent'  # Default
+        
+        while (-not $validChoice) {
+            $choice = Read-Host "Enter your choice (1-3, or 0 to exit) [1]"
+            
+            # Default to 1 if empty
+            if ([string]::IsNullOrWhiteSpace($choice)) {
+                $choice = '1'
+            }
+            
+            switch ($choice) {
+                '1' {
+                    $selectedMode = 'Intelligent'
+                    $validChoice = $true
+                    Write-Host "`n✓ Selected: Intelligent Mode" -ForegroundColor Green
+                }
+                '2' {
+                    $selectedMode = 'Manual'
+                    $validChoice = $true
+                    Write-Host "`n✓ Selected: Manual Task Selection" -ForegroundColor Cyan
+                }
+                '3' {
+                    $selectedMode = 'AuditOnly'
+                    $validChoice = $true
+                    Write-Host "`n✓ Selected: Audit Only Mode" -ForegroundColor Magenta
+                }
+                '0' {
+                    Write-Host "`nExiting..." -ForegroundColor Yellow
+                    exit 0
+                }
+                default {
+                    Write-Host "Invalid choice. Please enter 1, 2, 3, or 0." -ForegroundColor Red
+                }
+            }
+        }
+        
+        return $selectedMode
+    }
+    
+    <#
+.SYNOPSIS
+    Executes intelligent audit-first mode (v4.0)
+.DESCRIPTION
+    Phase 1: Runs all Type1 audit modules to detect issues
+    Phase 2: Creates intelligent execution plan based on findings
+    Phase 3: Shows plan and gets user confirmation
+    Phase 4: Executes only required Type2 modules
+    Phase 5: Generates final report
+.PARAMETER AvailableTasks
+    Array of available task definitions
+.PARAMETER MainConfig
+    Main configuration object
+.PARAMETER NonInteractive
+    Skip interactive confirmations
+.OUTPUTS
+    Array of task results from execution
+#>
+    function Start-IntelligentExecution {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory)]
+            [array]$AvailableTasks,
+            
+            [Parameter(Mandatory)]
+            [hashtable]$MainConfig,
+            
+            [switch]$NonInteractive
+        )
+        
+        Write-Host "`n" -NoNewline
+        Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Green
+        Write-Host "║          INTELLIGENT EXECUTION MODE                        ║" -ForegroundColor Green
+        Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Green
+        Write-Host ""
+        
+        # === Phase 1: Run All Type1 Audits ===
+        Write-Host "Phase 1: System Analysis" -ForegroundColor Yellow
+        Write-Host "Running comprehensive system audit..." -ForegroundColor Cyan
+        Write-Host ""
+        
+        $auditResults = @{}
+        $auditModules = @{
+            'Bloatware'          = 'BloatwareDetectionAudit'
+            'EssentialApps'      = 'EssentialAppsAudit'
+            'SystemOptimization' = 'SystemOptimizationAudit'
+            'Telemetry'          = 'TelemetryAudit'
+            'Security'           = 'SecurityAudit'
+            'WindowsUpdates'     = 'WindowsUpdatesAudit'
+            'AppUpgrade'         = 'AppUpgradeAudit'
+        }
+        
+        $type1Path = Join-Path $script:ModulesPath 'type1'
+        
+        foreach ($auditKey in $auditModules.Keys) {
+            $moduleName = $auditModules[$auditKey]
+            $modulePath = Join-Path $type1Path "$moduleName.psm1"
+            
+            Write-Host "  → Auditing: $auditKey..." -NoNewline -ForegroundColor White
+            
+            try {
+                if (Test-Path $modulePath) {
+                    Import-Module $modulePath -Force -ErrorAction Stop
+                    
+                    # Call the audit function based on module name
+                    switch ($moduleName) {
+                        'BloatwareDetectionAudit' {
+                            $result = Invoke-BloatwareDetectionAudit
+                            $auditResults[$auditKey] = $result
+                        }
+                        'EssentialAppsAudit' {
+                            $result = Invoke-EssentialAppsAudit
+                            $auditResults[$auditKey] = $result
+                        }
+                        'SystemOptimizationAudit' {
+                            $result = Invoke-SystemOptimizationAudit
+                            $auditResults[$auditKey] = $result
+                        }
+                        'TelemetryAudit' {
+                            $result = Invoke-TelemetryAudit
+                            $auditResults[$auditKey] = $result
+                        }
+                        'SecurityAudit' {
+                            $result = Invoke-SecurityAudit
+                            $auditResults[$auditKey] = $result
+                        }
+                        'WindowsUpdatesAudit' {
+                            $result = Invoke-WindowsUpdatesAudit
+                            $auditResults[$auditKey] = $result
+                        }
+                        'AppUpgradeAudit' {
+                            $result = Invoke-AppUpgradeAudit
+                            $auditResults[$auditKey] = $result
+                        }
+                    }
+                    Write-Host " ✓" -ForegroundColor Green
+                }
+                else {
+                    Write-Host " ⊝ Not Found" -ForegroundColor DarkGray
+                    $auditResults[$auditKey] = @{ DetectedItems = @() }
+                }
+            }
+            catch {
+                Write-Host " ✗ Failed" -ForegroundColor Red
+                Write-Warning "  Error: $($_.Exception.Message)"
+                $auditResults[$auditKey] = @{ DetectedItems = @() }
+            }
+        }
+        
+        Write-Host "`n  ✓ Audit phase completed" -ForegroundColor Green
+        Write-Host ""
+        
+        # === Phase 2: Create Execution Plan ===
+        Write-Host "Phase 2: Creating Execution Plan" -ForegroundColor Yellow
+        
+        try {
+            # Import ExecutionPlanner module
+            $plannerPath = Join-Path $script:CoreModulesPath 'ExecutionPlanner.psm1'
+            if (Test-Path $plannerPath) {
+                Import-Module $plannerPath -Force -ErrorAction Stop
+                
+                $executionPlan = New-ExecutionPlan -AuditResults $auditResults -Config $MainConfig
+                
+                # === Phase 3: Show Plan and Get Confirmation ===
+                Write-Host ""
+                Show-ExecutionPlan -ExecutionPlan $executionPlan
+                
+                if ($executionPlan.TotalRequiredModules -eq 0) {
+                    Write-Host "`n✓ System Analysis Complete!" -ForegroundColor Green
+                    Write-Host "  No maintenance tasks required - system is already optimized." -ForegroundColor Cyan
+                    Write-Host ""
+                    return @()
+                }
+                
+                # Get user confirmation
+                if (-not $NonInteractive) {
+                    Write-Host ""
+                    $confirm = Read-Host "Execute this plan? (Y/N) [Y]"
+                    if ([string]::IsNullOrWhiteSpace($confirm)) {
+                        $confirm = 'Y'
+                    }
+                    
+                    if ($confirm -notmatch '^[Yy]') {
+                        Write-Host "`nExecution cancelled by user" -ForegroundColor Yellow
+                        return @()
+                    }
+                }
+                
+                # === Phase 4: Execute Required Modules ===
+                Write-Host "`n" -NoNewline
+                Write-Host "Phase 3: Executing Required Tasks" -ForegroundColor Yellow
+                Write-Host ""
+                
+                $taskResults = @()
+                $taskNumber = 1
+                
+                foreach ($module in $executionPlan.RequiredModules) {
+                    $moduleName = $module.Name
+                    $taskInfo = $AvailableTasks | Where-Object { $_.Name -eq $moduleName } | Select-Object -First 1
+                    
+                    if ($taskInfo) {
+                        Write-Host "[$taskNumber/$($executionPlan.RequiredModules.Count)] Executing: $moduleName" -ForegroundColor Cyan
+                        
+                        try {
+                            $taskStartTime = Get-Date
+                            
+                            # Execute the module
+                            $result = & $taskInfo.Function
+                            
+                            $taskEndTime = Get-Date
+                            $duration = ($taskEndTime - $taskStartTime).TotalSeconds
+                            
+                            $taskResults += @{
+                                TaskName       = $moduleName
+                                Success        = ($result.Status -eq 'Success')
+                                ItemsDetected  = $module.ItemCount
+                                ItemsProcessed = if ($result.SuccessfulOperations) { $result.SuccessfulOperations } else { 0 }
+                                Duration       = $duration
+                                StartTime      = $taskStartTime.ToString('yyyy-MM-dd HH:mm:ss')
+                                EndTime        = $taskEndTime.ToString('yyyy-MM-dd HH:mm:ss')
+                            }
+                            
+                            Write-Host "  ✓ Completed in $([math]::Round($duration, 1))s" -ForegroundColor Green
+                        }
+                        catch {
+                            Write-Host "  ✗ Execution failed: $($_.Exception.Message)" -ForegroundColor Red
+                            
+                            $taskResults += @{
+                                TaskName       = $moduleName
+                                Success        = $false
+                                ItemsDetected  = $module.ItemCount
+                                ItemsProcessed = 0
+                                Duration       = 0
+                                Error          = $_.Exception.Message
+                            }
+                        }
+                        
+                        $taskNumber++
+                    }
+                }
+                
+                Write-Host "`n✓ Intelligent Execution Complete!" -ForegroundColor Green
+                return $taskResults
+            }
+            else {
+                Write-Warning "ExecutionPlanner module not found: $plannerPath"
+                Write-Host "Falling back to manual mode..." -ForegroundColor Yellow
+                return $null
+            }
+        }
+        catch {
+            Write-Error "Failed to create execution plan: $($_.Exception.Message)"
+            Write-Host "Falling back to manual mode..." -ForegroundColor Yellow
+            return $null
+        }
+    }
+    
+    <#
+.SYNOPSIS
+    Executes audit-only mode without system modifications (v4.0)
+.DESCRIPTION
+    Runs all Type1 audit modules to scan the system
+    Generates comprehensive audit report
+    Does not execute any Type2 modules (no system changes)
+.OUTPUTS
+    Array of audit results
+#>
+    function Start-AuditOnlyMode {
+        [CmdletBinding()]
+        param()
+        
+        Write-Host "`n" -NoNewline
+        Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Magenta
+        Write-Host "║          AUDIT-ONLY MODE                                   ║" -ForegroundColor Magenta
+        Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Magenta
+        Write-Host ""
+        Write-Host "Scanning system (read-only, no modifications)..." -ForegroundColor Cyan
+        Write-Host ""
+        
+        $auditResults = @{}
+        $auditModules = @{
+            'SystemInventory'    = 'SystemInventory'
+            'Bloatware'          = 'BloatwareDetectionAudit'
+            'EssentialApps'      = 'EssentialAppsAudit'
+            'SystemOptimization' = 'SystemOptimizationAudit'
+            'Telemetry'          = 'TelemetryAudit'
+            'Security'           = 'SecurityAudit'
+            'WindowsUpdates'     = 'WindowsUpdatesAudit'
+            'AppUpgrade'         = 'AppUpgradeAudit'
+        }
+        
+        $type1Path = Join-Path $script:ModulesPath 'type1'
+        
+        foreach ($auditKey in $auditModules.Keys) {
+            $moduleName = $auditModules[$auditKey]
+            $modulePath = Join-Path $type1Path "$moduleName.psm1"
+            
+            Write-Host "  → $auditKey..." -NoNewline -ForegroundColor White
+            
+            try {
+                if (Test-Path $modulePath) {
+                    Import-Module $modulePath -Force -ErrorAction Stop
+                    
+                    # Call the audit function based on module name
+                    switch ($moduleName) {
+                        'SystemInventory' {
+                            $result = Get-SystemInventory -IncludeDetailed:$false
+                            $auditResults[$auditKey] = $result
+                        }
+                        'BloatwareDetectionAudit' {
+                            $result = Invoke-BloatwareDetectionAudit
+                            $auditResults[$auditKey] = $result
+                        }
+                        'EssentialAppsAudit' {
+                            $result = Invoke-EssentialAppsAudit
+                            $auditResults[$auditKey] = $result
+                        }
+                        'SystemOptimizationAudit' {
+                            $result = Invoke-SystemOptimizationAudit
+                            $auditResults[$auditKey] = $result
+                        }
+                        'TelemetryAudit' {
+                            $result = Invoke-TelemetryAudit
+                            $auditResults[$auditKey] = $result
+                        }
+                        'SecurityAudit' {
+                            $result = Invoke-SecurityAudit
+                            $auditResults[$auditKey] = $result
+                        }
+                        'WindowsUpdatesAudit' {
+                            $result = Invoke-WindowsUpdatesAudit
+                            $auditResults[$auditKey] = $result
+                        }
+                        'AppUpgradeAudit' {
+                            $result = Invoke-AppUpgradeAudit
+                            $auditResults[$auditKey] = $result
+                        }
+                    }
+                    Write-Host " ✓" -ForegroundColor Green
+                }
+                else {
+                    Write-Host " ⊝ Not Found" -ForegroundColor DarkGray
+                    $auditResults[$auditKey] = @{}
+                }
+            }
+            catch {
+                Write-Host " ✗ Failed" -ForegroundColor Red
+                Write-Warning "  Error: $($_.Exception.Message)"
+                $auditResults[$auditKey] = @{}
+            }
+        }
+        
+        Write-Host "`n✓ System audit completed" -ForegroundColor Green
+        Write-Host "  Results saved to temp_files/data/" -ForegroundColor Cyan
+        Write-Host "  Report will be generated after this session" -ForegroundColor Cyan
+        Write-Host ""
+        
+        # Save audit results to JSON for report generation
+        $dataPath = Join-Path $env:MAINTENANCE_TEMP_ROOT 'data'
+        if (-not (Test-Path $dataPath)) {
+            New-Item -Path $dataPath -ItemType Directory -Force | Out-Null
+        }
+        
+        $auditJsonPath = Join-Path $dataPath "audit-only-$(Get-Date -Format 'yyyy-MM-dd-HHmmss').json"
+        $auditResults | ConvertTo-Json -Depth 20 | Set-Content -Path $auditJsonPath -Encoding UTF8
+        Write-Host "  Audit data exported: $auditJsonPath" -ForegroundColor Green
+        
+        return $auditResults
+    }
+    
+    #endregion
+    
     #region FIX #9: Session Manifest Function
     <#
 .SYNOPSIS
@@ -1278,31 +1753,83 @@ try {
     }
     Write-Information "   Registered $($AvailableTasks.Count) available tasks" -InformationAction Continue
     #endregion
-    #region Execution Mode Selection
+    
+    #region v4.0: Execution Mode Selection (Phase C.3 - Intelligent Orchestration)
     $ExecutionParams = @{
         Mode          = 'Execute'
         SelectedTasks = $AvailableTasks
     }
-    if (-not $NonInteractive) {
+    
+    $selectedExecutionMode = 'Manual'  # Default to Manual for backward compatibility
+    
+    # v4.0: Show execution mode menu if interactive
+    if (-not $NonInteractive -and -not $TaskNumbers) {
         Write-Information "`nStarting interactive mode..." -InformationAction Continue
-        # Show hierarchical menu with integrated task selection
-        $menuResult = Show-MainMenu -CountdownSeconds $MainConfig.execution.countdownSeconds -AvailableTasks $AvailableTasks
-        # Apply menu selections
-        if (-not $TaskNumbers) {
-            # Use tasks selected from the integrated menu system
-            $ExecutionParams.SelectedTasks = @()
-            foreach ($taskIndex in $menuResult.SelectedTasks) {
-                if ($taskIndex -ge 1 -and $taskIndex -le $AvailableTasks.Count) {
-                    $ExecutionParams.SelectedTasks += $AvailableTasks[$taskIndex - 1]
+        
+        # Show execution mode selector (Intelligent/Manual/AuditOnly)
+        $selectedExecutionMode = Show-ExecutionModeMenu
+        
+        # Handle each execution mode
+        switch ($selectedExecutionMode) {
+            'Intelligent' {
+                # Intelligent Mode: Audit first, then run only required modules
+                Write-Information "Executing in Intelligent Mode" -InformationAction Continue
+                
+                $intelligentResults = Start-IntelligentExecution `
+                    -AvailableTasks $AvailableTasks `
+                    -MainConfig $MainConfig `
+                    -NonInteractive:$false
+                
+                if ($null -eq $intelligentResults) {
+                    # Fallback to manual mode if intelligent mode fails
+                    Write-Warning "Intelligent mode failed, falling back to manual task selection"
+                    $selectedExecutionMode = 'Manual'
+                }
+                else {
+                    # Intelligent mode completed - skip to report generation
+                    $TaskResults = $intelligentResults
+                    $ExecutionParams.Mode = 'IntelligentComplete'
                 }
             }
-            Write-Information "   Menu selections applied:" -InformationAction Continue
-            Write-Information "    - Selected tasks: $($ExecutionParams.SelectedTasks.Count)/$($AvailableTasks.Count)" -InformationAction Continue
+            
+            'AuditOnly' {
+                # Audit-Only Mode: Scan without modifications
+                Write-Information "Executing in Audit-Only Mode" -InformationAction Continue
+                
+                $auditResults = Start-AuditOnlyMode
+                
+                # Skip Type2 execution, jump straight to reporting
+                $ExecutionParams.Mode = 'AuditOnlyComplete'
+                $TaskResults = @()
+            }
+            
+            'Manual' {
+                # Manual Mode: Traditional task selection menu
+                Write-Information "Executing in Manual Mode" -InformationAction Continue
+                # Fall through to existing manual task selection logic below
+            }
         }
     }
-    else {
+    
+    # Manual mode or fallback: Use existing hierarchical menu system
+    if ($selectedExecutionMode -eq 'Manual' -and -not $NonInteractive -and -not $TaskNumbers) {
+        # Show hierarchical menu with integrated task selection
+        $menuResult = Show-MainMenu -CountdownSeconds $MainConfig.execution.countdownSeconds -AvailableTasks $AvailableTasks
+        
+        # Apply menu selections
+        $ExecutionParams.SelectedTasks = @()
+        foreach ($taskIndex in $menuResult.SelectedTasks) {
+            if ($taskIndex -ge 1 -and $taskIndex -le $AvailableTasks.Count) {
+                $ExecutionParams.SelectedTasks += $AvailableTasks[$taskIndex - 1]
+            }
+        }
+        Write-Information "   Menu selections applied:" -InformationAction Continue
+        Write-Information "    - Selected tasks: $($ExecutionParams.SelectedTasks.Count)/$($AvailableTasks.Count)" -InformationAction Continue
+    }
+    elseif ($NonInteractive) {
         Write-Information "`nNon-interactive mode enabled" -InformationAction Continue
     }
+    
     # Handle TaskNumbers parameter
     if ($TaskNumbers) {
         try {
@@ -1325,190 +1852,144 @@ try {
         }
     }
     #endregion
-    #region Task Execution
-    Write-Information "`nStarting maintenance execution..." -InformationAction Continue
-    $executionMode = "LIVE"
-    Write-Information "Execution Mode: $executionMode" -InformationAction Continue
-    Write-Information "Selected Tasks: $($ExecutionParams.SelectedTasks.Count)/$($AvailableTasks.Count)" -InformationAction Continue
+    
+    # Skip task execution if Intelligent or Audit-Only mode already completed
+    if ($ExecutionParams.Mode -eq 'IntelligentComplete' -or $ExecutionParams.Mode -eq 'AuditOnlyComplete') {
+        Write-Information "`n=== Skipping manual task execution (completed via $($ExecutionParams.Mode)) ===" -InformationAction Continue
+        # Jump to report generation (below)
+    }
+    else {
+        #region Task Execution
+        Write-Information "`nStarting maintenance execution..." -InformationAction Continue
+        $executionMode = "LIVE"
+        Write-Information "Execution Mode: $executionMode" -InformationAction Continue
+        Write-Information "Selected Tasks: $($ExecutionParams.SelectedTasks.Count)/$($AvailableTasks.Count)" -InformationAction Continue
 
-    # v4.0 FIX: Run SystemInventory from Type1 before Type2 modules
-    # SystemInventory is a pure read-only audit module that should not be in Type2
-    Write-Information "`n=== Phase 1: System Inventory (Type1) ===" -InformationAction Continue
-    try {
-        Write-Information "Running system inventory audit..." -InformationAction Continue
-        $inventoryStartTime = Get-Date
-        
-        # Import Type1 SystemInventory module
-        $type1InventoryPath = Join-Path $ModulesPath 'type1\SystemInventory.psm1'
-        if (Test-Path $type1InventoryPath) {
-            Import-Module $type1InventoryPath -Force -ErrorAction Stop
-            
-            # Execute Type1 SystemInventory
-            $systemInventory = Get-SystemInventory -IncludeDetailed:$false
-            
-            if ($systemInventory) {
-                Write-Information "  ✓ System inventory completed" -InformationAction Continue
-                
-                # Add to result collection for reporting
-                if ($script:ResultCollectionEnabled) {
-                    $inventoryDuration = ((Get-Date) - $inventoryStartTime).TotalSeconds
-                    $inventoryResult = New-ModuleResult `
-                        -ModuleName 'SystemInventory' `
-                        -Status 'Success' `
-                        -ItemsDetected 1 `
-                        -ItemsProcessed 1 `
-                        -DurationSeconds $inventoryDuration
-                    Add-ModuleResult -Result $inventoryResult
-                    Write-Information "  ✓ Inventory result collected for reporting" -InformationAction Continue
-                }
-            }
-            else {
-                Write-Warning "System inventory returned no data"
-            }
-        }
-        else {
-            Write-Warning "Type1 SystemInventory module not found at: $type1InventoryPath"
-        }
-    }
-    catch {
-        Write-Warning "Failed to run system inventory: $($_.Exception.Message)"
-        Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "System inventory failed" -Data @{
-            Error = $_.Exception.Message
-        }
-    }
-    Write-Information "`n=== Phase 2: System Modifications (Type2) ===" -InformationAction Continue
-    # Log execution start
-    Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Starting maintenance execution" -Data @{
-        ExecutionMode      = $executionMode
-        SelectedTasksCount = $ExecutionParams.SelectedTasks.Count
-        TotalTasksCount    = $AvailableTasks.Count
-    }
-    if ($ExecutionParams.SelectedTasks.Count -eq 0) {
-        Write-Warning "No tasks selected for execution"
-        exit 0
-    }
-    # Show final confirmation for system modification tasks
-    $type2Tasks = $ExecutionParams.SelectedTasks | Where-Object { $_.Type -eq 'Type2' }
-    if ($type2Tasks.Count -gt 0 -and -not $NonInteractive) {
-        $confirmMessage = "About to execute $($type2Tasks.Count) system modification task(s). Continue?"
-        $confirmed = Show-ConfirmationDialog -Message $confirmMessage -CountdownSeconds 10
-        if (-not $confirmed) {
-            Write-Information "Operation cancelled by user" -InformationAction Continue
-            exit 0
-        }
-    }
-    # Initialize execution tracking
-    $TaskResults = @()
-    $StartTime = Get-Date
-    Write-Information "`nExecuting tasks..." -InformationAction Continue
-    Write-Information "" -InformationAction Continue
-    for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
-        $task = $ExecutionParams.SelectedTasks[$i]
-        $taskNumber = $i + 1
-        $totalTasks = $ExecutionParams.SelectedTasks.Count
-        Write-Information "" -InformationAction Continue
-        Write-Information "[$taskNumber/$totalTasks] $($task.Name)" -InformationAction Continue
-        Write-Information "Description: $($task.Description)" -InformationAction Continue
-        Write-Information "Type: $($task.Type) | Category: $($task.Category)" -InformationAction Continue
-        $taskStartTime = Get-Date
-        $taskResult = @{
-            TaskName    = $task.Name
-            Description = $task.Description
-            Type        = $task.Type
-            Category    = $task.Category
-            StartTime   = $taskStartTime
-            Success     = $false
-            Output      = ''
-            Error       = $null
-            Duration    = $null
-        }
+        # v4.0 FIX: Run SystemInventory from Type1 before Type2 modules
+        # SystemInventory is a pure read-only audit module that should not be in Type2
+        Write-Information "`n=== Phase 1: System Inventory (Type1) ===" -InformationAction Continue
         try {
-            # v3.0 Architecture: Simplified execution using standardized Invoke-[ModuleName] functions
-            # Type2 modules are already loaded and self-contained with their Type1 dependencies
-            # Log task start
-            Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Starting task: $($task.Name)" -Data @{
-                TaskType     = $task.Type
-                TaskCategory = $task.Category
-                Function     = $task.Function
-                Architecture = 'v3.1'
-            }
-            # Verify function is available (already checked during module loading)
-            if (-not (Get-Command -Name $task.Function -ErrorAction SilentlyContinue)) {
-                throw "Function '$($task.Function)' not available - ensure $($task.ModuleName) module is properly loaded"
-            }
-            # Execute the standardized v3.0 function with consistent parameters
-            $result = $null
-            try {
-                Write-Information "   Executing: $($task.Function)" -InformationAction Continue
-                $result = & $task.Function -Config $MainConfig
-                # Validate standardized return structure (support both hashtable and PSCustomObject)
-                $hasValidStructure = $false
-                if ($result) {
-                    if ($result -is [hashtable] -and $result.ContainsKey('Success')) {
-                        $hasValidStructure = $true
-                    }
-                    elseif ($result -is [PSCustomObject] -and (Get-Member -InputObject $result -Name 'Success' -ErrorAction SilentlyContinue)) {
-                        $hasValidStructure = $true
-                    }
-                }
-                if ($hasValidStructure) {
-                    Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
-
-                    # Patch 3: Collect module result for aggregation
+            Write-Information "Running system inventory audit..." -InformationAction Continue
+            $inventoryStartTime = Get-Date
+        
+            # Import Type1 SystemInventory module
+            $type1InventoryPath = Join-Path $script:ModulesPath 'type1\SystemInventory.psm1'
+            if (Test-Path $type1InventoryPath) {
+                Import-Module $type1InventoryPath -Force -ErrorAction Stop
+            
+                # Execute Type1 SystemInventory
+                $systemInventory = Get-SystemInventory -IncludeDetailed:$false
+            
+                if ($systemInventory) {
+                    Write-Information "  ✓ System inventory completed" -InformationAction Continue
+                
+                    # Add to result collection for reporting
                     if ($script:ResultCollectionEnabled) {
-                        try {
-                            $moduleDuration = ((Get-Date) - $taskStartTime).TotalSeconds
-                            $moduleStatus = if ($result.Success) { 'Success' } else { 'Failed' }
-                            $moduleResultObj = New-ModuleResult `
-                                -ModuleName $task.Name `
-                                -Status $moduleStatus `
-                                -ItemsDetected $($result.ItemsDetected -as [int]) `
-                                -ItemsProcessed $($result.ItemsProcessed -as [int]) `
-                                -DurationSeconds $moduleDuration
-                            Add-ModuleResult -Result $moduleResultObj
-                            Write-Information "     [Aggregation] Module result collected for reporting" -InformationAction Continue
-                        }
-                        catch {
-                            Write-Warning "     [Aggregation] Failed to collect module result: $($_.Exception.Message)"
-                        }
+                        $inventoryDuration = ((Get-Date) - $inventoryStartTime).TotalSeconds
+                        $inventoryResult = New-ModuleResult `
+                            -ModuleName 'SystemInventory' `
+                            -Status 'Success' `
+                            -ItemsDetected 1 `
+                            -ItemsProcessed 1 `
+                            -DurationSeconds $inventoryDuration
+                        Add-ModuleResult -Result $inventoryResult
+                        Write-Information "  ✓ Inventory result collected for reporting" -InformationAction Continue
                     }
                 }
                 else {
-                    $resultType = if ($result) { $result.GetType().Name } else { 'null' }
-                    $resultCount = if ($result -is [array]) { $result.Count } elseif ($result -is [System.Collections.ICollection]) { $result.Count } else { 1 }
-                    $hasSuccessKey = if ($result -is [array] -and $result.Count -gt 0) {
-                        ($result[0] -is [hashtable] -and $result[0].ContainsKey('Success')) -or
-                        ($result[0] -is [PSCustomObject] -and (Get-Member -InputObject $result[0] -Name 'Success' -ErrorAction SilentlyContinue))
-                    }
-                    elseif ($result -is [System.Collections.IEnumerable] -and -not ($result -is [string]) -and -not ($result -is [hashtable]) -and -not ($result -is [PSCustomObject])) {
-                        $firstItem = $result | Select-Object -First 1
-                        ($firstItem -is [hashtable] -and $firstItem.ContainsKey('Success')) -or
-                        ($firstItem -is [PSCustomObject] -and (Get-Member -InputObject $firstItem -Name 'Success' -ErrorAction SilentlyContinue))
-                    }
-                    elseif ($result) {
-                        ($result -is [hashtable] -and $result.ContainsKey('Success')) -or
-                        ($result -is [PSCustomObject] -and (Get-Member -InputObject $result -Name 'Success' -ErrorAction SilentlyContinue))
-                    }
-                    else { $false }
-
-                    # If it's an enumerable collection, search for a valid result object (pipeline contamination fix)
-                    if ($result -is [System.Collections.IEnumerable] -and -not ($result -is [string]) -and -not ($result -is [hashtable]) -and -not ($result -is [PSCustomObject])) {
-                        $validResult = $result | Where-Object { ($_ -is [hashtable] -and $_.ContainsKey('Success')) -or ($_ -is [PSCustomObject] -and (Get-Member -InputObject $_ -Name 'Success' -ErrorAction SilentlyContinue)) } | Select-Object -First 1
-                        if ($validResult) {
-                            Write-LogEntry -Level 'DEBUG' -Component 'ORCHESTRATOR' -Message "Extracted valid result from enumerable" -Data @{ Module = $task.Function; Count = $resultCount; ResultType = $resultType }
-                            $result = $validResult
+                    Write-Warning "System inventory returned no data"
+                }
+            }
+            else {
+                Write-Warning "Type1 SystemInventory module not found at: $type1InventoryPath"
+            }
+        }
+        catch {
+            Write-Warning "Failed to run system inventory: $($_.Exception.Message)"
+            Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "System inventory failed" -Data @{
+                Error = $_.Exception.Message
+            }
+        }
+        Write-Information "`n=== Phase 2: System Modifications (Type2) ===" -InformationAction Continue
+        # Log execution start
+        Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Starting maintenance execution" -Data @{
+            ExecutionMode      = $executionMode
+            SelectedTasksCount = $ExecutionParams.SelectedTasks.Count
+            TotalTasksCount    = $AvailableTasks.Count
+        }
+        if ($ExecutionParams.SelectedTasks.Count -eq 0) {
+            Write-Warning "No tasks selected for execution"
+            exit 0
+        }
+        # Show final confirmation for system modification tasks
+        $type2Tasks = $ExecutionParams.SelectedTasks | Where-Object { $_.Type -eq 'Type2' }
+        if ($type2Tasks.Count -gt 0 -and -not $NonInteractive) {
+            $confirmMessage = "About to execute $($type2Tasks.Count) system modification task(s). Continue?"
+            $confirmed = Show-ConfirmationDialog -Message $confirmMessage -CountdownSeconds 10
+            if (-not $confirmed) {
+                Write-Information "Operation cancelled by user" -InformationAction Continue
+                exit 0
+            }
+        }
+        # Initialize execution tracking
+        $TaskResults = @()
+        $StartTime = Get-Date
+        Write-Information "`nExecuting tasks..." -InformationAction Continue
+        Write-Information "" -InformationAction Continue
+        for ($i = 0; $i -lt $ExecutionParams.SelectedTasks.Count; $i++) {
+            $task = $ExecutionParams.SelectedTasks[$i]
+            $taskNumber = $i + 1
+            $totalTasks = $ExecutionParams.SelectedTasks.Count
+            Write-Information "" -InformationAction Continue
+            Write-Information "[$taskNumber/$totalTasks] $($task.Name)" -InformationAction Continue
+            Write-Information "Description: $($task.Description)" -InformationAction Continue
+            Write-Information "Type: $($task.Type) | Category: $($task.Category)" -InformationAction Continue
+            $taskStartTime = Get-Date
+            $taskResult = @{
+                TaskName    = $task.Name
+                Description = $task.Description
+                Type        = $task.Type
+                Category    = $task.Category
+                StartTime   = $taskStartTime
+                Success     = $false
+                Output      = ''
+                Error       = $null
+                Duration    = $null
+            }
+            try {
+                # v3.0 Architecture: Simplified execution using standardized Invoke-[ModuleName] functions
+                # Type2 modules are already loaded and self-contained with their Type1 dependencies
+                # Log task start
+                Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Starting task: $($task.Name)" -Data @{
+                    TaskType     = $task.Type
+                    TaskCategory = $task.Category
+                    Function     = $task.Function
+                    Architecture = 'v3.1'
+                }
+                # Verify function is available (already checked during module loading)
+                if (-not (Get-Command -Name $task.Function -ErrorAction SilentlyContinue)) {
+                    throw "Function '$($task.Function)' not available - ensure $($task.ModuleName) module is properly loaded"
+                }
+                # Execute the standardized v3.0 function with consistent parameters
+                $result = $null
+                try {
+                    Write-Information "   Executing: $($task.Function)" -InformationAction Continue
+                    $result = & $task.Function -Config $MainConfig
+                    # Validate standardized return structure (support both hashtable and PSCustomObject)
+                    $hasValidStructure = $false
+                    if ($result) {
+                        if ($result -is [hashtable] -and $result.ContainsKey('Success')) {
                             $hasValidStructure = $true
-                            Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
                         }
-                        else {
-                            Write-Warning "   Non-standard result format from $($task.Function) - Result type: $resultType, Count: $resultCount, Has Success key: $hasSuccessKey"
+                        elseif ($result -is [PSCustomObject] -and (Get-Member -InputObject $result -Name 'Success' -ErrorAction SilentlyContinue)) {
+                            $hasValidStructure = $true
                         }
                     }
-                    else {
-                        Write-Warning "   Non-standard result format from $($task.Function) - Result type: $resultType, Count: $resultCount, Has Success key: $hasSuccessKey"
+                    if ($hasValidStructure) {
+                        Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
 
-                        # Collect module result for aggregation after fixing the format
-                        if ($script:ResultCollectionEnabled -and $hasValidStructure) {
+                        # Patch 3: Collect module result for aggregation
+                        if ($script:ResultCollectionEnabled) {
                             try {
                                 $moduleDuration = ((Get-Date) - $taskStartTime).TotalSeconds
                                 $moduleStatus = if ($result.Success) { 'Success' } else { 'Failed' }
@@ -1519,103 +2000,158 @@ try {
                                     -ItemsProcessed $($result.ItemsProcessed -as [int]) `
                                     -DurationSeconds $moduleDuration
                                 Add-ModuleResult -Result $moduleResultObj
-                                Write-LogEntry -Level 'DEBUG' -Component 'ORCHESTRATOR' -Message "Module result collected for reporting (format corrected)" -Data @{ Module = $task.Name }
+                                Write-Information "     [Aggregation] Module result collected for reporting" -InformationAction Continue
                             }
                             catch {
                                 Write-Warning "     [Aggregation] Failed to collect module result: $($_.Exception.Message)"
                             }
                         }
                     }
+                    else {
+                        $resultType = if ($result) { $result.GetType().Name } else { 'null' }
+                        $resultCount = if ($result -is [array]) { $result.Count } elseif ($result -is [System.Collections.ICollection]) { $result.Count } else { 1 }
+                        $hasSuccessKey = if ($result -is [array] -and $result.Count -gt 0) {
+                            ($result[0] -is [hashtable] -and $result[0].ContainsKey('Success')) -or
+                            ($result[0] -is [PSCustomObject] -and (Get-Member -InputObject $result[0] -Name 'Success' -ErrorAction SilentlyContinue))
+                        }
+                        elseif ($result -is [System.Collections.IEnumerable] -and -not ($result -is [string]) -and -not ($result -is [hashtable]) -and -not ($result -is [PSCustomObject])) {
+                            $firstItem = $result | Select-Object -First 1
+                            ($firstItem -is [hashtable] -and $firstItem.ContainsKey('Success')) -or
+                            ($firstItem -is [PSCustomObject] -and (Get-Member -InputObject $firstItem -Name 'Success' -ErrorAction SilentlyContinue))
+                        }
+                        elseif ($result) {
+                            ($result -is [hashtable] -and $result.ContainsKey('Success')) -or
+                            ($result -is [PSCustomObject] -and (Get-Member -InputObject $result -Name 'Success' -ErrorAction SilentlyContinue))
+                        }
+                        else { $false }
+
+                        # If it's an enumerable collection, search for a valid result object (pipeline contamination fix)
+                        if ($result -is [System.Collections.IEnumerable] -and -not ($result -is [string]) -and -not ($result -is [hashtable]) -and -not ($result -is [PSCustomObject])) {
+                            $validResult = $result | Where-Object { ($_ -is [hashtable] -and $_.ContainsKey('Success')) -or ($_ -is [PSCustomObject] -and (Get-Member -InputObject $_ -Name 'Success' -ErrorAction SilentlyContinue)) } | Select-Object -First 1
+                            if ($validResult) {
+                                Write-LogEntry -Level 'DEBUG' -Component 'ORCHESTRATOR' -Message "Extracted valid result from enumerable" -Data @{ Module = $task.Function; Count = $resultCount; ResultType = $resultType }
+                                $result = $validResult
+                                $hasValidStructure = $true
+                                Write-Information "   v3.0 compliant result: Success=$($result.Success), Items Detected=$($result.ItemsDetected), Items Processed=$($result.ItemsProcessed)" -InformationAction Continue
+                            }
+                            else {
+                                Write-Warning "   Non-standard result format from $($task.Function) - Result type: $resultType, Count: $resultCount, Has Success key: $hasSuccessKey"
+                            }
+                        }
+                        else {
+                            Write-Warning "   Non-standard result format from $($task.Function) - Result type: $resultType, Count: $resultCount, Has Success key: $hasSuccessKey"
+
+                            # Collect module result for aggregation after fixing the format
+                            if ($script:ResultCollectionEnabled -and $hasValidStructure) {
+                                try {
+                                    $moduleDuration = ((Get-Date) - $taskStartTime).TotalSeconds
+                                    $moduleStatus = if ($result.Success) { 'Success' } else { 'Failed' }
+                                    $moduleResultObj = New-ModuleResult `
+                                        -ModuleName $task.Name `
+                                        -Status $moduleStatus `
+                                        -ItemsDetected $($result.ItemsDetected -as [int]) `
+                                        -ItemsProcessed $($result.ItemsProcessed -as [int]) `
+                                        -DurationSeconds $moduleDuration
+                                    Add-ModuleResult -Result $moduleResultObj
+                                    Write-LogEntry -Level 'DEBUG' -Component 'ORCHESTRATOR' -Message "Module result collected for reporting (format corrected)" -Data @{ Module = $task.Name }
+                                }
+                                catch {
+                                    Write-Warning "     [Aggregation] Failed to collect module result: $($_.Exception.Message)"
+                                }
+                            }
+                        }
+                    }
                 }
+                catch {
+                    # Capture detailed error information for debugging
+                    $errorDetails = @{
+                        Message    = $_.Exception.Message
+                        Type       = $_.Exception.GetType().Name
+                        StackTrace = $_.ScriptStackTrace
+                        Function   = $task.Function
+                        Line       = $_.InvocationInfo.ScriptLineNumber
+                    }
+                    # Log detailed error information with structured logging
+                    Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task execution failed: $($task.Name)" -Data $errorDetails
+                    Write-Information "[ERROR] [ORCHESTRATOR] Task failed: $($task.Name)" -InformationAction Continue
+                    Write-Information "  Error Type: $($errorDetails.Type)" -InformationAction Continue
+                    Write-Information "  Message: $($errorDetails.Message)" -InformationAction Continue
+                    Write-Information "  Function: $($errorDetails.Function) at line $($errorDetails.Line)" -InformationAction Continue
+                    throw "Task execution failed: $($_.Exception.Message)"
+                }
+                $taskResult.Success = $true
+                $taskResult.Output = $result
+                Write-Information "   Completed successfully" -InformationAction Continue
+                # Log task success with detailed metrics
+                Write-LogEntry -Level 'SUCCESS' -Component 'ORCHESTRATOR' -Message "Task completed successfully: $($task.Name)" -Data @{
+                    Duration   = ((Get-Date) - $taskStartTime).TotalSeconds
+                    OutputType = if ($null -ne $result) { $result.GetType().Name } else { 'null' }
+                    ResultSize = if ($null -ne $result -and $result -is [string]) { $result.Length } elseif ($null -ne $result -and $result -is [array]) { $result.Count } else { 0 }
+                }
+            }
+            catch [System.OperationCanceledException] {
+                $taskResult.Success = $false
+                $taskResult.Error = "Task was cancelled by user or system"
+                Write-Information "  ⏸ Cancelled: Task was cancelled" -InformationAction Continue
+                Write-LogEntry -Level 'WARNING' -Component 'ORCHESTRATOR' -Message "Task cancelled: $($task.Name)" -Data @{
+                    Duration = ((Get-Date) - $taskStartTime).TotalSeconds
+                }
+            }
+            catch [System.TimeoutException] {
+                $taskResult.Success = $false
+                $taskResult.Error = "Task timed out: $($_.Exception.Message)"
+                Write-Information "  ⏱ Timeout: $($_.Exception.Message)" -InformationAction Continue
+                Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task timeout: $($task.Name)" -Data @{
+                    Error    = $_.Exception.Message
+                    Duration = ((Get-Date) - $taskStartTime).TotalSeconds
+                }
+            }
+            catch [System.OutOfMemoryException] {
+                $taskResult.Success = $false
+                $taskResult.Error = "Out of memory error during task execution"
+                Write-Information "   Memory Error: Insufficient memory to complete task" -InformationAction Continue
+                Write-LogEntry -Level 'CRITICAL' -Component 'ORCHESTRATOR' -Message "Out of memory error: $($task.Name)" -Data @{
+                    Duration    = ((Get-Date) - $taskStartTime).TotalSeconds
+                    MemoryUsage = [System.GC]::GetTotalMemory($false)
+                }
+                # Force garbage collection
+                [System.GC]::Collect()
+                [System.GC]::WaitForPendingFinalizers()
             }
             catch {
-                # Capture detailed error information for debugging
-                $errorDetails = @{
-                    Message    = $_.Exception.Message
-                    Type       = $_.Exception.GetType().Name
-                    StackTrace = $_.ScriptStackTrace
-                    Function   = $task.Function
-                    Line       = $_.InvocationInfo.ScriptLineNumber
+                $taskResult.Success = $false
+                $taskResult.Error = $_.Exception.Message
+                Write-Information "   Failed: $($_.Exception.Message)" -InformationAction Continue
+                # Enhanced error logging with full context
+                $errorContext = @{
+                    Error        = $_.Exception.Message
+                    ErrorType    = $_.Exception.GetType().Name
+                    Duration     = ((Get-Date) - $taskStartTime).TotalSeconds
+                    StackTrace   = $_.ScriptStackTrace
+                    TaskFunction = $task.Function
+                    ModulePath   = $task.ModulePath
+                    ScriptLine   = $_.InvocationInfo.ScriptLineNumber
+                    Command      = $_.InvocationInfo.MyCommand.Name
                 }
-                # Log detailed error information with structured logging
-                Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task execution failed: $($task.Name)" -Data $errorDetails
-                Write-Information "[ERROR] [ORCHESTRATOR] Task failed: $($task.Name)" -InformationAction Continue
-                Write-Information "  Error Type: $($errorDetails.Type)" -InformationAction Continue
-                Write-Information "  Message: $($errorDetails.Message)" -InformationAction Continue
-                Write-Information "  Function: $($errorDetails.Function) at line $($errorDetails.Line)" -InformationAction Continue
-                throw "Task execution failed: $($_.Exception.Message)"
+                Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task failed: $($task.Name)" -Data $errorContext
+                # Additional troubleshooting information
+                Write-Information "  ℹ Error Type: $($_.Exception.GetType().Name)" -InformationAction Continue
+                if ($_.InvocationInfo.ScriptLineNumber) {
+                    Write-Information "  ℹ Error at line: $($_.InvocationInfo.ScriptLineNumber)" -InformationAction Continue
+                }
+                if ($_.ScriptStackTrace) {
+                    Write-Verbose "Full stack trace: $($_.ScriptStackTrace)"
+                }
             }
-            $taskResult.Success = $true
-            $taskResult.Output = $result
-            Write-Information "   Completed successfully" -InformationAction Continue
-            # Log task success with detailed metrics
-            Write-LogEntry -Level 'SUCCESS' -Component 'ORCHESTRATOR' -Message "Task completed successfully: $($task.Name)" -Data @{
-                Duration   = ((Get-Date) - $taskStartTime).TotalSeconds
-                OutputType = if ($null -ne $result) { $result.GetType().Name } else { 'null' }
-                ResultSize = if ($null -ne $result -and $result -is [string]) { $result.Length } elseif ($null -ne $result -and $result -is [array]) { $result.Count } else { 0 }
+            finally {
+                $taskResult.Duration = ((Get-Date) - $taskStartTime).TotalSeconds
+                $TaskResults += $taskResult
+                Write-Information "  Duration: $([math]::Round($taskResult.Duration, 2)) seconds" -InformationAction Continue
             }
         }
-        catch [System.OperationCanceledException] {
-            $taskResult.Success = $false
-            $taskResult.Error = "Task was cancelled by user or system"
-            Write-Information "  ⏸ Cancelled: Task was cancelled" -InformationAction Continue
-            Write-LogEntry -Level 'WARNING' -Component 'ORCHESTRATOR' -Message "Task cancelled: $($task.Name)" -Data @{
-                Duration = ((Get-Date) - $taskStartTime).TotalSeconds
-            }
-        }
-        catch [System.TimeoutException] {
-            $taskResult.Success = $false
-            $taskResult.Error = "Task timed out: $($_.Exception.Message)"
-            Write-Information "  ⏱ Timeout: $($_.Exception.Message)" -InformationAction Continue
-            Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task timeout: $($task.Name)" -Data @{
-                Error    = $_.Exception.Message
-                Duration = ((Get-Date) - $taskStartTime).TotalSeconds
-            }
-        }
-        catch [System.OutOfMemoryException] {
-            $taskResult.Success = $false
-            $taskResult.Error = "Out of memory error during task execution"
-            Write-Information "   Memory Error: Insufficient memory to complete task" -InformationAction Continue
-            Write-LogEntry -Level 'CRITICAL' -Component 'ORCHESTRATOR' -Message "Out of memory error: $($task.Name)" -Data @{
-                Duration    = ((Get-Date) - $taskStartTime).TotalSeconds
-                MemoryUsage = [System.GC]::GetTotalMemory($false)
-            }
-            # Force garbage collection
-            [System.GC]::Collect()
-            [System.GC]::WaitForPendingFinalizers()
-        }
-        catch {
-            $taskResult.Success = $false
-            $taskResult.Error = $_.Exception.Message
-            Write-Information "   Failed: $($_.Exception.Message)" -InformationAction Continue
-            # Enhanced error logging with full context
-            $errorContext = @{
-                Error        = $_.Exception.Message
-                ErrorType    = $_.Exception.GetType().Name
-                Duration     = ((Get-Date) - $taskStartTime).TotalSeconds
-                StackTrace   = $_.ScriptStackTrace
-                TaskFunction = $task.Function
-                ModulePath   = $task.ModulePath
-                ScriptLine   = $_.InvocationInfo.ScriptLineNumber
-                Command      = $_.InvocationInfo.MyCommand.Name
-            }
-            Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task failed: $($task.Name)" -Data $errorContext
-            # Additional troubleshooting information
-            Write-Information "  ℹ Error Type: $($_.Exception.GetType().Name)" -InformationAction Continue
-            if ($_.InvocationInfo.ScriptLineNumber) {
-                Write-Information "  ℹ Error at line: $($_.InvocationInfo.ScriptLineNumber)" -InformationAction Continue
-            }
-            if ($_.ScriptStackTrace) {
-                Write-Verbose "Full stack trace: $($_.ScriptStackTrace)"
-            }
-        }
-        finally {
-            $taskResult.Duration = ((Get-Date) - $taskStartTime).TotalSeconds
-            $TaskResults += $taskResult
-            Write-Information "  Duration: $([math]::Round($taskResult.Duration, 2)) seconds" -InformationAction Continue
-        }
-    }
+    }  # End of else block for Manual/NonInteractive task execution
     #endregion
+    
     #region Report Generation (v3.1 Architecture - Enhanced)
     # Generate comprehensive reports using v3.0 split architecture: LogProcessor → ReportGenerator
     Write-Information "" -InformationAction Continue

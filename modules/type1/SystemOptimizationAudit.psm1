@@ -19,6 +19,12 @@
 
 using namespace System.Collections.Generic
 
+# Import CommonUtilities for shared functions (Phase B.3 consolidation)
+$commonUtilsPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\CommonUtilities.psm1'
+if (Test-Path $commonUtilsPath) {
+    Import-Module $commonUtilsPath -Force -Global
+}
+
 # v3.0 Type 1 module - imported by Type 2 modules
 # Note: CoreInfrastructure should be loaded by the Type 2 module before importing this module
 # Check if CoreInfrastructure functions are available (loaded by Type2 module)
@@ -639,35 +645,24 @@ function Get-OptimizationScore {
         [hashtable]$AuditResults
     )
 
-    $baseScore = 100
-    $deductions = 0
-
-    # Deduct points based on optimization opportunities
-    foreach ($opportunity in $AuditResults.OptimizationOpportunities) {
-        switch ($opportunity.Impact) {
-            'High' { $deductions += 15 }
-            'Medium' { $deductions += 8 }
-            'Low' { $deductions += 3 }
-        }
-    }
-
-    $overallScore = [math]::Max(0, $baseScore - $deductions)
-
-    return [PSCustomObject]@{
-        Overall          = $overallScore
-        MaxScore         = $baseScore
-        Deductions       = $deductions
-        OpportunityCount = $AuditResults.OptimizationOpportunities.Count
-        Category         = if ($overallScore -ge 90) { 'Excellent' }
-        elseif ($overallScore -ge 75) { 'Good' }
-        elseif ($overallScore -ge 60) { 'Fair' }
-        else { 'Needs Improvement' }
-    }
+    # Use generic scoring function from CommonUtilities (Phase B.3 consolidation)
+    return Get-GenericHealthScore `
+        -Issues $AuditResults.OptimizationOpportunities `
+        -ScoreType 'Optimization' `
+        -DeductionMap @{ High = 15; Medium = 8; Low = 3 }
 }
 
 <#
 .SYNOPSIS
     Generates optimization recommendations based on audit results
+#>
+<#
+.SYNOPSIS
+    Generates optimization recommendations based on audit results
+
+.DESCRIPTION
+    Uses generic New-ImpactBasedRecommendations from CommonUtilities.
+    Phase B.3 consolidation - reduced from ~30 lines to ~7 lines.
 #>
 function New-OptimizationRecommendations {
     [CmdletBinding()]
@@ -677,25 +672,9 @@ function New-OptimizationRecommendations {
         [hashtable]$AuditResults
     )
 
-    $recommendations = @()
-
-    # Group opportunities by impact and generate recommendations
-    $highImpact = $AuditResults.OptimizationOpportunities | Where-Object { $_.Impact -eq 'High' }
-    $mediumImpact = $AuditResults.OptimizationOpportunities | Where-Object { $_.Impact -eq 'Medium' }
-
-    if ($highImpact.Count -gt 0) {
-        $recommendations += "Priority 1: Address $($highImpact.Count) high-impact optimizations for immediate performance gains"
-    }
-
-    if ($mediumImpact.Count -gt 0) {
-        $recommendations += "Priority 2: Implement $($mediumImpact.Count) medium-impact optimizations for steady improvements"
-    }
-
-    if ($AuditResults.OptimizationOpportunities.Count -eq 0) {
-        $recommendations += "System is well-optimized. Consider periodic maintenance and monitoring."
-    }
-
-    return $recommendations
+    return New-ImpactBasedRecommendations `
+        -Issues $AuditResults.OptimizationOpportunities `
+        -IssueType 'optimization'
 }
 
 <#

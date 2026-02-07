@@ -1,6 +1,12 @@
 # Temporary files directory
+.gthub/
 temp_files/
 archive/
+tests/
+docs/
+scripts/
+
+
 # Log files
 *.log
 
