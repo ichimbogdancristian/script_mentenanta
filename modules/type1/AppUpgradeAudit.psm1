@@ -240,25 +240,25 @@ function Get-WingetUpgrades {
                     }
 
                     $upgradeItem = [PSCustomObject]@{
-                        Name             = $appName
-                        Id               = $appId
-                        CurrentVersion   = $currentVersion
+                        Name = $appName
+                        Id = $appId
+                        CurrentVersion = $currentVersion
                         AvailableVersion = $availableVersion
-                        Source           = 'Winget'
-                        SourceDetail     = $source
-                        UpdateSize       = 'Unknown'
+                        Source = 'Winget'
+                        SourceDetail = $source
+                        UpdateSize = 'Unknown'
                     }
 
                     # Log detected upgrade opportunity
                     Write-DetectionLog -Operation 'Detect' -Target $appName -Component 'APP-UPGRADE-WINGET' -AdditionalInfo @{
-                        ApplicationId    = $appId
-                        CurrentVersion   = $currentVersion
+                        ApplicationId = $appId
+                        CurrentVersion = $currentVersion
                         AvailableVersion = $availableVersion
-                        Source           = 'Winget'
-                        SourceDetail     = $source
-                        Status           = 'Upgrade Available'
-                        UpgradeCommand   = "winget upgrade --id $appId"
-                        Reason           = "Newer version available: $currentVersion → $availableVersion"
+                        Source = 'Winget'
+                        SourceDetail = $source
+                        Status = 'Upgrade Available'
+                        UpgradeCommand = "winget upgrade --id $appId"
+                        Reason = "Newer version available: $currentVersion → $availableVersion"
                     }
 
                     $upgrades += $upgradeItem
@@ -337,24 +337,24 @@ function Get-ChocolateyUpgrades {
                 }
 
                 $upgradeItem = [PSCustomObject]@{
-                    Name             = $packageName
-                    Id               = $packageName  # Choco uses name as ID
-                    CurrentVersion   = $currentVersion
+                    Name = $packageName
+                    Id = $packageName  # Choco uses name as ID
+                    CurrentVersion = $currentVersion
                     AvailableVersion = $availableVersion
-                    Source           = 'Chocolatey'
-                    SourceDetail     = 'chocolatey'
-                    UpdateSize       = 'Unknown'
+                    Source = 'Chocolatey'
+                    SourceDetail = 'chocolatey'
+                    UpdateSize = 'Unknown'
                 }
 
                 # Log detected upgrade opportunity
                 Write-DetectionLog -Operation 'Detect' -Target $packageName -Component 'APP-UPGRADE-CHOCO' -AdditionalInfo @{
-                    PackageName      = $packageName
-                    CurrentVersion   = $currentVersion
+                    PackageName = $packageName
+                    CurrentVersion = $currentVersion
                     AvailableVersion = $availableVersion
-                    Source           = 'Chocolatey'
-                    Status           = 'Upgrade Available'
-                    UpgradeCommand   = "choco upgrade $packageName -y"
-                    Reason           = "Newer version available: $currentVersion → $availableVersion"
+                    Source = 'Chocolatey'
+                    Status = 'Upgrade Available'
+                    UpgradeCommand = "choco upgrade $packageName -y"
+                    Reason = "Newer version available: $currentVersion → $availableVersion"
                 }
 
                 $upgrades += $upgradeItem
@@ -373,6 +373,7 @@ function Get-ChocolateyUpgrades {
 
 # Export public function
 Export-ModuleMember -Function Get-AppUpgradeAnalysis
+
 
 
 

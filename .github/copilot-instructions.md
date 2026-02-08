@@ -997,6 +997,33 @@ ReportGenerator.psm1 (Generate reports with OS integration)
 
 ---
 
+## ✅ Diagnostics and Analyzer Policy (Mandatory)
+
+When editing or adding PowerShell code:
+
+1. Run PSScriptAnalyzer on all modules and the orchestrator after each change set.
+2. Review VS Code diagnostics and resolve all new errors/warnings before completion.
+3. Do not introduce unapproved verbs, missing ShouldProcess, unused parameters, or inconsistent whitespace.
+4. Keep OutputType attributes accurate for all public functions.
+
+Required commands:
+
+```
+pwsh -NoProfile -ExecutionPolicy Bypass -Command "Invoke-ScriptAnalyzer -Path .\modules -Recurse -Settings .\PSScriptAnalyzerSettings.psd1; Invoke-ScriptAnalyzer -Path .\MaintenanceOrchestrator.ps1 -Settings .\PSScriptAnalyzerSettings.psd1"
+```
+
+Diagnostics workflow:
+- Check VS Code diagnostics after edits.
+- Fix all issues introduced by the current change set.
+- If a warning must remain, document the rationale in the code.
+
+Common errors to avoid:
+- Unapproved verbs (use Get/Set/New/Invoke/Test/Start/Stop/Initialize).
+- Missing SupportsShouldProcess on state-changing functions.
+- Unused parameters.
+- Incorrect or missing OutputType attributes.
+- Inconsistent whitespace around operators.
+
 ## 🎯 Final Checklist for AI Assistance
 
 When GitHub Copilot assists with this project:

@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - BloatwareDetectionAudit.psm1 (Type1 - detection/analysis)
@@ -71,7 +71,7 @@ if (-not (Get-Command -Name 'Find-InstalledBloatware' -ErrorAction SilentlyConti
     Main execution function for bloatware removal - v3.0 Architecture Pattern
 
 .DESCRIPTION
-    Standardized entry point that implements the Type2 → Type1 flow:
+    Standardized entry point that implements the Type2 -> Type1 flow:
     1. Calls BloatwareDetection (Type1) to detect bloatware
     2. Validates findings and logs results
     3. Executes removal actions in live mode
@@ -175,7 +175,7 @@ function Invoke-BloatwareRemoval {
         # Create diff: Only items from config that are actually found on system
         $diffList = Compare-DetectedVsConfig -DetectionResults $filteredDetection -ConfigData $configData -ConfigItemsPath 'bloatware' -MatchField 'Name'
 
-        $diffPath = Save-DiffResults -ModuleName 'BloatwareRemoval' -DiffData $diffList -Component 'BLOATWARE-REMOVAL'
+        $null = Save-DiffResults -ModuleName 'BloatwareRemoval' -DiffData $diffList -Component 'BLOATWARE-REMOVAL'
 
         # STEP 3: Process ONLY items in diff list and log to dedicated directory
         Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Processing $($diffList.Count) items from diff" -LogPath $executionLogPath -Operation 'Process' -Metadata @{ ItemCount = $diffList.Count; DetectedCount = $detectionResults.Count }
@@ -429,9 +429,7 @@ function Remove-DetectedBloatware {
             New-Item -Path $summaryDir -ItemType Directory -Force | Out-Null
         }
         $summaryContent = @"
-BLOATWARE REMOVAL SUMMARY
-========================
-Generated: $(Get-Date)
+BLOATWARE REMOVAL SUMMARY ======================== Generated: $(Get-Date)
 Categories: $($Categories -join ', ')
 Total Items: $($BloatwareList.Count)
 
@@ -667,64 +665,65 @@ function Remove-AppXBloatware {
         -Items $Items `
         -SourceName 'AppX' `
         -ToolAvailabilityChecker {
-            $null -ne (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue)
-        } `
+        $null -ne (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue)
+    } `
         -GetItemName {
-            param($item)
-            if ($item.WingetId) { $item.WingetId } else { $item.Name }
-        } `
+        param($item)
+        if ($item.WingetId) { $item.WingetId } else { $item.Name }
+    } `
         -PreActionDetector {
-            param($item)
-            $packageName = if ($item.WingetId) { $item.WingetId } else { $item.Name }
-            $package = Get-AppxPackage -Name $packageName -AllUsers -ErrorAction SilentlyContinue
-            $provisionedPackage = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | 
-                Where-Object { $_.DisplayName -eq $packageName }
-            
-            [PSCustomObject]@{
-                Package            = $package
-                PackageFullName    = if ($package) { $package.PackageFullName } else { $null }
-                ProvisionedPackage = $provisionedPackage
-                Version            = if ($package) { $package.Version.ToString() } else { 'N/A' }
-                IsProvisioned      = ($null -ne $provisionedPackage)
-            }
-        } `
-        -RemovalExecutor {
-            param($item, $preState)
-            try {
-                # Remove AppX package for all users
-                if ($preState.Package) {
-                    Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' `
-                        -Message "Executing: Remove-AppxPackage -Package $($preState.PackageFullName) -AllUsers"
-                    $preState.Package | Remove-AppxPackage -AllUsers -ErrorAction Stop
-                    Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' `
-                        -Message "AppX package removed from all users"
-                }
+        param($item)
+        $packageName = if ($item.WingetId) { $item.WingetId } else { $item.Name }
+        $package = Get-AppxPackage -Name $packageName -AllUsers -ErrorAction SilentlyContinue
+        $provisionedPackage = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
+        Where-Object { $_.DisplayName -eq $packageName }
 
-                # Remove provisioned package to prevent reinstallation
-                if ($preState.ProvisionedPackage) {
-                    Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' `
-                        -Message "Executing: Remove-AppxProvisionedPackage -PackageName $($preState.ProvisionedPackage.PackageName)"
-                    Remove-AppxProvisionedPackage -Online -PackageName $preState.ProvisionedPackage.PackageName -ErrorAction SilentlyContinue
-                    Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' `
-                        -Message "Provisioned package removed"
-                }
-
-                @{ Success = $true; ExitCode = 0; Error = $null }
-            }
-            catch {
-                @{ Success = $false; ExitCode = 1; Error = $_.Exception.Message }
-            }
-        } `
-        -PostActionVerifier {
-            param($item)
-            $packageName = if ($item.WingetId) { $item.WingetId } else { $item.Name }
-            $verifyPackage = Get-AppxPackage -Name $packageName -AllUsers -ErrorAction SilentlyContinue
-            $verifyProvisioned = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | 
-                Where-Object { $_.DisplayName -eq $packageName }
-            
-            # Return $true if still installed (failure), $false if removed (success)
-            ($null -ne $verifyPackage) -or ($null -ne $verifyProvisioned)
+        [PSCustomObject]@{
+            Package            = $package
+            PackageFullName    = if ($package) { $package.PackageFullName } else { $null }
+            ProvisionedPackage = $provisionedPackage
+            Version            = if ($package) { $package.Version.ToString() } else { 'N/A' }
+            IsProvisioned      = ($null -ne $provisionedPackage)
         }
+    } `
+        -RemovalExecutor {
+        param($item, $preState)
+        $null = $item
+        try {
+            # Remove AppX package for all users
+            if ($preState.Package) {
+                Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' `
+                    -Message "Executing: Remove-AppxPackage -Package $($preState.PackageFullName) -AllUsers"
+                $preState.Package | Remove-AppxPackage -AllUsers -ErrorAction Stop
+                Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' `
+                    -Message "AppX package removed from all users"
+            }
+
+            # Remove provisioned package to prevent reinstallation
+            if ($preState.ProvisionedPackage) {
+                Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' `
+                    -Message "Executing: Remove-AppxProvisionedPackage -PackageName $($preState.ProvisionedPackage.PackageName)"
+                Remove-AppxProvisionedPackage -Online -PackageName $preState.ProvisionedPackage.PackageName -ErrorAction SilentlyContinue
+                Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' `
+                    -Message "Provisioned package removed"
+            }
+
+            @{ Success = $true; ExitCode = 0; Error = $null }
+        }
+        catch {
+            @{ Success = $false; ExitCode = 1; Error = $_.Exception.Message }
+        }
+    } `
+        -PostActionVerifier {
+        param($item)
+        $packageName = if ($item.WingetId) { $item.WingetId } else { $item.Name }
+        $verifyPackage = Get-AppxPackage -Name $packageName -AllUsers -ErrorAction SilentlyContinue
+        $verifyProvisioned = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
+        Where-Object { $_.DisplayName -eq $packageName }
+
+        # Return $true if still installed (failure), $false if removed (success)
+        ($null -ne $verifyPackage) -or ($null -ne $verifyProvisioned)
+    }
 }
 
 
@@ -752,49 +751,50 @@ function Remove-WingetBloatware {
         -Items $Items `
         -SourceName 'Winget' `
         -ToolAvailabilityChecker {
-            $null -ne (Get-Command winget -ErrorAction SilentlyContinue)
-        } `
+        $null -ne (Get-Command winget -ErrorAction SilentlyContinue)
+    } `
         -GetItemName {
-            param($item)
-            $item.Name
-        } `
+        param($item)
+        $item.Name
+    } `
         -PreActionDetector {
-            param($item)
-            $wingetListArgs = @('list', '--id', $item.Name, '--accept-source-agreements')
-            $listProcess = Start-Process -FilePath 'winget' -ArgumentList $wingetListArgs -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\winget-list-$($item.Name).txt" -ErrorAction SilentlyContinue
-            
-            [PSCustomObject]@{
-                PackageInstalled = $listProcess.ExitCode -eq 0
-                ListArgs         = $wingetListArgs
-            }
-        } `
-        -RemovalExecutor {
-            param($item, $preState)
-            try {
-                $wingetArgs = @('uninstall', '--id', $item.Name, '--silent', '--accept-source-agreements')
-                Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Executing: winget $($wingetArgs -join ' ')"
-                $process = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -Wait -PassThru -NoNewWindow
-                
-                # Cleanup temp file
-                Remove-Item -Path "$env:TEMP\winget-list-$($item.Name).txt" -ErrorAction SilentlyContinue
-                
-                @{ Success = ($process.ExitCode -eq 0); ExitCode = $process.ExitCode; Error = if ($process.ExitCode -ne 0) { "Exit code $($process.ExitCode)" } else { $null } }
-            }
-            catch {
-                @{ Success = $false; ExitCode = 1; Error = $_.Exception.Message }
-            }
-        } `
-        -PostActionVerifier {
-            param($item)
-            $wingetListArgs = @('list', '--id', $item.Name, '--accept-source-agreements')
-            $verifyProcess = Start-Process -FilePath 'winget' -ArgumentList $wingetListArgs -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\winget-verify-$($item.Name).txt" -ErrorAction SilentlyContinue
-            
-            # Cleanup temp file
-            Remove-Item -Path "$env:TEMP\winget-verify-$($item.Name).txt" -ErrorAction SilentlyContinue
-            
-            # Return $true if still installed (failure), $false if removed (success)
-            $verifyProcess.ExitCode -eq 0
+        param($item)
+        $wingetListArgs = @('list', '--id', $item.Name, '--accept-source-agreements')
+        $listProcess = Start-Process -FilePath 'winget' -ArgumentList $wingetListArgs -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\winget-list-$($item.Name).txt" -ErrorAction SilentlyContinue
+
+        [PSCustomObject]@{
+            PackageInstalled = $listProcess.ExitCode -eq 0
+            ListArgs         = $wingetListArgs
         }
+    } `
+        -RemovalExecutor {
+        param($item, $preState)
+        $null = $preState
+        try {
+            $wingetArgs = @('uninstall', '--id', $item.Name, '--silent', '--accept-source-agreements')
+            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Executing: winget $($wingetArgs -join ' ')"
+            $process = Start-Process -FilePath 'winget' -ArgumentList $wingetArgs -Wait -PassThru -NoNewWindow
+
+            # Cleanup temp file
+            Remove-Item -Path "$env:TEMP\winget-list-$($item.Name).txt" -ErrorAction SilentlyContinue
+
+            @{ Success = ($process.ExitCode -eq 0); ExitCode = $process.ExitCode; Error = if ($process.ExitCode -ne 0) { "Exit code $($process.ExitCode)" } else { $null } }
+        }
+        catch {
+            @{ Success = $false; ExitCode = 1; Error = $_.Exception.Message }
+        }
+    } `
+        -PostActionVerifier {
+        param($item)
+        $wingetListArgs = @('list', '--id', $item.Name, '--accept-source-agreements')
+        $verifyProcess = Start-Process -FilePath 'winget' -ArgumentList $wingetListArgs -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$env:TEMP\winget-verify-$($item.Name).txt" -ErrorAction SilentlyContinue
+
+        # Cleanup temp file
+        Remove-Item -Path "$env:TEMP\winget-verify-$($item.Name).txt" -ErrorAction SilentlyContinue
+
+        # Return $true if still installed (failure), $false if removed (success)
+        $verifyProcess.ExitCode -eq 0
+    }
 }
 
 #endregion
@@ -821,46 +821,47 @@ function Remove-ChocolateyBloatware {
         -Items $Items `
         -SourceName 'Chocolatey' `
         -ToolAvailabilityChecker {
-            $null -ne (Get-Command choco -ErrorAction SilentlyContinue)
-        } `
+        $null -ne (Get-Command choco -ErrorAction SilentlyContinue)
+    } `
         -GetItemName {
-            param($item)
-            $item.Name
-        } `
+        param($item)
+        $item.Name
+    } `
         -PreActionDetector {
-            param($item)
-            $chocoListArgs = @('list', '--local-only', '--exact', $item.Name, '--limit-output')
-            $listOutput = & choco @chocoListArgs 2>&1
-            $packageInstalled = $LASTEXITCODE -eq 0 -and $listOutput -match $item.Name
-            $installedVersion = if ($packageInstalled -and $listOutput -match "$($item.Name)\|(.+)") { $matches[1] } else { 'N/A' }
-            
-            [PSCustomObject]@{
-                PackageInstalled = $packageInstalled
-                Version          = $installedVersion
-                ListArgs         = $chocoListArgs
-            }
-        } `
-        -RemovalExecutor {
-            param($item, $preState)
-            try {
-                $chocoArgs = @('uninstall', $item.Name, '-y', '--limit-output')
-                Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Executing: choco $($chocoArgs -join ' ')"
-                $process = Start-Process -FilePath 'choco' -ArgumentList $chocoArgs -Wait -PassThru -NoNewWindow
-                
-                @{ Success = ($process.ExitCode -eq 0); ExitCode = $process.ExitCode; Error = if ($process.ExitCode -ne 0) { "Exit code $($process.ExitCode)" } else { $null } }
-            }
-            catch {
-                @{ Success = $false; ExitCode = 1; Error = $_.Exception.Message }
-            }
-        } `
-        -PostActionVerifier {
-            param($item)
-            $chocoListArgs = @('list', '--local-only', '--exact', $item.Name, '--limit-output')
-            $verifyOutput = & choco @chocoListArgs 2>&1
-            
-            # Return $true if still installed (failure), $false if removed (success)
-            $LASTEXITCODE -eq 0 -and $verifyOutput -match $item.Name
+        param($item)
+        $chocoListArgs = @('list', '--local-only', '--exact', $item.Name, '--limit-output')
+        $listOutput = & choco @chocoListArgs 2>&1
+        $packageInstalled = $LASTEXITCODE -eq 0 -and $listOutput -match $item.Name
+        $installedVersion = if ($packageInstalled -and $listOutput -match "$($item.Name)\|(.+)") { $matches[1] } else { 'N/A' }
+
+        [PSCustomObject]@{
+            PackageInstalled = $packageInstalled
+            Version          = $installedVersion
+            ListArgs         = $chocoListArgs
         }
+    } `
+        -RemovalExecutor {
+        param($item, $preState)
+        $null = $preState
+        try {
+            $chocoArgs = @('uninstall', $item.Name, '-y', '--limit-output')
+            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Executing: choco $($chocoArgs -join ' ')"
+            $process = Start-Process -FilePath 'choco' -ArgumentList $chocoArgs -Wait -PassThru -NoNewWindow
+
+            @{ Success = ($process.ExitCode -eq 0); ExitCode = $process.ExitCode; Error = if ($process.ExitCode -ne 0) { "Exit code $($process.ExitCode)" } else { $null } }
+        }
+        catch {
+            @{ Success = $false; ExitCode = 1; Error = $_.Exception.Message }
+        }
+    } `
+        -PostActionVerifier {
+        param($item)
+        $chocoListArgs = @('list', '--local-only', '--exact', $item.Name, '--limit-output')
+        $verifyOutput = & choco @chocoListArgs 2>&1
+
+        # Return $true if still installed (failure), $false if removed (success)
+        $LASTEXITCODE -eq 0 -and $verifyOutput -match $item.Name
+    }
 }
 
 #endregion
@@ -883,93 +884,94 @@ function Remove-RegistryBloatware {
         -Items $Items `
         -SourceName 'Registry' `
         -ToolAvailabilityChecker {
-            $true  # Registry uninstall always available
-        } `
+        $true  # Registry uninstall always available
+    } `
         -GetItemName {
-            param($item)
-            $item.DisplayName ?? $item.Name
-        } `
+        param($item)
+        $item.DisplayName ?? $item.Name
+    } `
         -PreActionDetector {
-            param($item)
-            [PSCustomObject]@{
-                DisplayName     = $item.DisplayName ?? $item.Name
-                UninstallString = $item.UninstallString
-                InstallLocation = $item.InstallLocation ?? 'N/A'
-                Publisher       = $item.Publisher ?? 'N/A'
-                Version         = $item.DisplayVersion ?? 'N/A'
-                EstimatedSize   = $item.EstimatedSize ?? 'N/A'
-            }
-        } `
-        -RemovalExecutor {
-            param($item, $preState)
-            try {
-                if (-not $preState.UninstallString) {
-                    return @{ Success = $false; ExitCode = 1; Error = "No uninstall string available" }
-                }
-
-                # Parse uninstall string
-                $uninstallString = $preState.UninstallString
-                if ($uninstallString -match '^"([^"]+)"(.*)') {
-                    $executable = $matches[1]
-                    $arguments = $matches[2].Trim()
-                }
-                else {
-                    $parts = $uninstallString -split ' ', 2
-                    $executable = $parts[0]
-                    $arguments = if ($parts.Count -gt 1) { $parts[1] } else { '' }
-                }
-
-                # MSI uninstaller normalization
-                if ($executable -match 'msiexec(\.exe)?$') {
-                    if ($arguments -match '/I\s*\{') {
-                        $arguments = $arguments -replace '/I', '/X'
-                    }
-                    if ($arguments -notmatch '/qn|/quiet|/q') {
-                        $arguments += ' /qn'
-                    }
-                    if ($arguments -notmatch '/norestart') {
-                        $arguments += ' /norestart'
-                    }
-                }
-                else {
-                    # Generic silent flags
-                    if ($arguments -notmatch '/S|/silent|/quiet|/q') {
-                        $arguments += ' /S'
-                    }
-                }
-
-                Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Executing: $executable $arguments"
-                $process = Start-Process -FilePath $executable -ArgumentList $arguments -Wait -PassThru -NoNewWindow
-                
-                @{ Success = ($process.ExitCode -eq 0); ExitCode = $process.ExitCode; Error = if ($process.ExitCode -ne 0) { "Exit code $($process.ExitCode)" } else { $null } }
-            }
-            catch {
-                @{ Success = $false; ExitCode = 1; Error = $_.Exception.Message }
-            }
-        } `
-        -PostActionVerifier {
-            param($item)
-            $appName = $item.DisplayName ?? $item.Name
-            $registryPaths = @(
-                "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
-                "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
-                "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
-            )
-
-            foreach ($path in $registryPaths) {
-                $regEntry = Get-ItemProperty -Path $path -ErrorAction SilentlyContinue | 
-                    Where-Object { $_.DisplayName -eq $appName }
-                if ($regEntry) {
-                    # Registry entry still exists - treat as success if exit code was 0 (some installers don't clean registry)
-                    Write-LogEntry -Level 'WARNING' -Component 'BLOATWARE-REMOVAL' `
-                        -Message "Registry entry still exists after uninstall - may be normal for some uninstallers"
-                    return $false  # Treat as success
-                }
-            }
-            
-            # Registry entry removed - success
-            $false
+        param($item)
+        [PSCustomObject]@{
+            DisplayName     = $item.DisplayName ?? $item.Name
+            UninstallString = $item.UninstallString
+            InstallLocation = $item.InstallLocation ?? 'N/A'
+            Publisher       = $item.Publisher ?? 'N/A'
+            Version         = $item.DisplayVersion ?? 'N/A'
+            EstimatedSize   = $item.EstimatedSize ?? 'N/A'
         }
+    } `
+        -RemovalExecutor {
+        param($item, $preState)
+        $null = $item
+        try {
+            if (-not $preState.UninstallString) {
+                return @{ Success = $false; ExitCode = 1; Error = "No uninstall string available" }
+            }
+
+            # Parse uninstall string
+            $uninstallString = $preState.UninstallString
+            if ($uninstallString -match '^"([^"]+)"(.*)') {
+                $executable = $matches[1]
+                $arguments = $matches[2].Trim()
+            }
+            else {
+                $parts = $uninstallString -split ' ', 2
+                $executable = $parts[0]
+                $arguments = if ($parts.Count -gt 1) { $parts[1] } else { '' }
+            }
+
+            # MSI uninstaller normalization
+            if ($executable -match 'msiexec(\.exe)?$') {
+                if ($arguments -match '/I\s*\{') {
+                    $arguments = $arguments -replace '/I', '/X'
+                }
+                if ($arguments -notmatch '/qn|/quiet|/q') {
+                    $arguments += ' /qn'
+                }
+                if ($arguments -notmatch '/norestart') {
+                    $arguments += ' /norestart'
+                }
+            }
+            else {
+                # Generic silent flags
+                if ($arguments -notmatch '/S|/silent|/quiet|/q') {
+                    $arguments += ' /S'
+                }
+            }
+
+            Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message "Executing: $executable $arguments"
+            $process = Start-Process -FilePath $executable -ArgumentList $arguments -Wait -PassThru -NoNewWindow
+
+            @{ Success = ($process.ExitCode -eq 0); ExitCode = $process.ExitCode; Error = if ($process.ExitCode -ne 0) { "Exit code $($process.ExitCode)" } else { $null } }
+        }
+        catch {
+            @{ Success = $false; ExitCode = 1; Error = $_.Exception.Message }
+        }
+    } `
+        -PostActionVerifier {
+        param($item)
+        $appName = $item.DisplayName ?? $item.Name
+        $registryPaths = @(
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+        )
+
+        foreach ($path in $registryPaths) {
+            $regEntry = Get-ItemProperty -Path $path -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -eq $appName }
+            if ($regEntry) {
+                # Registry entry still exists - treat as success if exit code was 0 (some installers don't clean registry)
+                Write-LogEntry -Level 'WARNING' -Component 'BLOATWARE-REMOVAL' `
+                    -Message "Registry entry still exists after uninstall - may be normal for some uninstallers"
+                return $false  # Treat as success
+            }
+        }
+
+        # Registry entry removed - success
+        $false
+    }
 }
 
 #endregion
@@ -1084,6 +1086,7 @@ Export-ModuleMember -Function @(
     # Note: Legacy functions (Remove-DetectedBloatware, Test-BloatwareRemoval)
     # are used internally but not exported to maintain clean module interface
 )
+
 
 
 

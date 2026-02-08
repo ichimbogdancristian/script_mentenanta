@@ -81,12 +81,12 @@ using namespace System.Collections.Generic
 
 .EXAMPLE
     $seconds = Get-SafeValue -Object $config -Path "execution.countdownSeconds" -Default 30
-    
+
     Returns config.execution.countdownSeconds or 30 if not found
 
 .EXAMPLE
     $mode = Get-SafeValue -Object $config -Path "execution.defaultMode" -Default "interactive"
-    
+
     Safe navigation with string default
 
 .NOTES
@@ -100,24 +100,24 @@ function Get-SafeValue {
         [Parameter(Mandatory)]
         [AllowNull()]
         [object]$Object,
-        
+
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
         [string]$Path,
-        
+
         [Parameter()]
         [object]$Default = $null
     )
-    
+
     # Return default immediately if object is null
     if ($null -eq $Object) {
         return $Default
     }
-    
+
     try {
         $parts = $Path -split '\.'
         $current = $Object
-        
+
         foreach ($part in $parts) {
             # Check if property exists
             if ($current -is [hashtable]) {
@@ -132,13 +132,13 @@ function Get-SafeValue {
             else {
                 $current = $current.$part
             }
-            
+
             # If we hit null mid-path, return default
             if ($null -eq $current) {
                 return $Default
             }
         }
-        
+
         # Use null-coalescing operator for final value
         return $current ?? $Default
     }
@@ -177,20 +177,20 @@ function Test-PropertyPath {
         [Parameter(Mandatory)]
         [AllowNull()]
         [object]$Object,
-        
+
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
         [string]$Path
     )
-    
+
     if ($null -eq $Object) {
         return $false
     }
-    
+
     try {
         $parts = $Path -split '\.'
         $current = $Object
-        
+
         foreach ($part in $parts) {
             if ($current -is [hashtable]) {
                 if (-not $current.ContainsKey($part)) {
@@ -204,12 +204,12 @@ function Test-PropertyPath {
             else {
                 $current = $current.$part
             }
-            
+
             if ($null -eq $current) {
                 return $false
             }
         }
-        
+
         return $true
     }
     catch {
@@ -254,14 +254,14 @@ function Test-PropertyPath {
     $data = Invoke-WithRetry -ScriptBlock {
         Get-Content "\\network\share\file.txt"
     } -Context "Network File Read"
-    
+
     Retries network file read with exponential backoff
 
 .EXAMPLE
     Invoke-WithRetry -ScriptBlock {
         Set-ItemProperty -Path "HKLM:\..." -Name "..." -Value "..."
     } -MaxRetries 5 -Context "Registry Write"
-    
+
     Retries registry write up to 5 times
 
 .NOTES
@@ -274,24 +274,24 @@ function Invoke-WithRetry {
     param(
         [Parameter(Mandatory)]
         [scriptblock]$ScriptBlock,
-        
+
         [Parameter()]
         [ValidateRange(1, 10)]
         [int]$MaxRetries = 3,
-        
+
         [Parameter()]
         [ValidateRange(1, 60)]
         [int]$InitialDelaySeconds = 2,
-        
+
         [Parameter()]
         [string]$Context = 'Operation',
-        
+
         [Parameter()]
         [bool]$ExponentialBackoff = $true
     )
-    
+
     $lastError = $null
-    
+
     for ($attempt = 1; $attempt -le $MaxRetries; $attempt++) {
         try {
             Write-Verbose "COMMON-UTILITIES: $Context - Attempt $attempt of $MaxRetries"
@@ -299,12 +299,12 @@ function Invoke-WithRetry {
         }
         catch {
             $lastError = $_
-            
+
             if ($attempt -eq $MaxRetries) {
                 Write-Verbose "COMMON-UTILITIES: $Context failed after $MaxRetries attempts"
                 throw $lastError
             }
-            
+
             # Calculate delay with exponential backoff
             $delay = if ($ExponentialBackoff) {
                 $InitialDelaySeconds * [Math]::Pow(2, $attempt - 1)
@@ -312,12 +312,12 @@ function Invoke-WithRetry {
             else {
                 $InitialDelaySeconds
             }
-            
+
             Write-Verbose "COMMON-UTILITIES: $Context failed (attempt $attempt/$MaxRetries), retrying in ${delay}s: $_"
             Start-Sleep -Seconds $delay
         }
     }
-    
+
     # Should never reach here, but just in case
     throw $lastError
 }
@@ -351,21 +351,21 @@ function New-ErrorObject {
     param(
         [Parameter(Mandatory)]
         [System.Exception]$Exception,
-        
+
         [Parameter()]
         [string]$Context = 'Unknown',
-        
+
         [Parameter()]
         [ValidateSet('Critical', 'Error', 'Warning')]
         [string]$Severity = 'Error'
     )
-    
+
     return @{
-        Message    = $Exception.Message
-        Context    = $Context
-        Severity   = $Severity
-        Type       = $Exception.GetType().Name
-        Timestamp  = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        Message = $Exception.Message
+        Context = $Context
+        Severity = $Severity
+        Type = $Exception.GetType().Name
+        Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
         StackTrace = if ($Severity -eq 'Critical') { $Exception.StackTrace } else { $null }
     }
 }
@@ -404,7 +404,7 @@ function New-ErrorObject {
         -RawResult $result `
         -ModuleName 'BloatwareRemoval' `
         -DurationSeconds 45.3
-    
+
     Converts raw result to standard format
 
 .NOTES
@@ -428,19 +428,19 @@ function ConvertTo-StandardizedResult {
     param(
         [Parameter(Mandatory)]
         [hashtable]$RawResult,
-        
+
         [Parameter(Mandatory)]
         [ValidateNotNullOrEmpty()]
         [string]$ModuleName,
-        
+
         [Parameter()]
         [decimal]$DurationSeconds = 0,
-        
+
         [Parameter()]
         [ValidateSet('Success', 'Failed', 'Skipped')]
         [string]$Status
     )
-    
+
     # Determine status (prefer parameter, then RawResult.Status, then infer from errors)
     $finalStatus = if ($Status) {
         $Status
@@ -457,20 +457,20 @@ function ConvertTo-StandardizedResult {
     else {
         'Success'
     }
-    
+
     return @{
         ModuleName = $ModuleName
-        Status     = $finalStatus
-        Metrics    = @{
-            ItemsDetected   = [int]($RawResult.TotalOperations ?? $RawResult.ItemsDetected ?? 0)
-            ItemsProcessed  = [int]($RawResult.SuccessfulOperations ?? $RawResult.ItemsProcessed ?? 0)
-            ItemsSkipped    = [int]($RawResult.ItemsSkipped ?? 0)
-            ItemsFailed     = [int]($RawResult.FailedOperations ?? $RawResult.ItemsFailed ?? 0)
+        Status = $finalStatus
+        Metrics = @{
+            ItemsDetected = [int]($RawResult.TotalOperations ?? $RawResult.ItemsDetected ?? 0)
+            ItemsProcessed = [int]($RawResult.SuccessfulOperations ?? $RawResult.ItemsProcessed ?? 0)
+            ItemsSkipped = [int]($RawResult.ItemsSkipped ?? 0)
+            ItemsFailed = [int]($RawResult.FailedOperations ?? $RawResult.ItemsFailed ?? 0)
             DurationSeconds = [decimal]$DurationSeconds
         }
-        Results    = $RawResult.Results ?? @{}
-        Errors     = $RawResult.Errors ?? @()
-        Warnings   = $RawResult.Warnings ?? @()
+        Results = $RawResult.Results ?? @{}
+        Errors = $RawResult.Errors ?? @()
+        Warnings = $RawResult.Warnings ?? @()
     }
 }
 
@@ -502,21 +502,21 @@ function Format-DurationString {
         [Parameter(Mandatory)]
         [decimal]$Seconds
     )
-    
+
     if ($Seconds -lt 60) {
         return "{0:F1}s" -f $Seconds
     }
-    
+
     $minutes = [Math]::Floor($Seconds / 60)
     $remainingSeconds = [Math]::Round($Seconds % 60)
-    
+
     if ($minutes -lt 60) {
         return "${minutes}m ${remainingSeconds}s"
     }
-    
+
     $hours = [Math]::Floor($minutes / 60)
     $remainingMinutes = $minutes % 60
-    
+
     return "${hours}h ${remainingMinutes}m ${remainingSeconds}s"
 }
 
@@ -594,27 +594,27 @@ function Test-OSFeatureAvailable {
     # Feature availability map
     $featureMap = @{
         # UI Features
-        'Widgets'          = $OSContext.IsWindows11
-        'Chat'             = $OSContext.IsWindows11
-        'ModernStartMenu'  = $OSContext.IsWindows11
-        'CenteredTaskbar'  = $OSContext.IsWindows11
-        'ModernUI'         = $OSContext.IsWindows11
-        'LegacyStartMenu'  = $OSContext.IsWindows10
-        
+        'Widgets' = $OSContext.IsWindows11
+        'Chat' = $OSContext.IsWindows11
+        'ModernStartMenu' = $OSContext.IsWindows11
+        'CenteredTaskbar' = $OSContext.IsWindows11
+        'ModernUI' = $OSContext.IsWindows11
+        'LegacyStartMenu' = $OSContext.IsWindows10
+
         # System Features
         'TaskbarAlignment' = $OSContext.IsWindows11
-        'SnapLayouts'      = $OSContext.IsWindows11
-        'DirectStorage'    = $OSContext.IsWindows11
-        'AndroidApps'      = $OSContext.IsWindows11
-        'TPM2Required'     = $OSContext.IsWindows11
-        
+        'SnapLayouts' = $OSContext.IsWindows11
+        'DirectStorage' = $OSContext.IsWindows11
+        'AndroidApps' = $OSContext.IsWindows11
+        'TPM2Required' = $OSContext.IsWindows11
+
         # Security Features
-        'VBS'              = $OSContext.IsWindows11
-        'HVCI'             = $OSContext.IsWindows11
+        'VBS' = $OSContext.IsWindows11
+        'HVCI' = $OSContext.IsWindows11
     }
 
     $isAvailable = $featureMap[$FeatureName]
-    
+
     if ($null -eq $isAvailable) {
         Write-Warning "Unknown feature: $FeatureName. Defaulting to false."
         return $false
@@ -653,7 +653,7 @@ function Test-OSFeatureAvailable {
 .EXAMPLE
     $osContext = Get-WindowsVersionContext
     $widgetsPath = Get-OSSpecificRegistryPath -SettingName 'Widgets' -OSContext $osContext
-    
+
     if ($widgetsPath) {
         # Disable widgets (Windows 11 only)
         Set-ItemProperty -Path $widgetsPath -Name 'TaskbarDa' -Value 0
@@ -688,7 +688,7 @@ function Get-OSSpecificRegistryPath {
 
     # Define OS-specific registry paths
     $pathMap = @{
-        'Taskbar'   = @{
+        'Taskbar' = @{
             'Windows10' = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
             'Windows11' = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
             # Note: Same path, but different values (e.g., TaskbarAl for alignment)
@@ -697,19 +697,19 @@ function Get-OSSpecificRegistryPath {
             'Windows10' = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
             'Windows11' = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
         }
-        'Widgets'   = @{
+        'Widgets' = @{
             'Windows11' = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
             # Windows 10 doesn't have widgets panel
         }
-        'Chat'      = @{
+        'Chat' = @{
             'Windows11' = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
             # TaskbarMn value controls chat icon
         }
-        'Explorer'  = @{
+        'Explorer' = @{
             'Windows10' = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
             'Windows11' = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
         }
-        'Search'    = @{
+        'Search' = @{
             'Windows10' = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Search'
             'Windows11' = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Search'
         }
@@ -721,7 +721,7 @@ function Get-OSSpecificRegistryPath {
 
     # Determine OS key
     $osKey = "Windows$($OSContext.Version)"
-    
+
     # Get path for setting and OS version
     if ($pathMap[$SettingName] -and $pathMap[$SettingName][$osKey]) {
         return $pathMap[$SettingName][$osKey]
@@ -755,7 +755,7 @@ function Get-OSSpecificRegistryPath {
 .EXAMPLE
     $config = Get-Content 'config.json' | ConvertFrom-Json
     $osBloatware = Get-OSSpecificConfig -ConfigKey 'bloatware' -Config $config
-    
+
     # Returns common bloatware + Windows 11 specific items
 
 .NOTES
@@ -867,9 +867,9 @@ function Get-GenericHealthScore {
 
         [Parameter()]
         [hashtable]$DeductionMap = @{
-            High   = 20
+            High = 20
             Medium = 10
-            Low    = 5
+            Low = 5
         },
 
         [Parameter()]
@@ -904,12 +904,12 @@ function Get-GenericHealthScore {
     else { "Needs Improvement" }
 
     return [PSCustomObject]@{
-        Overall    = $overallScore
-        MaxScore   = $BaseScore
+        Overall = $overallScore
+        MaxScore = $BaseScore
         Deductions = $deductions
         IssueCount = $Issues.Count
-        Category   = $category
-        ScoreType  = $ScoreType
+        Category = $category
+        ScoreType = $ScoreType
     }
 }
 
@@ -929,7 +929,7 @@ function Get-GenericHealthScore {
     - Removal execution with logging
     - Post-action verification
     - Result aggregation
-    
+
     This is a Phase B.3 consolidation function that standardizes the removal workflow
     used by Remove-AppXBloatware, Remove-WingetBloatware, Remove-ChocolateyBloatware,
     and Remove-RegistryBloatware.
@@ -980,7 +980,7 @@ function Get-GenericHealthScore {
     Module Type: Core Infrastructure (Utilities)
     Architecture: v3.0 - Phase B.3 Consolidation
     Version: 1.0.0
-    
+
     Performance: ~2-5 seconds per item (depends on removal tool)
     Replaces: 4 functions × ~100 lines = ~400 lines eliminated
 #>
@@ -1014,9 +1014,9 @@ function Invoke-BloatwareItemRemoval {
     # Initialize results
     $results = @{
         Successful = 0
-        Failed     = 0
-        Skipped    = 0
-        Details    = [List[PSCustomObject]]::new()
+        Failed = 0
+        Skipped = 0
+        Details = [List[PSCustomObject]]::new()
     }
 
     # Check tool availability
@@ -1032,17 +1032,17 @@ function Invoke-BloatwareItemRemoval {
         $itemName = & $GetItemName $item
         $operationStart = Get-Date
         $result = @{
-            Name    = $itemName
-            Source  = $SourceName
+            Name = $itemName
+            Source = $SourceName
             Success = $false
-            Action  = 'Removed'
-            Error   = $null
+            Action = 'Removed'
+            Error = $null
         }
 
         try {
             # Pre-action state detection
             $preActionState = & $PreActionDetector $item
-            
+
             # Log operation start
             $additionalInfo = if ($preActionState) {
                 "$SourceName Package"
@@ -1068,17 +1068,17 @@ function Invoke-BloatwareItemRemoval {
 
                     # Log successful verification
                     Write-OperationSuccess -Component 'BLOATWARE-REMOVAL' -Operation 'Verify' -Target $itemName -Metrics @{
-                        StillInstalled     = $false
+                        StillInstalled = $false
                         VerificationPassed = $true
                     }
 
                     # Log successful removal
                     Write-OperationSuccess -Component 'BLOATWARE-REMOVAL' -Operation 'Remove' -Target $itemName -Metrics @{
                         Duration = $operationDuration
-                        Source   = $SourceName
+                        Source = $SourceName
                         Verified = $true
                     }
-                    
+
                     $result.Success = $true
                     Write-Information "       Successfully removed $SourceName package: $itemName (${operationDuration}s)" -InformationAction Continue
                     $results.Successful++
@@ -1130,7 +1130,7 @@ function Invoke-BloatwareItemRemoval {
     Generates prioritized recommendations based on issue impact levels (High, Medium, Low).
     Eliminates ~60 lines of duplicate code across 3 audit modules by centralizing the common
     recommendation generation pattern.
-    
+
     This is a Phase B.3 consolidation function that standardizes recommendation generation
     used by New-OptimizationRecommendations, New-PrivacyRecommendations, and New-UpdateRecommendations.
 
@@ -1164,7 +1164,7 @@ function Invoke-BloatwareItemRemoval {
         -Issues $auditResults.PrivacyIssues `
         -IssueType 'privacy' `
         -SpecificChecks @{
-            ActiveServices = { param($results) 
+            ActiveServices = { param($results)
                 if ($results.ActiveServices.Count -gt 0) {
                     " Services: Consider disabling $($results.ActiveServices.Count) telemetry services"
                 }
@@ -1176,7 +1176,7 @@ function Invoke-BloatwareItemRemoval {
     Module Type: Core Infrastructure (Utilities)
     Architecture: v3.0 - Phase B.3 Consolidation
     Version: 1.0.0
-    
+
     Replaces: 3 functions × ~60 lines = ~180 lines eliminated
 #>
 function New-ImpactBasedRecommendations {
@@ -1203,7 +1203,7 @@ function New-ImpactBasedRecommendations {
     )
 
     $recommendations = @()
-    
+
     # Combine all issues for comprehensive impact analysis
     $allIssues = @($Issues) + @($AdditionalIssues)
 
@@ -1366,20 +1366,20 @@ function Invoke-OSAwareConfigMerge {
         }
         else {
             Write-Warning "Get-WindowsVersionContext not available. Returning config without OS-specific merging."
-            
+
             # Return fallback configuration
             if ($ConfigData.common) {
-                return if ($ReturnFormat -eq 'Hashtable') { 
-                    @{ $FallbackProperty = $ConfigData.common } 
-                } else { 
-                    $ConfigData.common 
+                return if ($ReturnFormat -eq 'Hashtable') {
+                    @{ $FallbackProperty = $ConfigData.common }
+                } else {
+                    $ConfigData.common
                 }
             }
             elseif ($ConfigData.$FallbackProperty) {
-                return if ($ReturnFormat -eq 'Hashtable') { 
-                    $ConfigData 
-                } else { 
-                    $ConfigData.$FallbackProperty 
+                return if ($ReturnFormat -eq 'Hashtable') {
+                    $ConfigData
+                } else {
+                    $ConfigData.$FallbackProperty
                 }
             }
             else {
@@ -1393,7 +1393,7 @@ function Invoke-OSAwareConfigMerge {
         'Simple' {
             # Simple array concatenation (for bloatware lists, essential apps, etc.)
             $result = @()
-            
+
             # Add common items
             if ($ConfigData.common) {
                 $result += $ConfigData.common
@@ -1421,13 +1421,13 @@ function Invoke-OSAwareConfigMerge {
 
         'Complex' {
             # Complex nested property merging (for system optimization, security config, etc.)
-            
+
             # Helper function to convert PSCustomObject to hashtable recursively
             function ConvertTo-Hashtable {
                 param($InputObject)
-                
+
                 if ($null -eq $InputObject) { return $null }
-                
+
                 if ($InputObject -is [hashtable]) {
                     $output = @{}
                     foreach ($key in $InputObject.Keys) {
@@ -1435,7 +1435,7 @@ function Invoke-OSAwareConfigMerge {
                     }
                     return $output
                 }
-                
+
                 if ($InputObject -is [PSCustomObject]) {
                     $output = @{}
                     foreach ($property in $InputObject.PSObject.Properties) {
@@ -1443,7 +1443,7 @@ function Invoke-OSAwareConfigMerge {
                     }
                     return $output
                 }
-                
+
                 if ($InputObject -is [Array]) {
                     $output = @()
                     foreach ($item in $InputObject) {
@@ -1451,10 +1451,10 @@ function Invoke-OSAwareConfigMerge {
                     }
                     return , $output
                 }
-                
+
                 return $InputObject
             }
-            
+
             # Convert common base to hashtable for mutable merging
             $result = if ($ConfigData.common) {
                 ConvertTo-Hashtable $ConfigData.common
@@ -1479,7 +1479,7 @@ function Invoke-OSAwareConfigMerge {
                         [hashtable]$Base,
                         [hashtable]$Override
                     )
-                    
+
                     foreach ($key in $Override.Keys) {
                         if ($Override[$key] -is [hashtable] -and $Base[$key] -is [hashtable]) {
                             # Recursively merge nested hashtables
@@ -1497,7 +1497,7 @@ function Invoke-OSAwareConfigMerge {
                         }
                     }
                 }
-                
+
                 Merge-HashTables -Base $result -Override $osConfig
             }
 
@@ -1532,3 +1532,4 @@ Export-ModuleMember -Function @(
     'New-ImpactBasedRecommendations',
     'Invoke-OSAwareConfigMerge'
 )
+

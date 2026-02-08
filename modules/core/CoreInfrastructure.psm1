@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -156,49 +156,49 @@ function Get-WindowsVersionContext {
 
         # Build comprehensive context object
         $osContext = [PSCustomObject]@{
-            Version           = $version
-            BuildNumber       = $buildNumber
-            Caption           = $osInfo.Caption
-            Architecture      = $osInfo.OSArchitecture
-            IsWindows11       = ($version -eq '11')
-            IsWindows10       = ($version -eq '10')
-            DisplayText       = "Windows $version (Build $buildNumber)"
-            DetectionTime     = Get-Date
+            Version = $version
+            BuildNumber = $buildNumber
+            Caption = $osInfo.Caption
+            Architecture = $osInfo.OSArchitecture
+            IsWindows11 = ($version -eq '11')
+            IsWindows10 = ($version -eq '10')
+            DisplayText = "Windows $version (Build $buildNumber)"
+            DetectionTime = Get-Date
             SupportedFeatures = @{
                 # Windows 11 exclusive features
-                ModernUI         = ($version -eq '11')
-                TPM2Required     = ($version -eq '11')
-                WidgetsPanel     = ($version -eq '11')
+                ModernUI = ($version -eq '11')
+                TPM2Required = ($version -eq '11')
+                WidgetsPanel = ($version -eq '11')
                 TeamsIntegration = ($version -eq '11')
-                SnapLayouts      = ($version -eq '11')
-                DirectStorage    = ($version -eq '11')
-                AndroidApps      = ($version -eq '11')
+                SnapLayouts = ($version -eq '11')
+                DirectStorage = ($version -eq '11')
+                AndroidApps = ($version -eq '11')
                 TaskbarAlignment = ($version -eq '11')
-                
+
                 # Windows 10 features
-                LegacyStartMenu  = ($version -eq '10')
-                LiveTiles        = ($version -eq '10')
-                ClassicTaskbar   = ($version -eq '10')
+                LegacyStartMenu = ($version -eq '10')
+                LiveTiles = ($version -eq '10')
+                ClassicTaskbar = ($version -eq '10')
             }
         }
 
         Write-Verbose "OS Detection: $($osContext.DisplayText) [$($osContext.Architecture)]"
-        
+
         return $osContext
     }
     catch {
         Write-Warning "OS detection failed: $_. Returning fallback context."
-        
+
         # Return fallback context for unknown OS
         return [PSCustomObject]@{
-            Version           = 'Unknown'
-            BuildNumber       = 0
-            Caption           = 'Unknown OS'
-            Architecture      = 'Unknown'
-            IsWindows11       = $false
-            IsWindows10       = $false
-            DisplayText       = 'Unknown Windows Version'
-            DetectionTime     = Get-Date
+            Version = 'Unknown'
+            BuildNumber = 0
+            Caption = 'Unknown OS'
+            Architecture = 'Unknown'
+            IsWindows11 = $false
+            IsWindows10 = $false
+            DisplayText = 'Unknown Windows Version'
+            DetectionTime = Get-Date
             SupportedFeatures = @{}
         }
     }
@@ -274,19 +274,16 @@ filter ConvertTo-Hashtable {
 
 #endregion Helper Functions
 
-#region ============================================================
-#region PATH DISCOVERY SYSTEM (From CorePaths.psm1)
-#region ============================================================
-
-# Global project path discovery - makes entire project aware of its structure
+#region ============================================================ #region PATH DISCOVERY SYSTEM (From CorePaths.psm1)
+#region ============================================================ # Global project path discovery - makes entire project aware of its structure
 $script:MaintenanceProjectPaths = @{
     ProjectRoot = $null
-    ConfigRoot  = $null
+    ConfigRoot = $null
     ModulesRoot = $null
-    TempRoot    = $null
-    ParentDir   = $null
+    TempRoot = $null
+    ParentDir = $null
     Initialized = $false
-    InitLock    = [System.Threading.ReaderWriterLockSlim]::new([System.Threading.LockRecursionPolicy]::SupportsRecursion)
+    InitLock = [System.Threading.ReaderWriterLockSlim]::new([System.Threading.LockRecursionPolicy]::SupportsRecursion)
 }
 
 <#
@@ -383,12 +380,12 @@ function Initialize-GlobalPathDiscovery {
         # Type2 modules reference $Global:ProjectPaths.TempFiles, $Global:ProjectPaths.Config, etc.
         $Global:ProjectPaths = @{
             ProjectRoot = $script:MaintenanceProjectPaths.ProjectRoot
-            ConfigRoot  = $script:MaintenanceProjectPaths.ConfigRoot
+            ConfigRoot = $script:MaintenanceProjectPaths.ConfigRoot
             ModulesRoot = $script:MaintenanceProjectPaths.ModulesRoot
-            TempFiles   = $script:MaintenanceProjectPaths.TempRoot
-            ParentDir   = $script:MaintenanceProjectPaths.ParentDir
-            Config      = $script:MaintenanceProjectPaths.ConfigRoot  # Alias
-            Modules     = $script:MaintenanceProjectPaths.ModulesRoot # Alias
+            TempFiles = $script:MaintenanceProjectPaths.TempRoot
+            ParentDir = $script:MaintenanceProjectPaths.ParentDir
+            Config = $script:MaintenanceProjectPaths.ConfigRoot  # Alias
+            Modules = $script:MaintenanceProjectPaths.ModulesRoot # Alias
         }
 
         Write-Verbose "Global ProjectPaths initialized: $($Global:ProjectPaths | ConvertTo-Json)"
@@ -423,11 +420,11 @@ function Get-MaintenancePaths {
 
         return @{
             ProjectRoot = $script:MaintenanceProjectPaths.ProjectRoot
-            ConfigRoot  = $script:MaintenanceProjectPaths.ConfigRoot
+            ConfigRoot = $script:MaintenanceProjectPaths.ConfigRoot
             ModulesRoot = $script:MaintenanceProjectPaths.ModulesRoot
-            TempRoot    = $script:MaintenanceProjectPaths.TempRoot
-            ParentDir   = $script:MaintenanceProjectPaths.ParentDir
-            SessionId   = $env:MAINTENANCE_SESSION_ID
+            TempRoot = $script:MaintenanceProjectPaths.TempRoot
+            ParentDir = $script:MaintenanceProjectPaths.ParentDir
+            SessionId = $env:MAINTENANCE_SESSION_ID
         }
     }
     finally {
@@ -538,7 +535,7 @@ function Test-MaintenancePathsIntegrity {
     $paths = Get-MaintenancePaths
     $result = @{
         IsValid = $true
-        Errors  = @()
+        Errors = @()
     }
 
     $pathsToCheck = @(
@@ -609,35 +606,35 @@ function Get-JsonConfiguration {
     # Map config types to file paths (relative to CONFIG_ROOT)
     # Phase 3: Updated paths to support new subdirectory structure
     $configFiles = @{
-        'Main'               = 'settings\main-config.json'
-        'Bloatware'          = 'lists\bloatware\bloatware-list.json'
-        'EssentialApps'      = 'lists\essential-apps\essential-apps.json'
-        'AppUpgrade'         = 'lists\app-upgrade\app-upgrade-config.json'
+        'Main' = 'settings\main-config.json'
+        'Bloatware' = 'lists\bloatware\bloatware-list.json'
+        'EssentialApps' = 'lists\essential-apps\essential-apps.json'
+        'AppUpgrade' = 'lists\app-upgrade\app-upgrade-config.json'
         'SystemOptimization' = 'lists\system-optimization\system-optimization-config.json'
         'ModuleDependencies' = 'settings\module-dependencies.json'
-        'Security'           = 'settings\security-config.json'
-        'Logging'            = 'settings\logging-config.json'
-        'ReportTemplates'    = 'templates\report-templates-config.json'
+        'Security' = 'settings\security-config.json'
+        'Logging' = 'settings\logging-config.json'
+        'ReportTemplates' = 'templates\report-templates-config.json'
     }
-    
+
     # Phase 3: Backward compatibility - legacy paths (Phase 2 structure)
     $legacyConfigFiles = @{
-        'Bloatware'          = 'lists\bloatware-list.json'
-        'EssentialApps'      = 'lists\essential-apps.json'
-        'AppUpgrade'         = 'lists\app-upgrade-config.json'
+        'Bloatware' = 'lists\bloatware-list.json'
+        'EssentialApps' = 'lists\essential-apps.json'
+        'AppUpgrade' = 'lists\app-upgrade-config.json'
         'SystemOptimization' = 'lists\system-optimization-config.json'
     }
 
     # Default return values for each config type
     $defaultValues = @{
-        'Main'               = @{}
-        'Bloatware'          = @{ all = @() }
-        'EssentialApps'      = @{ all = @() }
-        'AppUpgrade'         = @{ all = @() }
+        'Main' = @{}
+        'Bloatware' = @{ all = @() }
+        'EssentialApps' = @{ all = @() }
+        'AppUpgrade' = @{ all = @() }
         'SystemOptimization' = @{ startupPrograms = @{ safeToDisablePatterns = @() }; services = @{ safeToDisable = @() } }
-        'Security'           = @{ security = @{ enableDigitalSignatureVerification = $true; enableRealTimeProtection = $true; defenderIntegration = $true; enableAuditLogging = $true }; compliance = @{ enableCISBaseline = $true; enforceExecutionPolicy = 'RemoteSigned' } }
-        'Logging'            = @{ levels = @('INFO', 'WARNING', 'ERROR') }
-        'ReportTemplates'    = @{}
+        'Security' = @{ security = @{ enableDigitalSignatureVerification = $true; enableRealTimeProtection = $true; defenderIntegration = $true; enableAuditLogging = $true }; compliance = @{ enableCISBaseline = $true; enforceExecutionPolicy = 'RemoteSigned' } }
+        'Logging' = @{ levels = @('INFO', 'WARNING', 'ERROR') }
+        'ReportTemplates' = @{}
     }
 
     try {
@@ -1092,7 +1089,7 @@ function Get-NestedProperty {
 .DESCRIPTION
     v3.1 (Phase 2): Uses JSON Schema Draft-07 files to validate configuration.
     This is the new preferred validation method using industry-standard JSON Schema.
-    
+
     Validates:
     - JSON syntax
     - Required fields presence
@@ -1149,10 +1146,10 @@ function Test-ConfigurationWithJsonSchema {
     )
 
     $result = [PSCustomObject]@{
-        IsValid      = $false
-        ConfigFile   = $ConfigFilePath
-        SchemaFile   = $null
-        Errors       = @()
+        IsValid = $false
+        ConfigFile = $ConfigFilePath
+        SchemaFile = $null
+        Errors = @()
         ErrorDetails = $null
     }
 
@@ -1161,7 +1158,7 @@ function Test-ConfigurationWithJsonSchema {
         if (-not (Test-Path $ConfigFilePath)) {
             $result.Errors += "Configuration file not found: $ConfigFilePath"
             $result.ErrorDetails = "Configuration file not found: $ConfigFilePath"
-            
+
             if ($ThrowOnError) {
                 throw $result.ErrorDetails
             }
@@ -1172,11 +1169,11 @@ function Test-ConfigurationWithJsonSchema {
         if (-not $SchemaFilePath) {
             $configFileName = Split-Path $ConfigFilePath -Leaf
             $baseConfigName = $configFileName -replace '\.json$', ''
-            
+
             # Phase 3: Centralized schemas directory
             # Try config/schemas/ directory first (Phase 3 structure)
             $centralSchemaPath = Join-Path $env:MAINTENANCE_CONFIG_ROOT "schemas\$baseConfigName.schema.json"
-            
+
             if (Test-Path $centralSchemaPath) {
                 $SchemaFilePath = $centralSchemaPath
                 Write-Verbose "Using centralized schema: $centralSchemaPath"
@@ -1185,7 +1182,7 @@ function Test-ConfigurationWithJsonSchema {
                 # Fallback: Check same directory as config (Phase 2 structure - backward compatibility)
                 $configDir = Split-Path $ConfigFilePath -Parent
                 $legacySchemaPath = Join-Path $configDir "$baseConfigName.schema.json"
-                
+
                 if (Test-Path $legacySchemaPath) {
                     $SchemaFilePath = $legacySchemaPath
                     Write-Verbose "Using legacy schema location: $legacySchemaPath"
@@ -1215,7 +1212,7 @@ function Test-ConfigurationWithJsonSchema {
         # Validate JSON against schema using Test-Json
         try {
             $isValid = Test-Json -Json $jsonContent -Schema $schemaContent -ErrorAction Stop
-            
+
             if ($isValid) {
                 $result.IsValid = $true
                 Write-Verbose "Configuration validated successfully: $ConfigFilePath"
@@ -1230,7 +1227,7 @@ function Test-ConfigurationWithJsonSchema {
             $validationError = $_.Exception.Message
             $result.Errors += $validationError
             $result.ErrorDetails = "Schema validation failed for '$ConfigFilePath':`n$validationError"
-            
+
             Write-Verbose "Validation error details: $validationError"
         }
 
@@ -1249,7 +1246,7 @@ function Test-ConfigurationWithJsonSchema {
     catch {
         $result.Errors += $_.Exception.Message
         $result.ErrorDetails = "Validation exception for '$ConfigFilePath': $($_.Exception.Message)"
-        
+
         if ($ThrowOnError) {
             throw $result.ErrorDetails
         }
@@ -1267,7 +1264,7 @@ function Test-ConfigurationWithJsonSchema {
 .DESCRIPTION
     Batch validation of all configuration files in the system.
     Returns a comprehensive report of validation results.
-    
+
     Validates:
     - config/settings/main-config.json
     - config/settings/logging-config.json
@@ -1330,15 +1327,15 @@ function Test-AllConfigurationsWithSchema {
 
     foreach ($configFile in $configFiles) {
         Write-Verbose "Validating: $($configFile.Name)"
-        
+
         $validationResult = Test-ConfigurationWithJsonSchema -ConfigFilePath $configFile.Path -ErrorAction Continue
-        
+
         $results += [PSCustomObject]@{
-            Name       = $configFile.Name
-            Path       = $configFile.Path
-            IsValid    = $validationResult.IsValid
+            Name = $configFile.Name
+            Path = $configFile.Path
+            IsValid = $validationResult.IsValid
             SchemaFile = $validationResult.SchemaFile
-            Errors     = $validationResult.Errors
+            Errors = $validationResult.Errors
         }
 
         if ($validationResult.IsValid) {
@@ -1348,7 +1345,7 @@ function Test-AllConfigurationsWithSchema {
         else {
             $invalidCount++
             Write-Warning "  ✗ Invalid: $($validationResult.ErrorDetails)"
-            
+
             if ($StopOnFirstError) {
                 break
             }
@@ -1364,12 +1361,12 @@ function Test-AllConfigurationsWithSchema {
     }
 
     return [PSCustomObject]@{
-        AllValid       = $allValid
-        TotalConfigs   = $configFiles.Count
-        ValidConfigs   = $validCount
+        AllValid = $allValid
+        TotalConfigs = $configFiles.Count
+        ValidConfigs = $validCount
         InvalidConfigs = $invalidCount
-        Results        = $results
-        Summary        = $summary
+        Results = $results
+        Summary = $summary
     }
 }
 
@@ -1380,7 +1377,7 @@ function Test-AllConfigurationsWithSchema {
 .DESCRIPTION
     v3.1: Comprehensive configuration schema validation beyond JSON syntax checking.
     Validates required fields, data types, value ranges, and enumerations.
-    
+
     **LEGACY FUNCTION** - Retained for backward compatibility.
     **PREFER**: Test-ConfigurationWithJsonSchema (Phase 2 JSON Schema validation)
 
@@ -1420,34 +1417,34 @@ function Test-ConfigurationSchema {
 
     # Define configuration schemas (v3.1)
     $schemas = @{
-        'main-config.json'    = @{
-            'execution.countdownSeconds'      = @{ Type = 'int'; Min = 5; Max = 300; Required = $true; Description = 'Menu countdown duration in seconds' }
-            'execution.defaultMode'           = @{ Type = 'string'; Enum = @('unattended', 'interactive'); Required = $false; Description = 'Default execution mode' }
-            'modules.skipBloatwareRemoval'    = @{ Type = 'bool'; Required = $false; Description = 'Skip bloatware removal module' }
-            'modules.skipEssentialApps'       = @{ Type = 'bool'; Required = $false; Description = 'Skip essential apps module' }
-            'modules.skipWindowsUpdates'      = @{ Type = 'bool'; Required = $false; Description = 'Skip Windows updates module' }
+        'main-config.json' = @{
+            'execution.countdownSeconds' = @{ Type = 'int'; Min = 5; Max = 300; Required = $true; Description = 'Menu countdown duration in seconds' }
+            'execution.defaultMode' = @{ Type = 'string'; Enum = @('unattended', 'interactive'); Required = $false; Description = 'Default execution mode' }
+            'modules.skipBloatwareRemoval' = @{ Type = 'bool'; Required = $false; Description = 'Skip bloatware removal module' }
+            'modules.skipEssentialApps' = @{ Type = 'bool'; Required = $false; Description = 'Skip essential apps module' }
+            'modules.skipWindowsUpdates' = @{ Type = 'bool'; Required = $false; Description = 'Skip Windows updates module' }
             'system.createSystemRestorePoint' = @{ Type = 'bool'; Required = $false; Description = 'Create restore point before changes' }
-            'system.restorePointMaxSizeGB'    = @{ Type = 'int'; Min = 1; Max = 100; Required = $false; Description = 'Max size (GB) for System Restore storage' }
-            'system.maxLogSizeMB'             = @{ Type = 'int'; Min = 1; Max = 100; Required = $false; Description = 'Maximum log file size in MB' }
-            'reporting.enableHtmlReport'      = @{ Type = 'bool'; Required = $false; Description = 'Generate HTML reports' }
-            'paths.tempFolder'                = @{ Type = 'string'; Required = $false; Description = 'Temporary files directory' }
+            'system.restorePointMaxSizeGB' = @{ Type = 'int'; Min = 1; Max = 100; Required = $false; Description = 'Max size (GB) for System Restore storage' }
+            'system.maxLogSizeMB' = @{ Type = 'int'; Min = 1; Max = 100; Required = $false; Description = 'Maximum log file size in MB' }
+            'reporting.enableHtmlReport' = @{ Type = 'bool'; Required = $false; Description = 'Generate HTML reports' }
+            'paths.tempFolder' = @{ Type = 'string'; Required = $false; Description = 'Temporary files directory' }
         }
 
         'logging-config.json' = @{
-            'logging.level'        = @{ Type = 'string'; Enum = @('DEBUG', 'INFO', 'WARN', 'ERROR', 'CRITICAL'); Required = $false; Description = 'Default logging level' }
+            'logging.level' = @{ Type = 'string'; Enum = @('DEBUG', 'INFO', 'WARN', 'ERROR', 'CRITICAL'); Required = $false; Description = 'Default logging level' }
             'logging.maxLogSizeKB' = @{ Type = 'int'; Min = 100; Max = 102400; Required = $false; Description = 'Maximum log size in KB' }
         }
 
         'bloatware-list.json' = @{
-            '_type'        = 'object'
+            '_type' = 'object'
             '_description' = 'Bloatware configuration with whitelist'
-            'bloatware'    = @{ Type = 'array'; Required = $false; Description = 'List of bloatware definitions' }
-            'whitelist'    = @{ Type = 'array'; Required = $false; Description = 'Apps to never remove' }
+            'bloatware' = @{ Type = 'array'; Required = $false; Description = 'List of bloatware definitions' }
+            'whitelist' = @{ Type = 'array'; Required = $false; Description = 'Apps to never remove' }
         }
 
         'essential-apps.json' = @{
-            '_type'         = 'object'
-            '_description'  = 'Essential applications configuration'
+            '_type' = 'object'
+            '_description' = 'Essential applications configuration'
             'essentialApps' = @{ Type = 'array'; Required = $false; Description = 'List of essential applications' }
         }
     }
@@ -1637,9 +1634,9 @@ Export-ModuleMember -Alias 'Get-UnifiedEssentialAppsList'
 # Logging standards for unified format across all components
 $script:LoggingStandards = @{
     TimestampFormat = 'yyyy-MM-ddTHH:mm:ss.fffK'  # ISO 8601 with timezone
-    EntryFormat     = '[{0}] [{1}] [{2}] {3}'      # [TIMESTAMP] [LEVEL] [COMPONENT] MESSAGE
-    Levels          = @('DEBUG', 'INFO', 'WARNING', 'SUCCESS', 'ERROR')
-    Components      = @('LAUNCHER', 'ORCHESTRATOR', 'CORE', 'TYPE1', 'TYPE2', 'REPORTER')
+    EntryFormat = '[{0}] [{1}] [{2}] {3}'      # [TIMESTAMP] [LEVEL] [COMPONENT] MESSAGE
+    Levels = @('DEBUG', 'INFO', 'WARNING', 'SUCCESS', 'ERROR')
+    Components = @('LAUNCHER', 'ORCHESTRATOR', 'CORE', 'TYPE1', 'TYPE2', 'REPORTER')
 }
 $script:LoggingState = @{
     BaseLogPath = $null
@@ -2039,9 +2036,9 @@ function Start-PerformanceTracking {
 
     return @{
         OperationName = $OperationName
-        Component     = $Component
-        StartTime     = Get-Date
-        Status        = 'Running'
+        Component = $Component
+        StartTime = Get-Date
+        Status = 'Running'
     }
 }
 
@@ -2566,9 +2563,9 @@ function Get-SessionStatistics {
     param()
 
     return @{
-        TotalFiles  = (Get-ChildItem -Path $env:MAINTENANCE_TEMP_ROOT -Recurse -File | Measure-Object).Count
-        DataFiles   = (Get-ChildItem -Path (Get-SessionDirectoryPath -Type 'data') -File -ErrorAction SilentlyContinue | Measure-Object).Count
-        LogFiles    = (Get-ChildItem -Path (Get-SessionDirectoryPath -Type 'logs') -File -ErrorAction SilentlyContinue | Measure-Object).Count
+        TotalFiles = (Get-ChildItem -Path $env:MAINTENANCE_TEMP_ROOT -Recurse -File | Measure-Object).Count
+        DataFiles = (Get-ChildItem -Path (Get-SessionDirectoryPath -Type 'data') -File -ErrorAction SilentlyContinue | Measure-Object).Count
+        LogFiles = (Get-ChildItem -Path (Get-SessionDirectoryPath -Type 'logs') -File -ErrorAction SilentlyContinue | Measure-Object).Count
         ReportFiles = (Get-ChildItem -Path (Get-SessionDirectoryPath -Type 'reports') -File -ErrorAction SilentlyContinue | Measure-Object).Count
     }
 }
@@ -2613,11 +2610,11 @@ function Get-InfrastructureStatus {
 
     return [PSCustomObject]@{
         PathsInitialized = $pathsTest.IsValid
-        PathErrors       = $pathsTest.Errors
-        ConfigsLoaded    = $configTest.IsValid
-        ConfigErrors     = $configTest.Errors
-        SessionId        = $env:MAINTENANCE_SESSION_ID
-        Timestamp        = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+        PathErrors = $pathsTest.Errors
+        ConfigsLoaded = $configTest.IsValid
+        ConfigErrors = $configTest.Errors
+        SessionId = $env:MAINTENANCE_SESSION_ID
+        Timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
     }
 }
 
@@ -2892,15 +2889,15 @@ function New-ModuleExecutionResult {
 
     # Build standardized result object
     $result = @{
-        Success            = [bool]$Success
-        ItemsDetected      = [int]$ItemsDetected
-        ItemsProcessed     = [int]$ItemsProcessed
-        Duration           = [double]$DurationMilliseconds
-        LogPath            = $LogPath
-        ModuleName         = $ModuleName
-        Error              = $ErrorMessage
+        Success = [bool]$Success
+        ItemsDetected = [int]$ItemsDetected
+        ItemsProcessed = [int]$ItemsProcessed
+        Duration = [double]$DurationMilliseconds
+        LogPath = $LogPath
+        ModuleName = $ModuleName
+        Error = $ErrorMessage
         ExecutionTimestamp = Get-Date -Format 'o'
-        AdditionalData     = $AdditionalData
+        AdditionalData = $AdditionalData
     }
 
     # Use Write-Output -NoEnumerate to prevent array wrapping
@@ -3100,14 +3097,14 @@ function Write-StructuredLogEntry {
             # Create JSON entry with ISO 8601 timestamp
             $isoTimestamp = Get-Date -Format $script:LoggingStandards.TimestampFormat
             $jsonEntry = @{
-                timestamp  = $isoTimestamp
-                level      = $Level
-                component  = $Component
-                message    = $filteredMessage  # Use filtered message in JSON too
-                operation  = $Operation
-                target     = $Target
-                result     = $Result
-                metadata   = $Metadata
+                timestamp = $isoTimestamp
+                level = $Level
+                component = $Component
+                message = $filteredMessage  # Use filtered message in JSON too
+                operation = $Operation
+                target = $Target
+                result = $Result
+                metadata = $Metadata
                 entry_time = Get-Date -Format 'o'  # Keep for backward compatibility
             }
 
@@ -3293,7 +3290,7 @@ function Enable-SystemProtection {
                         Write-Verbose "Attempting Windows 10 fallback method using VSSAdmin..."
                         $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore'
                         $disableReg = Get-ItemProperty -Path $regPath -Name 'DisableSR' -ErrorAction SilentlyContinue
-                        
+
                         # Only try to enable via registry if not already enabled
                         if ($disableReg -and $disableReg.DisableSR -eq 1) {
                             Set-ItemProperty -Path $regPath -Name 'DisableSR' -Value 0 -ErrorAction SilentlyContinue
@@ -3303,7 +3300,7 @@ function Enable-SystemProtection {
                         # Try vssadmin as additional fallback
                         & vssadmin Enable Shadows /For=$Drive | Out-Null 2>&1
                         Write-Verbose "Attempted to enable VSS shadow storage on $Drive"
-                        
+
                         return @{ Success = $true; Message = 'System Protection enabled (via fallback methods)'; Method = 'Fallback-Win10' }
                     }
                     catch {
@@ -3422,18 +3419,18 @@ function Test-SystemRequirements {
     param()
 
     $results = @{
-        AllMet   = $true
-        Checks   = @()
-        Failed   = @()
+        AllMet = $true
+        Checks = @()
+        Failed = @()
         Warnings = @()
     }
 
     # Check 1: PowerShell Version
     $psCheck = @{
-        Name     = 'PowerShell Version'
+        Name = 'PowerShell Version'
         Required = '7.0'
-        Actual   = $PSVersionTable.PSVersion.ToString()
-        Met      = $PSVersionTable.PSVersion.Major -ge 7
+        Actual = $PSVersionTable.PSVersion.ToString()
+        Met = $PSVersionTable.PSVersion.Major -ge 7
     }
     $results.Checks += $psCheck
     if (-not $psCheck.Met) {
@@ -3444,10 +3441,10 @@ function Test-SystemRequirements {
     # Check 2: Administrator Privileges
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     $adminCheck = @{
-        Name     = 'Administrator Privileges'
+        Name = 'Administrator Privileges'
         Required = 'Administrator'
-        Actual   = if ($isAdmin) { 'Administrator' } else { 'User' }
-        Met      = $isAdmin
+        Actual = if ($isAdmin) { 'Administrator' } else { 'User' }
+        Met = $isAdmin
     }
     $results.Checks += $adminCheck
     if (-not $adminCheck.Met) {
@@ -3463,10 +3460,10 @@ function Test-SystemRequirements {
         $minSpaceGB = 1
 
         $diskCheck = @{
-            Name     = 'Disk Space'
+            Name = 'Disk Space'
             Required = "$minSpaceGB GB free"
-            Actual   = "$freeSpaceGB GB free"
-            Met      = $freeSpaceGB -ge $minSpaceGB
+            Actual = "$freeSpaceGB GB free"
+            Met = $freeSpaceGB -ge $minSpaceGB
         }
         $results.Checks += $diskCheck
 
@@ -3490,10 +3487,10 @@ function Test-SystemRequirements {
         $minMemoryGB = 2
 
         $memoryCheck = @{
-            Name     = 'Available Memory'
+            Name = 'Available Memory'
             Required = "$minMemoryGB GB free"
-            Actual   = "$freeMemoryGB GB free"
-            Met      = $freeMemoryGB -ge $minMemoryGB
+            Actual = "$freeMemoryGB GB free"
+            Met = $freeMemoryGB -ge $minMemoryGB
         }
         $results.Checks += $memoryCheck
 
@@ -3527,10 +3524,10 @@ function Test-SystemRequirements {
         }
 
         $rebootCheck = @{
-            Name     = 'System Reboot Status'
+            Name = 'System Reboot Status'
             Required = 'No pending reboot'
-            Actual   = if ($rebootPending) { 'Reboot pending' } else { 'No reboot pending' }
-            Met      = -not $rebootPending
+            Actual = if ($rebootPending) { 'Reboot pending' } else { 'No reboot pending' }
+            Met = -not $rebootPending
         }
         $results.Checks += $rebootCheck
 
@@ -3607,10 +3604,10 @@ function Test-SystemRequirements {
         else { 'Disabled' }
 
         $spCheck = @{
-            Name     = 'System Protection'
+            Name = 'System Protection'
             Required = 'Enabled'
-            Actual   = $actualStatus
-            Met      = $spEnabled
+            Actual = $actualStatus
+            Met = $spEnabled
         }
         $results.Checks += $spCheck
 
@@ -3847,11 +3844,11 @@ function Invoke-ModuleWithTimeout {
     # Verify function exists
     if (-not (Get-Command -Name $functionName -ErrorAction SilentlyContinue)) {
         return @{
-            Success       = $false
-            ModuleName    = $ModuleName
-            Errors        = @("Function $functionName not found")
+            Success = $false
+            ModuleName = $ModuleName
+            Errors = @("Function $functionName not found")
             ExecutionTime = 0
-            TimedOut      = $false
+            TimedOut = $false
         }
     }
 
@@ -3869,11 +3866,11 @@ function Invoke-ModuleWithTimeout {
         }
         else {
             return @{
-                Success       = $true
-                ModuleName    = $ModuleName
+                Success = $true
+                ModuleName = $ModuleName
                 ExecutionTime = ([DateTime]::Now - $startTime).TotalSeconds
-                TimedOut      = $false
-                Output        = $result
+                TimedOut = $false
+                Output = $result
             }
         }
     }
@@ -3882,11 +3879,11 @@ function Invoke-ModuleWithTimeout {
         Write-LogEntry -Level 'ERROR' -Component $ModuleName -Message "Module execution timeout after $executionTime seconds"
 
         return @{
-            Success       = $false
-            ModuleName    = $ModuleName
-            Errors        = @("Execution timeout after $TimeoutSeconds seconds")
+            Success = $false
+            ModuleName = $ModuleName
+            Errors = @("Execution timeout after $TimeoutSeconds seconds")
             ExecutionTime = $executionTime
-            TimedOut      = $true
+            TimedOut = $true
         }
     }
     catch {
@@ -3894,11 +3891,11 @@ function Invoke-ModuleWithTimeout {
         Write-LogEntry -Level 'ERROR' -Component $ModuleName -Message "Module execution failed: $($_.Exception.Message)"
 
         return @{
-            Success       = $false
-            ModuleName    = $ModuleName
-            Errors        = @($_.Exception.Message)
+            Success = $false
+            ModuleName = $ModuleName
+            Errors = @($_.Exception.Message)
             ExecutionTime = $executionTime
-            TimedOut      = $false
+            TimedOut = $false
         }
     }
 }
@@ -3972,12 +3969,12 @@ function Register-SystemChange {
     )
 
     $changeEntry = @{
-        ChangeType   = $ChangeType
-        Target       = $Target
-        Description  = $Description
+        ChangeType = $ChangeType
+        Target = $Target
+        Description = $Description
         UndoCommands = $UndoCommands
-        Timestamp    = [DateTime]::UtcNow.ToString('o')
-        SessionId    = $env:MAINTENANCE_SESSION_ID
+        Timestamp = [DateTime]::UtcNow.ToString('o')
+        SessionId = $env:MAINTENANCE_SESSION_ID
     }
 
     $script:ChangeLog += $changeEntry
@@ -4031,11 +4028,11 @@ function Undo-AllChanges {
     )
 
     $result = @{
-        Success         = $true
+        Success = $true
         RolledBackCount = 0
-        FailedCount     = 0
-        Errors          = @()
-        Details         = @()
+        FailedCount = 0
+        Errors = @()
+        Details = @()
     }
 
     if ($script:ChangeLog.Count -eq 0) {
@@ -4231,7 +4228,7 @@ function Start-MaintenanceCountdown {
         $remainingSeconds = $CountdownSeconds
         $countdownStartTime = Get-Date
         $keyPressSupported = $false
-        
+
         try {
             if ($Host -and $Host.UI -and $Host.UI.RawUI) {
                 $null = $Host.UI.RawUI.KeyAvailable
@@ -4260,7 +4257,7 @@ function Start-MaintenanceCountdown {
                     return $choiceResult
                 }
             }
-            catch { 
+            catch {
                 Write-Verbose "Keypress detection error (non-critical): $($_.Exception.Message)"
             }
 
@@ -4310,15 +4307,15 @@ function Show-ShutdownAbortMenu {
 
     $choice = Read-Host "Select option (1-3, default=1)"
     if ([string]::IsNullOrWhiteSpace($choice)) { return 1 }
-    
+
     try {
         $choiceInt = [int]$choice.Trim()
         if ($choiceInt -ge 1 -and $choiceInt -le 3) { return $choiceInt }
     }
-    catch { 
+    catch {
         Write-Verbose "Invalid choice conversion (defaulting to 1): $($_.Exception.Message)"
     }
-    
+
     return 1
 }
 
@@ -4412,10 +4409,10 @@ function Invoke-MaintenanceCleanup {
 .DESCRIPTION
     Determines if system is running Windows 10 or Windows 11 based on build number.
     Provides structured OS context object for use throughout the system.
-    
+
     Windows 11: Build 22000+
     Windows 10: Build 10240-21999
-    
+
     This function is the foundation for OS-specific behavior in v4.0.
 
 .OUTPUTS
@@ -4455,88 +4452,88 @@ function Get-WindowsVersionContext {
         # Determine Windows version based on build number
         # Windows 11 = Build 22000+ (first release: 22000)
         # Windows 10 = Build 10240-21999 (first release: 10240)
-        $version = if ($buildNumber -ge 22000) { 
-            '11' 
-        } 
-        elseif ($buildNumber -ge 10240) { 
-            '10' 
-        } 
-        else { 
-            'Unknown' 
+        $version = if ($buildNumber -ge 22000) {
+            '11'
+        }
+        elseif ($buildNumber -ge 10240) {
+            '10'
+        }
+        else {
+            'Unknown'
         }
 
         # Build comprehensive context object
         $osContext = [PSCustomObject]@{
-            Version           = $version
-            BuildNumber       = $buildNumber
-            Caption           = $osInfo.Caption
-            Architecture      = $osInfo.OSArchitecture
-            IsWindows11       = ($version -eq '11')
-            IsWindows10       = ($version -eq '10')
-            DisplayText       = "Windows $version (Build $buildNumber)"
-            DetectionTime     = Get-Date
+            Version = $version
+            BuildNumber = $buildNumber
+            Caption = $osInfo.Caption
+            Architecture = $osInfo.OSArchitecture
+            IsWindows11 = ($version -eq '11')
+            IsWindows10 = ($version -eq '10')
+            DisplayText = "Windows $version (Build $buildNumber)"
+            DetectionTime = Get-Date
             SupportedFeatures = @{
                 # UI Features
-                ModernUI         = ($version -eq '11')
-                WidgetsPanel     = ($version -eq '11')
-                CenteredTaskbar  = ($version -eq '11')
-                SnapLayouts      = ($version -eq '11')
-                LegacyStartMenu  = ($version -eq '10')
-                
+                ModernUI = ($version -eq '11')
+                WidgetsPanel = ($version -eq '11')
+                CenteredTaskbar = ($version -eq '11')
+                SnapLayouts = ($version -eq '11')
+                LegacyStartMenu = ($version -eq '10')
+
                 # System Features
-                TPM2Required     = ($version -eq '11')
-                DirectStorage    = ($version -eq '11')
-                AndroidApps      = ($version -eq '11')
-                
+                TPM2Required = ($version -eq '11')
+                DirectStorage = ($version -eq '11')
+                AndroidApps = ($version -eq '11')
+
                 # Integration Features
                 TeamsIntegration = ($version -eq '11')
-                WidgetsBoard     = ($version -eq '11')
-                
+                WidgetsBoard = ($version -eq '11')
+
                 # Security Features
-                VBS              = ($version -eq '11')  # Virtualization-based security
-                HVCI             = ($version -eq '11')  # Hypervisor-protected code integrity
+                VBS = ($version -eq '11')  # Virtualization-based security
+                HVCI = ($version -eq '11')  # Hypervisor-protected code integrity
             }
         }
 
         Write-LogEntry -Level 'INFO' -Component 'OS-DETECTION' -Message "Detected: $($osContext.DisplayText)" -Data @{
-            Version      = $version
-            BuildNumber  = $buildNumber
+            Version = $version
+            BuildNumber = $buildNumber
             Architecture = $osInfo.OSArchitecture
-            IsWindows11  = $osContext.IsWindows11
-            IsWindows10  = $osContext.IsWindows10
+            IsWindows11 = $osContext.IsWindows11
+            IsWindows10 = $osContext.IsWindows10
         }
 
         return $osContext
     }
     catch {
         Write-LogEntry -Level 'ERROR' -Component 'OS-DETECTION' -Message "Failed to detect OS version: $_" -Data @{
-            Error      = $_.Exception.Message
+            Error = $_.Exception.Message
             StackTrace = $_.ScriptStackTrace
         }
 
         # Return fallback context with safe defaults
         return [PSCustomObject]@{
-            Version           = 'Unknown'
-            BuildNumber       = 0
-            Caption           = 'Unknown Windows Version'
-            Architecture      = 'Unknown'
-            IsWindows11       = $false
-            IsWindows10       = $false
-            DisplayText       = 'Unknown Windows Version'
-            DetectionTime     = Get-Date
+            Version = 'Unknown'
+            BuildNumber = 0
+            Caption = 'Unknown Windows Version'
+            Architecture = 'Unknown'
+            IsWindows11 = $false
+            IsWindows10 = $false
+            DisplayText = 'Unknown Windows Version'
+            DetectionTime = Get-Date
             SupportedFeatures = @{
-                ModernUI         = $false
-                WidgetsPanel     = $false
-                CenteredTaskbar  = $false
-                SnapLayouts      = $false
-                LegacyStartMenu  = $false
-                TPM2Required     = $false
-                DirectStorage    = $false
-                AndroidApps      = $false
+                ModernUI = $false
+                WidgetsPanel = $false
+                CenteredTaskbar = $false
+                SnapLayouts = $false
+                LegacyStartMenu = $false
+                TPM2Required = $false
+                DirectStorage = $false
+                AndroidApps = $false
                 TeamsIntegration = $false
-                WidgetsBoard     = $false
-                VBS              = $false
-                HVCI             = $false
+                WidgetsBoard = $false
+                VBS = $false
+                HVCI = $false
             }
         }
     }
@@ -4584,6 +4581,7 @@ catch {
 }
 
 #endregion
+
 
 
 

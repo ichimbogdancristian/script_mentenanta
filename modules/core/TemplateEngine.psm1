@@ -67,7 +67,7 @@
     - Extensibility: Easy to add new template types
 
     Extracted From:
-    - ReportGenerator.psm1: Find-ConfigTemplate, Get-HtmlTemplate, 
+    - ReportGenerator.psm1: Find-ConfigTemplate, Get-HtmlTemplate,
       Get-HtmlTemplateBundle, Get-FallbackTemplate, Get-FallbackTemplateBundle
     - ~600 lines consolidated into ~400 lines with improved structure
 
@@ -270,15 +270,15 @@ function Get-Template {
         else {
             # Template not found, use fallback
             Write-LogEntry -Level 'WARNING' -Component 'TEMPLATE-ENGINE' -Message "Template not found: $TemplateName - Using fallback template"
-            
+
             if ($TemplateType) {
                 $fallbackContent = Get-FallbackTemplate -TemplateType $TemplateType
-                
+
                 # Cache fallback template too
                 if ($UseCache -and $fallbackContent) {
                     $script:TemplateCache[$cacheKey] = $fallbackContent
                 }
-                
+
                 return $fallbackContent
             }
             else {
@@ -288,13 +288,13 @@ function Get-Template {
     }
     catch {
         Write-LogEntry -Level 'ERROR' -Component 'TEMPLATE-ENGINE' -Message "Failed to load template $TemplateName : $($_.Exception.Message)"
-        
+
         # Attempt fallback
         if ($TemplateType) {
             Write-LogEntry -Level 'WARNING' -Component 'TEMPLATE-ENGINE' -Message "Attempting fallback template for: $TemplateType"
             return Get-FallbackTemplate -TemplateType $TemplateType
         }
-        
+
         throw
     }
 }
@@ -362,11 +362,11 @@ function Get-TemplateBundle {
 
         # Load templates
         $templates = @{
-            Main       = Get-Template -TemplateName $mainTemplateFile -TemplateType 'Main'
+            Main = Get-Template -TemplateName $mainTemplateFile -TemplateType 'Main'
             ModuleCard = Get-Template -TemplateName $moduleCardFile -TemplateType 'ModuleCard'
-            TaskCard   = $null  # Will be set to ModuleCard for backward compatibility
-            CSS        = Get-Template -TemplateName $cssFile -TemplateType 'CSS'
-            Config     = $null  # Optional configuration
+            TaskCard = $null  # Will be set to ModuleCard for backward compatibility
+            CSS = Get-Template -TemplateName $cssFile -TemplateType 'CSS'
+            Config = $null  # Optional configuration
             IsEnhanced = $UseEnhanced
         }
 
@@ -392,7 +392,7 @@ function Get-TemplateBundle {
     catch {
         Write-LogEntry -Level 'ERROR' -Component 'TEMPLATE-ENGINE' -Message "Failed to load template bundle: $($_.Exception.Message)"
         Write-LogEntry -Level 'WARNING' -Component 'TEMPLATE-ENGINE' -Message 'Attempting to use fallback template bundle'
-        
+
         return Get-FallbackTemplateBundle
     }
 }
@@ -504,7 +504,7 @@ function Invoke-PlaceholderReplacement {
     if ($ValidatePlaceholders) {
         $unreplacedPattern = '{{([^}]+)}}'
         $unreplacedMatches = [regex]::Matches($result, $unreplacedPattern)
-        
+
         if ($unreplacedMatches.Count -gt 0) {
             $unreplacedList = $unreplacedMatches | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique
             Write-LogEntry -Level 'WARNING' -Component 'TEMPLATE-ENGINE' -Message "Template contains unreplaced placeholders: $($unreplacedList -join ', ')"
@@ -572,10 +572,10 @@ function Test-TemplateIntegrity {
     Write-Verbose "Validating template integrity"
 
     $validation = @{
-        IsValid             = $true
+        IsValid = $true
         MissingPlaceholders = @()
-        AllPlaceholders     = @()
-        ValidationErrors    = @()
+        AllPlaceholders = @()
+        ValidationErrors = @()
     }
 
     try {
@@ -603,7 +603,7 @@ function Test-TemplateIntegrity {
             foreach ($required in $RequiredPlaceholders) {
                 # Normalize placeholder format (remove {{ }} if present)
                 $normalizedRequired = $required -replace '{{|}}', ''
-                
+
                 if ($validation.AllPlaceholders -notcontains $normalizedRequired) {
                     $validation.MissingPlaceholders += $normalizedRequired
                     $validation.IsValid = $false
@@ -679,11 +679,11 @@ function Clear-TemplateCache {
     )
 
     $stats = @{
-        ClearedCount   = 0
+        ClearedCount = 0
         TotalCacheSize = $script:TemplateCache.Count
-        CacheHits      = $script:CacheHitCount
-        CacheMisses    = $script:CacheMissCount
-        HitRate        = 0
+        CacheHits = $script:CacheHitCount
+        CacheMisses = $script:CacheMissCount
+        HitRate = 0
     }
 
     if ($script:CacheHitCount + $script:CacheMissCount -gt 0) {
@@ -741,11 +741,11 @@ function Get-TemplateCacheStats {
     param()
 
     $stats = @{
-        CacheSize   = $script:TemplateCache.Count
-        CacheHits   = $script:CacheHitCount
+        CacheSize = $script:TemplateCache.Count
+        CacheHits = $script:CacheHitCount
         CacheMisses = $script:CacheMissCount
-        HitRate     = 0
-        CacheKeys   = $script:TemplateCache.Keys | Sort-Object
+        HitRate = 0
+        CacheKeys = $script:TemplateCache.Keys | Sort-Object
     }
 
     if ($script:CacheHitCount + $script:CacheMissCount -gt 0) {
@@ -888,19 +888,19 @@ footer { margin-top: 4rem; padding: 2rem; text-align: center; color: var(--text-
 
         'Config' {
             return @{
-                version      = '1.0.0-fallback'
-                moduleIcons  = @{
-                    BloatwareRemoval   = '🗑️'
-                    EssentialApps      = '📦'
+                version = '1.0.0-fallback'
+                moduleIcons = @{
+                    BloatwareRemoval = '🗑️'
+                    EssentialApps = '📦'
                     SystemOptimization = '⚡'
-                    TelemetryDisable   = '🔒'
-                    WindowsUpdates     = '🔄'
+                    TelemetryDisable = '🔒'
+                    WindowsUpdates = '🔄'
                 }
                 statusColors = @{
                     success = '#2ea043'
                     warning = '#fb8500'
-                    error   = '#f85149'
-                    info    = '#1f6feb'
+                    error = '#f85149'
+                    info = '#1f6feb'
                 }
             } | ConvertTo-Json -Depth 10
         }
@@ -933,11 +933,11 @@ function Get-FallbackTemplateBundle {
     Write-LogEntry -Level 'WARNING' -Component 'TEMPLATE-ENGINE' -Message 'Using fallback template bundle - limited styling'
 
     return @{
-        Main       = Get-FallbackTemplate -TemplateType 'Main'
+        Main = Get-FallbackTemplate -TemplateType 'Main'
         ModuleCard = Get-FallbackTemplate -TemplateType 'ModuleCard'
-        TaskCard   = Get-FallbackTemplate -TemplateType 'TaskCard'
-        CSS        = Get-FallbackTemplate -TemplateType 'CSS'
-        Config     = (Get-FallbackTemplate -TemplateType 'Config' | ConvertFrom-Json)
+        TaskCard = Get-FallbackTemplate -TemplateType 'TaskCard'
+        CSS = Get-FallbackTemplate -TemplateType 'CSS'
+        Config = (Get-FallbackTemplate -TemplateType 'Config' | ConvertFrom-Json)
         IsEnhanced = $false
         IsFallback = $true
     }
@@ -952,20 +952,21 @@ Export-ModuleMember -Function @(
     'Get-Template',
     'Get-TemplateBundle',
     'Get-TemplatePath',
-    
+
     # Placeholder replacement
     'Invoke-PlaceholderReplacement',
-    
+
     # Template validation
     'Test-TemplateIntegrity',
-    
+
     # Cache management
     'Clear-TemplateCache',
     'Get-TemplateCacheStats',
-    
+
     # Fallback support
     'Get-FallbackTemplate',
     'Get-FallbackTemplateBundle'
 )
 
 #endregion
+

@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - TelemetryAudit.psm1 (Type1 - detection/analysis)
@@ -51,6 +51,20 @@ if (-not (Get-Command -Name 'Get-TelemetryAnalysis' -ErrorAction SilentlyContinu
 
 #region v3.0 Standardized Execution Function
 
+<#
+.SYNOPSIS
+    Executes telemetry disable workflow.
+
+.DESCRIPTION
+    Runs telemetry audit, disables detected telemetry vectors, and returns a
+    standardized execution result for orchestrator aggregation.
+
+.PARAMETER Config
+    Configuration hashtable from main-config.json.
+
+.OUTPUTS
+    [hashtable] Standardized module execution result.
+#>
 function Invoke-TelemetryDisable {
     [CmdletBinding()]
     [OutputType([hashtable])]
@@ -103,33 +117,36 @@ function Invoke-TelemetryDisable {
         Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Executing telemetry disable' -LogPath $executionLogPath -Operation 'Execute' -Metadata @{ ItemCount = $telemetryCount }
         # Process telemetry items based on detected types
         $processedCount = 0
-            if ($analysisResults.ActiveTelemetryItems) {
-                foreach ($item in $analysisResults.ActiveTelemetryItems) {
-                    Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Processing telemetry item: $($item.Type)" -LogPath $executionLogPath -Operation 'Process' -Target $item.Type -Metadata @{ ItemName = $item.Name }
-                    try {
-                        switch ($item.Type) {
-                            'Service' { $result = Disable-WindowsTelemetry -DisableServices }
-                            'Notification' { $result = Disable-WindowsTelemetry -DisableNotifications }
-                            'ConsumerFeature' { $result = Disable-WindowsTelemetry -DisableConsumerFeatures }
-                            'Cortana' { $result = Disable-WindowsTelemetry -DisableCortana }
-                            'LocationTracking' { $result = Disable-WindowsTelemetry -DisableLocationTracking }
-                            default { Write-StructuredLogEntry -Level 'WARNING' -Component 'TELEMETRY-DISABLE' -Message "Unknown telemetry type: $($item.Type)" -LogPath $executionLogPath -Operation 'Process' -Target $item.Type -Result 'Unknown' }
-                        }
-                        if ($result) {
-                            $processedCount++
-                            Write-StructuredLogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Successfully disabled: $($item.Type)" -LogPath $executionLogPath -Operation 'Disable' -Target $item.Type -Result 'Success'
-                        }
-                        else {
-                            Write-StructuredLogEntry -Level 'WARNING' -Component 'TELEMETRY-DISABLE' -Message "Failed to disable: $($item.Type)" -LogPath $executionLogPath -Operation 'Disable' -Target $item.Type -Result 'Failed'
-                        }
+        if ($analysisResults.ActiveTelemetryItems) {
+            foreach ($item in $analysisResults.ActiveTelemetryItems) {
+                Write-StructuredLogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Processing telemetry item: $($item.Type)" -LogPath $executionLogPath -Operation 'Process' -Target $item.Type -Metadata @{ ItemName = $item.Name }
+                try {
+                    switch ($item.Type) {
+                        'Service' { $result = Disable-WindowsTelemetry -DisableServices }
+                        'Notification' { $result = Disable-WindowsTelemetry -DisableNotifications }
+                        'ConsumerFeature' { $result = Disable-WindowsTelemetry -DisableConsumerFeatures }
+                        'Cortana' { $result = Disable-WindowsTelemetry -DisableCortana }
+                        'LocationTracking' { $result = Disable-WindowsTelemetry -DisableLocationTracking }
+                        default { Write-StructuredLogEntry -Level 'WARNING' -Component 'TELEMETRY-DISABLE' -Message "Unknown telemetry type: $($item.Type)" -LogPath $executionLogPath -Operation 'Process' -Target $item.Type -Result 'Unknown' }
                     }
-                    catch {
-                        Write-StructuredLogEntry -Level 'ERROR' -Component 'TELEMETRY-DISABLE' -Message "Error disabling $($item.Type): $($_.Exception.Message)" -LogPath $executionLogPath -Operation 'Disable' -Target $item.Type -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
+                    if ($result) {
+                        $processedCount++
+                        Write-StructuredLogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Successfully disabled: $($item.Type)" -LogPath $executionLogPath -Operation 'Disable' -Target $item.Type -Result 'Success'
+                    }
+                    else {
+                        Write-StructuredLogEntry -Level 'WARNING' -Component 'TELEMETRY-DISABLE' -Message "Failed to disable: $($item.Type)" -LogPath $executionLogPath -Operation 'Disable' -Target $item.Type -Result 'Failed'
                     }
                 }
+                catch {
+                    Write-StructuredLogEntry -Level 'ERROR' -Component 'TELEMETRY-DISABLE' -Message "Error disabling $($item.Type): $($_.Exception.Message)" -LogPath $executionLogPath -Operation 'Disable' -Target $item.Type -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
+                }
             }
+        }
 
-        Write-StructuredLogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Telemetry disable completed. Processed: $processedCount/$telemetryCount" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ ProcessedCount = $processedCount; TotalCount = $telemetryCount }
+        Write-StructuredLogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Telemetry disable completed. Processed: $processedCount/$telemetryCount" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{
+            ProcessedCount = $processedCount
+            TotalCount     = $telemetryCount
+        }
 
         # Create execution summary JSON
         $summaryPath = Join-Path $executionLogDir "execution-summary.json"
@@ -292,10 +309,22 @@ function Disable-WindowsTelemetry {
         Skipped         = 0
         Details         = [List[PSCustomObject]]::new()
         Categories      = @{
-            Registry      = @{ Applied = 0; Failed = 0 }
-            Services      = @{ Disabled = 0; Failed = 0 }
-            Notifications = @{ Disabled = 0; Failed = 0 }
-            Features      = @{ Disabled = 0; Failed = 0 }
+            Registry      = @{
+                Applied = 0
+                Failed  = 0
+            }
+            Services      = @{
+                Disabled = 0
+                Failed   = 0
+            }
+            Notifications = @{
+                Disabled = 0
+                Failed   = 0
+            }
+            Features      = @{
+                Disabled = 0
+                Failed   = 0
+            }
         }
     }
 
@@ -392,7 +421,10 @@ function Disable-WindowsTelemetry {
         # Complete performance tracking for failed operation
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
-            Write-LogEntry -Level 'ERROR' -Component 'TELEMETRY-DISABLE' -Message 'Privacy hardening operation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
+            Write-LogEntry -Level 'ERROR' -Component 'TELEMETRY-DISABLE' -Message 'Privacy hardening operation failed' -Data @{
+                Error     = $_.Exception.Message
+                ErrorType = $_.Exception.GetType().Name
+            }
         }
         catch {
             Write-Verbose "TELEMETRY-DISABLE: Error logging failed - $_"
@@ -698,7 +730,7 @@ function Disable-TelemetryService {
             if (-not $service) {
                 $serviceResult.Action = 'Not Found'
                 $serviceResult.Success = $true
-                Write-Information "    ℹ  Service $serviceName not found on this system" -InformationAction Continue
+                Write-Information "    INFO  Service $serviceName not found on this system" -InformationAction Continue
             }
             elseif ($service.StartType -eq 'Disabled') {
                 $serviceResult.Action = 'Already Disabled'
@@ -714,49 +746,49 @@ function Disable-TelemetryService {
                 }
 
                 if ($PSCmdlet.ShouldProcess($serviceName, 'Stop and disable telemetry service')) {
-                        # Stop the service if running
-                        if ($service.Status -eq 'Running') {
-                            Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Executing: Stop-Service -Name $serviceName"
-                            Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
-                        }
-
-                        # Disable the service
-                        Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Executing: Set-Service -Name $serviceName -StartupType Disabled"
-                        Set-Service -Name $serviceName -StartupType Disabled
-
-                        # Verification
-                        Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Operation 'Verify' -Target $serviceName -Message 'Verifying service disabled state'
-
-                        $verifyService = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-                        $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
-
-                        if ($verifyService.StartupType -eq 'Disabled') {
-                            # Log successful verification
-                            Write-OperationSuccess -Component 'TELEMETRY-DISABLE' -Operation 'Verify' -Target $serviceName -Metrics @{
-                                ExpectedStartType  = 'Disabled'
-                                ActualStartType    = $verifyService.StartupType
-                                ActualStatus       = $verifyService.Status
-                                VerificationPassed = $true
-                            }
-
-                            # Log successful disable
-                            Write-OperationSuccess -Component 'TELEMETRY-DISABLE' -Operation 'Disable' -Target $serviceName -Metrics @{
-                                Duration          = $operationDuration
-                                PreviousState     = $service.Status
-                                PreviousStartType = $service.StartType
-                                NewStartType      = 'Disabled'
-                                Verified          = $true
-                            }
-                            $serviceResult.Action = 'Disabled'
-                            $serviceResult.Success = $true
-                            Write-Information "     Disabled service: $serviceName (${operationDuration}s)" -InformationAction Continue
-                        }
-                        else {
-                            # Log failed verification
-                            Write-OperationFailure -Component 'TELEMETRY-DISABLE' -Operation 'Verify' -Target $serviceName -Error (New-Object Exception("Service not disabled - StartType: $($verifyService.StartupType)"))
-                            throw "Verification failed: Service not disabled"
-                        }
+                    # Stop the service if running
+                    if ($service.Status -eq 'Running') {
+                        Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Executing: Stop-Service -Name $serviceName"
+                        Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
                     }
+
+                    # Disable the service
+                    Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message "Executing: Set-Service -Name $serviceName -StartupType Disabled"
+                    Set-Service -Name $serviceName -StartupType Disabled
+
+                    # Verification
+                    Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Operation 'Verify' -Target $serviceName -Message 'Verifying service disabled state'
+
+                    $verifyService = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+                    $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
+
+                    if ($verifyService.StartupType -eq 'Disabled') {
+                        # Log successful verification
+                        Write-OperationSuccess -Component 'TELEMETRY-DISABLE' -Operation 'Verify' -Target $serviceName -Metrics @{
+                            ExpectedStartType  = 'Disabled'
+                            ActualStartType    = $verifyService.StartupType
+                            ActualStatus       = $verifyService.Status
+                            VerificationPassed = $true
+                        }
+
+                        # Log successful disable
+                        Write-OperationSuccess -Component 'TELEMETRY-DISABLE' -Operation 'Disable' -Target $serviceName -Metrics @{
+                            Duration          = $operationDuration
+                            PreviousState     = $service.Status
+                            PreviousStartType = $service.StartType
+                            NewStartType      = 'Disabled'
+                            Verified          = $true
+                        }
+                        $serviceResult.Action = 'Disabled'
+                        $serviceResult.Success = $true
+                        Write-Information "     Disabled service: $serviceName (${operationDuration}s)" -InformationAction Continue
+                    }
+                    else {
+                        # Log failed verification
+                        Write-OperationFailure -Component 'TELEMETRY-DISABLE' -Operation 'Verify' -Target $serviceName -Error (New-Object Exception("Service not disabled - StartType: $($verifyService.StartupType)"))
+                        throw "Verification failed: Service not disabled"
+                    }
+                }
 
                 $results.Disabled++
             }
@@ -1002,7 +1034,11 @@ function Disable-CortanaFeature {
     [OutputType([hashtable])]
     param()
 
-    $results = @{ Disabled = 0; Failed = 0; Details = @() }
+    $results = @{
+        Disabled = 0
+        Failed   = 0
+        Details  = @()
+    }
 
     $cortanaSettings = @{
         'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search' = @{
@@ -1069,7 +1105,11 @@ function Disable-LocationService {
     [OutputType([hashtable])]
     param()
 
-    $results = @{ Disabled = 0; Failed = 0; Details = @() }
+    $results = @{
+        Disabled = 0
+        Failed   = 0
+        Details  = @()
+    }
 
     $locationSettings = @{
         'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors' = @{
@@ -1106,6 +1146,16 @@ function Disable-LocationService {
 
 #region Helper Functions
 
+<#
+.SYNOPSIS
+    Gets the current Windows telemetry level.
+
+.DESCRIPTION
+    Reads the AllowTelemetry policy value and returns a safe default when missing.
+
+.OUTPUTS
+    [int] Telemetry level value.
+#>
 function Get-TelemetryLevel {
     try {
         $value = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection' -Name AllowTelemetry -ErrorAction SilentlyContinue).AllowTelemetry
@@ -1114,11 +1164,31 @@ function Get-TelemetryLevel {
     catch { return 3 }
 }
 
+<#
+.SYNOPSIS
+    Gets the count of running telemetry services.
+
+.DESCRIPTION
+    Checks known telemetry services and returns how many are currently running.
+
+.OUTPUTS
+    [int] Running telemetry service count.
+#>
 function Get-TelemetryServiceStatus {
     $services = @('DiagTrack', 'dmwappushservice', 'RetailDemo')
     return ($services | ForEach-Object { Get-Service -Name $_ -ErrorAction SilentlyContinue } | Where-Object { $_.Status -eq 'Running' }).Count
 }
 
+<#
+.SYNOPSIS
+    Tests whether Windows notifications are enabled.
+
+.DESCRIPTION
+    Reads the notifications policy setting and returns true when enabled.
+
+.OUTPUTS
+    [bool] True when notifications are enabled.
+#>
 function Test-NotificationsEnabled {
     try {
         $value = (Get-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings' -Name NOC_GLOBAL_SETTING_TOASTS_ENABLED -ErrorAction SilentlyContinue).NOC_GLOBAL_SETTING_TOASTS_ENABLED
@@ -1127,6 +1197,16 @@ function Test-NotificationsEnabled {
     catch { return $true }
 }
 
+<#
+.SYNOPSIS
+    Tests whether Windows consumer features are enabled.
+
+.DESCRIPTION
+    Reads CloudContent policy settings to determine consumer feature status.
+
+.OUTPUTS
+    [bool] True when consumer features are enabled.
+#>
 function Test-ConsumerFeaturesEnabled {
     try {
         $value = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name DisableWindowsConsumerFeatures -ErrorAction SilentlyContinue).DisableWindowsConsumerFeatures
@@ -1135,6 +1215,16 @@ function Test-ConsumerFeaturesEnabled {
     catch { return $true }
 }
 
+<#
+.SYNOPSIS
+    Tests whether Cortana is enabled.
+
+.DESCRIPTION
+    Reads the AllowCortana policy setting and returns true when enabled.
+
+.OUTPUTS
+    [bool] True when Cortana is enabled.
+#>
 function Test-CortanaEnabled {
     try {
         $value = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search' -Name AllowCortana -ErrorAction SilentlyContinue).AllowCortana
@@ -1143,6 +1233,16 @@ function Test-CortanaEnabled {
     catch { return $true }
 }
 
+<#
+.SYNOPSIS
+    Tests whether location services are enabled.
+
+.DESCRIPTION
+    Reads the DisableLocation policy setting and returns true when enabled.
+
+.OUTPUTS
+    [bool] True when location services are enabled.
+#>
 function Test-LocationServiceEnabled {
     try {
         $value = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors' -Name DisableLocation -ErrorAction SilentlyContinue).DisableLocation
@@ -1151,7 +1251,6 @@ function Test-LocationServiceEnabled {
     catch { return $true }
 }
 
-# Helper function to merge operation results
 <#
 .SYNOPSIS
     Merges telemetry disabling results into consolidated results object
@@ -1208,6 +1307,8 @@ Export-ModuleMember -Function @(
     'Disable-WindowsTelemetry',
     'Test-PrivacySetting'
 )
+
+
 
 
 

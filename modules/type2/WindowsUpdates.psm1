@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - WindowsUpdatesAudit.psm1 (Type1 - detection/analysis)
@@ -55,7 +55,18 @@ if (-not (Get-Command -Name 'Get-WindowsUpdatesAnalysis' -ErrorAction SilentlyCo
 
 #region v3.0 Standardized Execution Function
 
-function Invoke-WindowsUpdates {
+<#
+.SYNOPSIS
+    Executes Windows Update installation workflow
+
+.DESCRIPTION
+    Runs Windows Updates analysis and installs pending updates when required.
+    Uses PSWindowsUpdate when available and falls back to native APIs.
+
+.PARAMETER Config
+    Configuration hashtable from main-config.json
+#>
+function Invoke-WindowsUpdate {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $true)]
@@ -72,6 +83,9 @@ function Invoke-WindowsUpdates {
         Initialize-ModuleExecution -ModuleName 'WindowsUpdates'
 
         Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows updates analysis'
+        Write-LogEntry -Level 'DEBUG' -Component 'WINDOWS-UPDATES' -Message 'Loaded module configuration' -Data @{
+            ConfigKeys = $Config.PSObject.Properties.Name
+        }
         $analysisResults = Get-WindowsUpdatesAnalysis
 
         $updatesCount = 0
@@ -79,7 +93,7 @@ function Invoke-WindowsUpdates {
             if ($analysisResults.PSObject.Properties.Name -contains 'PendingUpdatesCount') {
                 $updatesCount = [int]$analysisResults.PendingUpdatesCount
             }
-            elseif ($analysisResults.PendingAudit -and ($analysisResults.PendingAudit.PendingCount -ne $null)) {
+            elseif ($analysisResults.PendingAudit -and ($null -ne $analysisResults.PendingAudit.PendingCount)) {
                 $updatesCount = [int]$analysisResults.PendingAudit.PendingCount
             }
         }
@@ -126,30 +140,30 @@ function Invoke-WindowsUpdates {
         $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $executionStartTime
         $executionSummary = @{
-            ModuleName    = 'WindowsUpdates'
+            ModuleName = 'WindowsUpdates'
             ExecutionTime = @{
-                Start      = $executionStartTime.ToString('o')
-                End        = (Get-Date).ToString('o')
+                Start = $executionStartTime.ToString('o')
+                End = (Get-Date).ToString('o')
                 DurationMs = $executionTime.TotalMilliseconds
             }
-            Results       = @{
-                Success        = $true
-                ItemsDetected  = $updatesCount
+            Results = @{
+                Success = $true
+                ItemsDetected = $updatesCount
                 ItemsProcessed = $processedCount
-                ItemsFailed    = 0
-                ItemsSkipped   = ($updatesCount - $processedCount)
+                ItemsFailed = 0
+                ItemsSkipped = ($updatesCount - $processedCount)
             }
             ExecutionMode = 'Live'
-            LogFiles      = @{
+            LogFiles = @{
                 TextLog = $executionLogPath
                 JsonLog = $executionLogPath -replace '\.log$', '-data.json'
                 Summary = $summaryPath
             }
-            SessionInfo   = @{
-                SessionId    = $env:MAINTENANCE_SESSION_ID
+            SessionInfo = @{
+                SessionId = $env:MAINTENANCE_SESSION_ID
                 ComputerName = $env:COMPUTERNAME
-                UserName     = $env:USERNAME
-                PSVersion    = $PSVersionTable.PSVersion.ToString()
+                UserName = $env:USERNAME
+                PSVersion = $PSVersionTable.PSVersion.ToString()
             }
         }
 
@@ -278,11 +292,11 @@ function Install-WindowsUpdate {
     # Initialize structured logging and performance tracking
     try {
         Write-LogEntry -Level 'INFO' -Component 'WINDOWS-UPDATES' -Message 'Starting Windows Updates installation' -Data @{
-            ExcludePreviews   = $ExcludePreviews.IsPresent
-            IncludeOptional   = $IncludeOptional.IsPresent
-            IncludeDrivers    = $IncludeDrivers.IsPresent
+            ExcludePreviews = $ExcludePreviews.IsPresent
+            IncludeOptional = $IncludeOptional.IsPresent
+            IncludeDrivers = $IncludeDrivers.IsPresent
             MaxDownloadSizeMB = $MaxDownloadSizeMB
-            SuppressReboot    = $SuppressReboot.IsPresent
+            SuppressReboot = $SuppressReboot.IsPresent
         }
         $perfContext = Start-PerformanceTracking -OperationName 'WindowsUpdatesInstallation' -Component 'WINDOWS-UPDATES'
     }
@@ -302,13 +316,13 @@ function Install-WindowsUpdate {
 
     # Initialize results tracking
     $results = @{
-        UpdatesFound     = 0
+        UpdatesFound = 0
         UpdatesInstalled = 0
-        UpdatesFailed    = 0
-        TotalSizeMB      = 0
-        RebootRequired   = $false
-        Details          = [List[PSCustomObject]]::new()
-        Method           = 'Unknown'
+        UpdatesFailed = 0
+        TotalSizeMB = 0
+        RebootRequired = $false
+        Details = [List[PSCustomObject]]::new()
+        Method = 'Unknown'
     }
 
     try {
@@ -367,12 +381,12 @@ function Install-WindowsUpdate {
         # Complete performance tracking and structured logging
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $success -ResultData @{
-                UpdatesFound     = $results.UpdatesFound
+                UpdatesFound = $results.UpdatesFound
                 UpdatesInstalled = $results.UpdatesInstalled
-                UpdatesFailed    = $results.UpdatesFailed
-                TotalSizeMB      = $results.TotalSizeMB
-                RebootRequired   = $results.RebootRequired
-                Method           = $results.Method
+                UpdatesFailed = $results.UpdatesFailed
+                TotalSizeMB = $results.TotalSizeMB
+                RebootRequired = $results.RebootRequired
+                Method = $results.Method
             }
             Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARNING' }) -Component 'WINDOWS-UPDATES' -Message 'Windows Updates operation completed' -Data $results
         }
@@ -395,7 +409,10 @@ function Install-WindowsUpdate {
         # Complete performance tracking for failed operation
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
-            Write-LogEntry -Level 'ERROR' -Component 'WINDOWS-UPDATES' -Message 'Windows Updates operation failed' -Data @{ Error = $_.Exception.Message; ErrorType = $_.Exception.GetType().Name }
+            Write-LogEntry -Level 'ERROR' -Component 'WINDOWS-UPDATES' -Message 'Windows Updates operation failed' -Data @{
+                Error = $_.Exception.Message
+                ErrorType = $_.Exception.GetType().Name
+            }
         }
         catch {
             Write-Verbose "WINDOWS-UPDATES: Error logging failed - $_"
@@ -457,11 +474,11 @@ function Get-WindowsUpdateStatus {
     }
 
     $status = @{
-        UpdatesAvailable  = 0
-        PendingReboot     = $false
-        RebootReason      = @()
-        LastUpdateCheck   = $null
-        LastInstallDate   = $null
+        UpdatesAvailable = 0
+        PendingReboot = $false
+        RebootReason = @()
+        LastUpdateCheck = $null
+        LastInstallDate = $null
         AutoUpdateEnabled = $false
     }
 
@@ -566,13 +583,13 @@ function Install-UpdatesViaPSWindowsUpdate {
     )
 
     $results = @{
-        UpdatesFound     = 0
+        UpdatesFound = 0
         UpdatesInstalled = 0
-        UpdatesFailed    = 0
-        TotalSizeMB      = 0
-        RebootRequired   = $false
-        Details          = [List[PSCustomObject]]::new()
-        Method           = 'PSWindowsUpdate'
+        UpdatesFailed = 0
+        TotalSizeMB = 0
+        RebootRequired = $false
+        Details = [List[PSCustomObject]]::new()
+        Method = 'PSWindowsUpdate'
     }
 
     try {
@@ -591,7 +608,7 @@ function Install-UpdatesViaPSWindowsUpdate {
 
         $scanParams = @{
             MicrosoftUpdate = $true
-            ErrorAction     = 'SilentlyContinue'
+            ErrorAction = 'SilentlyContinue'
         }
 
         $availableUpdates = Get-WindowsUpdate @scanParams
@@ -662,13 +679,13 @@ function Install-UpdatesViaPSWindowsUpdate {
 
             $installParams = @{
                 MicrosoftUpdate = $true
-                AcceptAll       = $true
-                AutoReboot      = -not $SuppressReboot
-                Confirm         = $false
-                IgnoreReboot    = $SuppressReboot
-                Silent          = $true
-                ForceInstall    = $true
-                ErrorAction     = 'SilentlyContinue'
+                AcceptAll = $true
+                AutoReboot = -not $SuppressReboot
+                Confirm = $false
+                IgnoreReboot = $SuppressReboot
+                Silent = $true
+                ForceInstall = $true
+                ErrorAction = 'SilentlyContinue'
             }
 
             try {
@@ -684,8 +701,8 @@ function Install-UpdatesViaPSWindowsUpdate {
                         $operationDuration = ((Get-Date) - $operationStart).TotalSeconds
                         Write-OperationSuccess -Component 'WINDOWS-UPDATES' -Operation 'Install' -Target $kbNumber -Metrics @{
                             Duration = $operationDuration
-                            SizeMB   = [math]::Round($result.Size / 1MB, 2)
-                            Title    = $result.Title
+                            SizeMB = [math]::Round($result.Size / 1MB, 2)
+                            Title = $result.Title
                             Category = ($result.Categories -join ', ')
                         }
                         Write-Information "       Installed: $kbNumber - $($result.Title) ($([math]::Round($result.Size / 1MB, 2)) MB)" -InformationAction Continue
@@ -693,7 +710,7 @@ function Install-UpdatesViaPSWindowsUpdate {
                     else {
                         Write-OperationFailure -Component 'WINDOWS-UPDATES' -Operation 'Install' -Target $kbNumber -Error ([System.Management.Automation.ErrorRecord]::new(
                                 [Exception]::new("Installation failed: $($result.Result)"),
-                                "UpdateInstallationFailed",
+                                'UpdateInstallationFailed',
                                 [System.Management.Automation.ErrorCategory]::NotSpecified,
                                 $result
                             ))
@@ -701,12 +718,12 @@ function Install-UpdatesViaPSWindowsUpdate {
                     }
 
                     $results.Details.Add([PSCustomObject]@{
-                            Title    = $result.Title
-                            KB       = $kbNumber
-                            SizeMB   = [math]::Round($result.Size / 1MB, 2)
+                            Title = $result.Title
+                            KB = $kbNumber
+                            SizeMB = [math]::Round($result.Size / 1MB, 2)
                             Category = $result.Categories -join ', '
-                            Status   = $status
-                            Result   = $result.Result
+                            Status = $status
+                            Result = $result.Result
                         })
 
                     if ($status -eq 'Installed') {
@@ -752,13 +769,13 @@ function Install-UpdatesViaNativeAPI {
     param()
 
     $results = @{
-        UpdatesFound     = 0
+        UpdatesFound = 0
         UpdatesInstalled = 0
-        UpdatesFailed    = 0
-        TotalSizeMB      = 0
-        RebootRequired   = $false
-        Details          = [List[PSCustomObject]]::new()
-        Method           = 'Native API'
+        UpdatesFailed = 0
+        TotalSizeMB = 0
+        RebootRequired = $false
+        Details = [List[PSCustomObject]]::new()
+        Method = 'Native API'
     }
 
     try {
@@ -869,12 +886,14 @@ function Test-NativeWindowsUpdateAvailable {
 # Export module functions
 Export-ModuleMember -Function @(
     # v3.0 Standardized execution function (Primary)
-    'Invoke-WindowsUpdates',
+    'Invoke-WindowsUpdate',
 
     # Legacy functions (Preserved for internal use)
     'Install-WindowsUpdate',
     'Get-WindowsUpdateStatus'
 )
+
+
 
 
 

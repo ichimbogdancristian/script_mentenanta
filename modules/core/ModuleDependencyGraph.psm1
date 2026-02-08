@@ -65,16 +65,16 @@ function New-ModuleDependencyGraph {
         foreach ($module in $DependencyConfig.Keys) {
             $null = $allModules.Add($module)
             $dependencies = $DependencyConfig[$module].DependsOn
-            
+
             # Add dependencies to set
             foreach ($dep in $dependencies) {
                 $null = $allModules.Add($dep)
             }
 
             $adjacencyList[$module] = @{
-                DependsOn        = $dependencies
+                DependsOn = $dependencies
                 CanRunInParallel = $DependencyConfig[$module].CanRunInParallel ?? $false
-                Description      = $DependencyConfig[$module].Description ?? ""
+                Description = $DependencyConfig[$module].Description ?? ""
             }
         }
 
@@ -82,9 +82,9 @@ function New-ModuleDependencyGraph {
         foreach ($module in $allModules) {
             if (-not $adjacencyList.ContainsKey($module)) {
                 $adjacencyList[$module] = @{
-                    DependsOn        = @()
+                    DependsOn = @()
                     CanRunInParallel = $true
-                    Description      = "Auto-generated entry for dependency"
+                    Description = "Auto-generated entry for dependency"
                 }
             }
         }
@@ -96,11 +96,11 @@ function New-ModuleDependencyGraph {
         }
 
         $graph = [PSCustomObject]@{
-            Modules       = [array]$allModules
+            Modules = [array]$allModules
             AdjacencyList = $adjacencyList
-            InDegrees     = $inDegrees
-            ModuleCount   = $allModules.Count
-            CreatedAt     = Get-Date
+            InDegrees = $inDegrees
+            ModuleCount = $allModules.Count
+            CreatedAt = Get-Date
         }
 
         Write-Verbose "Dependency graph created with $($graph.ModuleCount) modules"
@@ -171,9 +171,9 @@ function Test-DependencyCircularity {
                     $cycleStart = $path.IndexOf($dep)
                     $cyclePath = $path[$cycleStart..($path.Count - 1)] + $dep
                     return @{
-                        IsValid      = $false
+                        IsValid = $false
                         CircularPath = $cyclePath
-                        Message      = "Circular dependency detected: $($cyclePath -join ' -> ')"
+                        Message = "Circular dependency detected: $($cyclePath -join ' -> ')"
                     }
                 }
             }
@@ -254,7 +254,7 @@ function Get-ModuleExecutionOrder {
         # Process queue and build execution order + levels
         $executionOrder = [System.Collections.Generic.List[string]]::new()
         $executionLevels = [System.Collections.Generic.List[object]]::new()
-        
+
         while ($queue.Count -gt 0) {
             # Current level: all modules ready to execute now
             $currentLevel = [System.Collections.Generic.List[string]]::new()
@@ -287,10 +287,10 @@ function Get-ModuleExecutionOrder {
         }
 
         $result = [PSCustomObject]@{
-            ExecutionOrder  = [array]$executionOrder
+            ExecutionOrder = [array]$executionOrder
             ExecutionLevels = [array]$executionLevels
-            LevelCount      = $executionLevels.Count
-            CalculatedAt    = Get-Date
+            LevelCount = $executionLevels.Count
+            CalculatedAt = Get-Date
         }
 
         Write-Verbose "Execution order calculated: $($executionOrder.Count) modules in $($executionLevels.Count) levels"
@@ -456,10 +456,10 @@ function Test-DependencyGraphValidity {
         }
 
         return @{
-            IsValid          = $isValid
-            ErrorCount       = $errors.Count
+            IsValid = $isValid
+            ErrorCount = $errors.Count
             ValidationErrors = [array]$errors
-            Message          = if ($isValid) { "Dependency graph is valid" } else { "$($errors.Count) validation errors found" }
+            Message = if ($isValid) { "Dependency graph is valid" } else { "$($errors.Count) validation errors found" }
         }
     }
     catch {
@@ -481,3 +481,4 @@ Export-ModuleMember -Function @(
 )
 
 #endregion
+

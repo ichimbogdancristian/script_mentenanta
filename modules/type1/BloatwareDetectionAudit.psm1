@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (for configuration and logging - loaded globally)
 #   - SystemInventory.psm1 (for system data collection)
@@ -92,20 +92,20 @@ function Find-InstalledBloatware {
     $perfContext = $null
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'BloatwareDetection' -Component 'BLOATWARE-DETECTION'
-        
+
         $logData = @{
             Categories = $Categories -join ', '
-            UseCache   = $UseCache
-            Context    = $Context
+            UseCache = $UseCache
+            Context = $Context
         }
-        
+
         # v4.0: Add OS context to log data if available
         if ($osContext) {
             $logData.OSVersion = $osContext.Version
             $logData.OSBuild = $osContext.BuildNumber
             $logData.IsWindows11 = $osContext.IsWindows11
         }
-        
+
         Write-LogEntry -Level 'INFO' -Component 'BLOATWARE-DETECTION' -Message 'Starting comprehensive bloatware detection' -Data $logData
     }
     catch {
@@ -122,7 +122,7 @@ function Find-InstalledBloatware {
                 # v4.0: Get-BloatwareConfiguration now returns OS-specific merged list
                 $bloatwareConfig = Get-BloatwareConfiguration
                 $bloatwareList = if ($bloatwareConfig.all) { $bloatwareConfig.all } else { @() }
-                
+
                 # v4.0: Log OS-aware configuration loading
                 if ($osContext) {
                     Write-Verbose "Loaded OS-aware bloatware configuration for Windows $($osContext.Version)"
@@ -172,16 +172,16 @@ function Find-InstalledBloatware {
                     Where-Object { $_.DisplayName -and $_.DisplayName.Trim() -ne '' } |
                     ForEach-Object {
                         [PSCustomObject]@{
-                            Name            = $_.DisplayName
-                            DisplayName     = $_.DisplayName
-                            DisplayVersion  = $_.DisplayVersion
-                            Publisher       = $_.Publisher
-                            InstallDate     = $_.InstallDate
+                            Name = $_.DisplayName
+                            DisplayName = $_.DisplayName
+                            DisplayVersion = $_.DisplayVersion
+                            Publisher = $_.Publisher
+                            InstallDate = $_.InstallDate
                             InstallLocation = $_.InstallLocation
-                            EstimatedSize   = $_.EstimatedSize
+                            EstimatedSize = $_.EstimatedSize
                             UninstallString = $_.UninstallString
-                            PSPath          = $_.PSPath
-                            Source          = 'Registry'
+                            PSPath = $_.PSPath
+                            Source = 'Registry'
                         }
                     }
                 }
@@ -206,15 +206,15 @@ function Find-InstalledBloatware {
                 if ($appxPackages) {
                     $appxItems = $appxPackages | ForEach-Object {
                         [PSCustomObject]@{
-                            Name              = $_.Name
-                            DisplayName       = $_.Name
-                            Version           = $_.Version
-                            Publisher         = $_.Publisher
-                            InstallDate       = $null
-                            InstallLocation   = $_.InstallLocation
-                            PackageFullName   = $_.PackageFullName
+                            Name = $_.Name
+                            DisplayName = $_.Name
+                            Version = $_.Version
+                            Publisher = $_.Publisher
+                            InstallDate = $null
+                            InstallLocation = $_.InstallLocation
+                            PackageFullName = $_.PackageFullName
                             PackageFamilyName = $_.PackageFamilyName
-                            Source            = 'AppX'
+                            Source = 'AppX'
                         }
                     }
                     $installedPrograms += $appxItems
@@ -318,11 +318,11 @@ function Find-InstalledBloatware {
 
             $completionData = @{
                 BloatwareItemsFound = $resultArray.Count
-                ExecutionTime       = [math]::Round($duration, 2)
-                Sources             = $sourceStats -join ', '
-                Categories          = $Categories -join ', '
+                ExecutionTime = [math]::Round($duration, 2)
+                Sources = $sourceStats -join ', '
+                Categories = $Categories -join ', '
             }
-            
+
             # v4.0: Add OS context to completion log if available
             if ($osContext) {
                 $completionData.OSVersion = $osContext.Version
@@ -346,9 +346,9 @@ function Find-InstalledBloatware {
             }
 
             Write-LogEntry -Level 'ERROR' -Component 'BLOATWARE-DETECTION' -Message 'Bloatware detection failed' -Data @{
-                Error         = $_.Exception.Message
+                Error = $_.Exception.Message
                 ExecutionTime = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
-                Categories    = $Categories -join ', '
+                Categories = $Categories -join ', '
             }
         }
         catch {
@@ -400,9 +400,9 @@ function Get-BloatwareStatistic {
 
     if ($null -eq $BloatwareList -or $BloatwareList.Count -eq 0) {
         return @{
-            TotalItems        = 0
-            BySource          = @{}
-            ByCategory        = @{}
+            TotalItems = 0
+            BySource = @{}
+            ByCategory = @{}
             TotalSizeEstimate = "Unknown"
         }
     }
@@ -433,11 +433,11 @@ function Get-BloatwareStatistic {
     }
 
     return @{
-        TotalItems        = $BloatwareList.Count
-        BySource          = $bySource
-        ByCategory        = $byCategory
+        TotalItems = $BloatwareList.Count
+        BySource = $bySource
+        ByCategory = $byCategory
         TotalSizeEstimate = "Calculation not available"
-        MostCommonSource  = $mostCommonSource
+        MostCommonSource = $mostCommonSource
         MostCommonPattern = $mostCommonPattern
     }
 }
@@ -508,17 +508,17 @@ function Get-AppXBloatware {
 
                 if ($matched) {
                     $detectedItem = [PSCustomObject]@{
-                        Name           = $app.Name
-                        DisplayName    = $app.DisplayName
-                        Version        = $app.Version
-                        Publisher      = $app.Publisher
-                        InstallDate    = $app.InstallDate
-                        Source         = 'AppX'
+                        Name = $app.Name
+                        DisplayName = $app.DisplayName
+                        Version = $app.Version
+                        Publisher = $app.Publisher
+                        InstallDate = $app.InstallDate
+                        Source = 'AppX'
                         MatchedPattern = $pattern
-                        MatchType      = $matchType
-                        Context        = $Context
-                        RemovalMethod  = 'Remove-AppxPackage'
-                        Confidence     = switch ($matchType) {
+                        MatchType = $matchType
+                        Context = $Context
+                        RemovalMethod = 'Remove-AppxPackage'
+                        Confidence = switch ($matchType) {
                             "Exact" { 100 }
                             "Publisher+Name" { 95 }
                             "Wildcard" { 80 }
@@ -529,15 +529,15 @@ function Get-AppXBloatware {
 
                     # Log detailed detection information
                     Write-DetectionLog -Operation 'Detect' -Target $app.DisplayName -Component 'BLOATWARE-APPX' -AdditionalInfo @{
-                        PackageName    = $app.Name
-                        Version        = $app.Version
-                        Publisher      = $app.Publisher
-                        InstallDate    = $app.InstallDate
+                        PackageName = $app.Name
+                        Version = $app.Version
+                        Publisher = $app.Publisher
+                        InstallDate = $app.InstallDate
                         MatchedPattern = $pattern
-                        MatchType      = $matchType
-                        Confidence     = $detectedItem.Confidence
-                        RemovalMethod  = 'Remove-AppxPackage'
-                        MatchReason    = switch ($matchType) {
+                        MatchType = $matchType
+                        Confidence = $detectedItem.Confidence
+                        RemovalMethod = 'Remove-AppxPackage'
+                        MatchReason = switch ($matchType) {
                             "Exact" { "Exact match with pattern '$pattern'" }
                             "Publisher+Name" { "Publisher and name match pattern '$pattern'" }
                             "Wildcard" { "Wildcard match with pattern '$pattern'" }
@@ -598,12 +598,12 @@ function Get-WingetBloatware {
                 $data = if ($parsed.Data) { $parsed.Data } elseif ($parsed -is [array]) { $parsed } else { @() }
                 $wingetApps = $data | ForEach-Object {
                     [PSCustomObject]@{
-                        Name        = $_.Id
+                        Name = $_.Id
                         DisplayName = $_.Name
-                        Version     = $_.Version
-                        Publisher   = $_.Publisher
-                        Source      = 'Winget'
-                        WingetId    = $_.Id
+                        Version = $_.Version
+                        Publisher = $_.Publisher
+                        Source = 'Winget'
+                        WingetId = $_.Id
                     }
                 }
             }
@@ -622,12 +622,12 @@ function Get-WingetBloatware {
                     $parts = $line -split '\s{2,}'
                     if ($parts.Count -ge 2) {
                         $wingetApps += [PSCustomObject]@{
-                            Name        = $parts[0]
+                            Name = $parts[0]
                             DisplayName = $parts[0]
-                            Version     = if ($parts.Count -ge 3) { $parts[2] } else { $null }
-                            Publisher   = $null
-                            Source      = 'Winget'
-                            WingetId    = $null
+                            Version = if ($parts.Count -ge 3) { $parts[2] } else { $null }
+                            Publisher = $null
+                            Source = 'Winget'
+                            WingetId = $null
                         }
                     }
                 }
@@ -670,18 +670,18 @@ function Get-WingetBloatware {
 
                 if ($matched) {
                     $detectedItem = [PSCustomObject]@{
-                        Name           = if ($app.WingetId) { $app.WingetId } else { $app.Name }
-                        DisplayName    = $app.DisplayName
-                        Version        = $app.Version
-                        Publisher      = $app.Publisher
-                        InstallDate    = $app.InstallDate
-                        Source         = 'Winget'
+                        Name = if ($app.WingetId) { $app.WingetId } else { $app.Name }
+                        DisplayName = $app.DisplayName
+                        Version = $app.Version
+                        Publisher = $app.Publisher
+                        InstallDate = $app.InstallDate
+                        Source = 'Winget'
                         MatchedPattern = $pattern
-                        MatchType      = $matchType
-                        Context        = $Context
-                        RemovalMethod  = 'winget uninstall'
-                        WingetId       = $app.WingetId
-                        Confidence     = switch ($matchType) {
+                        MatchType = $matchType
+                        Context = $Context
+                        RemovalMethod = 'winget uninstall'
+                        WingetId = $app.WingetId
+                        Confidence = switch ($matchType) {
                             "Exact" { 100 }
                             "Publisher+Name" { 95 }
                             "Wildcard" { 80 }
@@ -692,15 +692,15 @@ function Get-WingetBloatware {
 
                     # Log detailed detection information
                     Write-DetectionLog -Operation 'Detect' -Target $app.DisplayName -Component 'BLOATWARE-WINGET' -AdditionalInfo @{
-                        PackageName    = $app.Name
-                        Version        = $app.Version
-                        Publisher      = $app.Publisher
-                        InstallDate    = $app.InstallDate
+                        PackageName = $app.Name
+                        Version = $app.Version
+                        Publisher = $app.Publisher
+                        InstallDate = $app.InstallDate
                         MatchedPattern = $pattern
-                        MatchType      = $matchType
-                        Confidence     = $detectedItem.Confidence
-                        RemovalMethod  = 'winget uninstall'
-                        MatchReason    = switch ($matchType) {
+                        MatchType = $matchType
+                        Confidence = $detectedItem.Confidence
+                        RemovalMethod = 'winget uninstall'
+                        MatchReason = switch ($matchType) {
                             "Exact" { "Exact match with pattern '$pattern'" }
                             "Publisher+Name" { "Publisher and name match pattern '$pattern'" }
                             "Wildcard" { "Wildcard match with pattern '$pattern'" }
@@ -759,12 +759,12 @@ function Get-ChocolateyBloatware {
                     if ([string]::IsNullOrWhiteSpace($line)) { continue }
                     $parts = $line -split '\|', 2
                     $chocoApps += [PSCustomObject]@{
-                        Name         = $parts[0]
-                        DisplayName  = $parts[0]
-                        Version      = if ($parts.Count -gt 1) { $parts[1] } else { $null }
-                        Publisher    = $null
-                        InstallDate  = $null
-                        Source       = 'Chocolatey'
+                        Name = $parts[0]
+                        DisplayName = $parts[0]
+                        Version = if ($parts.Count -gt 1) { $parts[1] } else { $null }
+                        Publisher = $null
+                        InstallDate = $null
+                        Source = 'Chocolatey'
                         ChocolateyId = $parts[0]
                     }
                 }
@@ -782,27 +782,27 @@ function Get-ChocolateyBloatware {
             foreach ($pattern in $BloatwarePatterns) {
                 if ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
                     $detectedItem = [PSCustomObject]@{
-                        Name           = $app.Name
-                        DisplayName    = $app.DisplayName
-                        Version        = $app.Version
-                        Publisher      = $app.Publisher
-                        InstallDate    = $app.InstallDate
-                        Source         = 'Chocolatey'
+                        Name = $app.Name
+                        DisplayName = $app.DisplayName
+                        Version = $app.Version
+                        Publisher = $app.Publisher
+                        InstallDate = $app.InstallDate
+                        Source = 'Chocolatey'
                         MatchedPattern = $pattern
-                        Context        = $Context
-                        RemovalMethod  = 'choco uninstall'
+                        Context = $Context
+                        RemovalMethod = 'choco uninstall'
                     }
 
                     # Log detailed detection information
                     Write-DetectionLog -Operation 'Detect' -Target $app.DisplayName -Component 'BLOATWARE-CHOCO' -AdditionalInfo @{
-                        PackageName    = $app.Name
-                        Version        = $app.Version
-                        Publisher      = $app.Publisher
-                        InstallDate    = $app.InstallDate
+                        PackageName = $app.Name
+                        Version = $app.Version
+                        Publisher = $app.Publisher
+                        InstallDate = $app.InstallDate
                         MatchedPattern = $pattern
-                        MatchType      = 'Wildcard'
-                        RemovalMethod  = 'choco uninstall'
-                        MatchReason    = "Name or DisplayName matches pattern '$pattern'"
+                        MatchType = 'Wildcard'
+                        RemovalMethod = 'choco uninstall'
+                        MatchReason = "Name or DisplayName matches pattern '$pattern'"
                     }
 
                     $found += $detectedItem
@@ -857,29 +857,29 @@ function Get-RegistryBloatware {
             foreach ($pattern in $BloatwarePatterns) {
                 if ($app.Name -like "*$pattern*" -or $app.DisplayName -like "*$pattern*") {
                     $detectedItem = [PSCustomObject]@{
-                        Name            = $app.Name
-                        DisplayName     = $app.DisplayName
-                        Version         = $app.Version
-                        Publisher       = $app.Publisher
-                        InstallDate     = $app.InstallDate
-                        Source          = 'Registry'
-                        MatchedPattern  = $pattern
-                        Context         = $Context
-                        RemovalMethod   = 'Registry-based uninstall'
+                        Name = $app.Name
+                        DisplayName = $app.DisplayName
+                        Version = $app.Version
+                        Publisher = $app.Publisher
+                        InstallDate = $app.InstallDate
+                        Source = 'Registry'
+                        MatchedPattern = $pattern
+                        Context = $Context
+                        RemovalMethod = 'Registry-based uninstall'
                         UninstallString = $app.UninstallString
                     }
 
                     # Log detailed detection information
                     Write-DetectionLog -Operation 'Detect' -Target $app.DisplayName -Component 'BLOATWARE-REGISTRY' -AdditionalInfo @{
-                        PackageName     = $app.Name
-                        Version         = $app.Version
-                        Publisher       = $app.Publisher
-                        InstallDate     = $app.InstallDate
-                        MatchedPattern  = $pattern
-                        MatchType       = 'Wildcard'
-                        RemovalMethod   = 'Registry-based uninstall'
+                        PackageName = $app.Name
+                        Version = $app.Version
+                        Publisher = $app.Publisher
+                        InstallDate = $app.InstallDate
+                        MatchedPattern = $pattern
+                        MatchType = 'Wildcard'
+                        RemovalMethod = 'Registry-based uninstall'
                         UninstallString = $app.UninstallString
-                        MatchReason     = "Name or DisplayName matches pattern '$pattern'"
+                        MatchReason = "Name or DisplayName matches pattern '$pattern'"
                     }
 
                     $found += $detectedItem
@@ -913,11 +913,11 @@ function Test-BloatwareDetection {
     )
 
     $validationResults = @{
-        TotalItems        = $DetectedItems.Count
-        ValidItems        = 0
-        InvalidItems      = 0
+        TotalItems = $DetectedItems.Count
+        ValidItems = 0
+        InvalidItems = 0
         MissingProperties = @()
-        Sources           = @()
+        Sources = @()
     }
 
     $requiredProperties = @('Name', 'Source', 'MatchedPattern')
@@ -1023,6 +1023,7 @@ Export-ModuleMember -Function @(
     'Test-BloatwareDetection',
     'Find-InstalledBloatware'  # Public function for Type2 modules
 )
+
 
 
 

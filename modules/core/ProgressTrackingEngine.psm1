@@ -13,7 +13,7 @@
     Architecture: v4.0 - Intelligent Orchestration
     Author: Windows Maintenance Automation Project
     Version: 4.0.0
-    
+
     Design Pattern: State-based progress tracking with ETA calculation
     Features: Real-time updates, visual progress bars, accuracy metrics
 #>
@@ -63,28 +63,28 @@ function Initialize-ProgressTracker {
         # Calculate total estimated duration
         $totalEstimated = 0
         foreach ($module in $Modules) {
-            $estimate = if ($EstimatedDurations.ContainsKey($module)) { 
-                $EstimatedDurations[$module] 
+            $estimate = if ($EstimatedDurations.ContainsKey($module)) {
+                $EstimatedDurations[$module]
             }
-            else { 
+            else {
                 30  # Default 30 seconds if not specified
             }
             $totalEstimated += $estimate
         }
 
         $state = @{
-            StartTime                 = Get-Date
-            TotalModules              = $Modules.Count
-            CompletedModules          = @()
-            CurrentModule             = $null
-            RemainingModules          = @($Modules)
-            EstimatedDurations        = $EstimatedDurations
-            ActualDurations           = @{}
-            TotalEstimatedSeconds     = $totalEstimated
-            ElapsedSeconds            = 0
-            ProgressPercentage        = 0
+            StartTime = Get-Date
+            TotalModules = $Modules.Count
+            CompletedModules = @()
+            CurrentModule = $null
+            RemainingModules = @($Modules)
+            EstimatedDurations = $EstimatedDurations
+            ActualDurations = @{}
+            TotalEstimatedSeconds = $totalEstimated
+            ElapsedSeconds = 0
+            ProgressPercentage = 0
             EstimatedRemainingSeconds = $totalEstimated
-            EstimatedCompletionTime   = (Get-Date).AddSeconds($totalEstimated)
+            EstimatedCompletionTime = (Get-Date).AddSeconds($totalEstimated)
         }
 
         Write-LogEntry -Level 'INFO' -Component 'PROGRESS-TRACKER' -Message "Tracker initialized: $($Modules.Count) modules, estimated $totalEstimated seconds total"
@@ -156,7 +156,7 @@ function Update-ProgressTracker {
             # Use actual average duration for better accuracy
             $avgActualDuration = ($ProgressState.ActualDurations.Values | Measure-Object -Average).Average
             $remainingModuleCount = $ProgressState.RemainingModules.Count
-            
+
             # Calculate remaining time based on actual performance
             $estimatedRemaining = $avgActualDuration * $remainingModuleCount
             $ProgressState.EstimatedRemainingSeconds = [math]::Max(0, $estimatedRemaining)
@@ -249,18 +249,18 @@ function Get-ProgressStatus {
 
     try {
         $status = [PSCustomObject]@{
-            TotalModules              = $ProgressState.TotalModules
-            CompletedModules          = $ProgressState.CompletedModules.Count
-            RemainingModules          = $ProgressState.RemainingModules.Count
-            CurrentModule             = $ProgressState.CurrentModule
-            ProgressPercentage        = $ProgressState.ProgressPercentage
-            ElapsedSeconds            = [math]::Round($ProgressState.ElapsedSeconds, 2)
-            ElapsedTimeFormatted      = [TimeSpan]::FromSeconds($ProgressState.ElapsedSeconds).ToString('hh\:mm\:ss')
+            TotalModules = $ProgressState.TotalModules
+            CompletedModules = $ProgressState.CompletedModules.Count
+            RemainingModules = $ProgressState.RemainingModules.Count
+            CurrentModule = $ProgressState.CurrentModule
+            ProgressPercentage = $ProgressState.ProgressPercentage
+            ElapsedSeconds = [math]::Round($ProgressState.ElapsedSeconds, 2)
+            ElapsedTimeFormatted = [TimeSpan]::FromSeconds($ProgressState.ElapsedSeconds).ToString('hh\:mm\:ss')
             EstimatedRemainingSeconds = [math]::Round($ProgressState.EstimatedRemainingSeconds, 2)
-            RemainingTimeFormatted    = [TimeSpan]::FromSeconds($ProgressState.EstimatedRemainingSeconds).ToString('hh\:mm\:ss')
-            EstimatedCompletionTime   = $ProgressState.EstimatedCompletionTime
-            EstimatedTotalSeconds     = [math]::Round($ProgressState.ElapsedSeconds + $ProgressState.EstimatedRemainingSeconds, 2)
-            AverageModuleDuration     = if ($ProgressState.CompletedModules.Count -gt 0) {
+            RemainingTimeFormatted = [TimeSpan]::FromSeconds($ProgressState.EstimatedRemainingSeconds).ToString('hh\:mm\:ss')
+            EstimatedCompletionTime = $ProgressState.EstimatedCompletionTime
+            EstimatedTotalSeconds = [math]::Round($ProgressState.ElapsedSeconds + $ProgressState.EstimatedRemainingSeconds, 2)
+            AverageModuleDuration = if ($ProgressState.CompletedModules.Count -gt 0) {
                 [math]::Round(($ProgressState.ActualDurations.Values | Measure-Object -Average).Average, 2)
             }
             else { 0 }
@@ -356,7 +356,7 @@ function Get-ProgressReport {
 
         $totalElapsed = ((Get-Date) - $ProgressState.StartTime).TotalSeconds
         $actualDurations = $ProgressState.ActualDurations.Values
-        
+
         # Calculate accuracy metrics
         $estimateAccuracy = if ($ProgressState.TotalEstimatedSeconds -gt 0) {
             $diff = [math]::Abs($totalElapsed - $ProgressState.TotalEstimatedSeconds)
@@ -366,41 +366,41 @@ function Get-ProgressReport {
         else { 0 }
 
         # Performance metrics
-        $avgDuration = if ($actualDurations.Count -gt 0) { 
-            ($actualDurations | Measure-Object -Average).Average 
+        $avgDuration = if ($actualDurations.Count -gt 0) {
+            ($actualDurations | Measure-Object -Average).Average
         }
         else { 0 }
-        
-        $minDuration = if ($actualDurations.Count -gt 0) { 
-            ($actualDurations | Measure-Object -Minimum).Minimum 
+
+        $minDuration = if ($actualDurations.Count -gt 0) {
+            ($actualDurations | Measure-Object -Minimum).Minimum
         }
         else { 0 }
-        
-        $maxDuration = if ($actualDurations.Count -gt 0) { 
-            ($actualDurations | Measure-Object -Maximum).Maximum 
+
+        $maxDuration = if ($actualDurations.Count -gt 0) {
+            ($actualDurations | Measure-Object -Maximum).Maximum
         }
         else { 0 }
 
         $report = [PSCustomObject]@{
-            TotalModules               = $ProgressState.TotalModules
-            CompletedModules           = $ProgressState.CompletedModules.Count
-            CompletionRate             = [math]::Round(($ProgressState.CompletedModules.Count / $ProgressState.TotalModules) * 100, 2)
-            
-            TotalElapsedSeconds        = [math]::Round($totalElapsed, 2)
-            TotalElapsedTimeFormatted  = [TimeSpan]::FromSeconds($totalElapsed).ToString('hh\:mm\:ss')
-            
-            TotalEstimatedSeconds      = $ProgressState.TotalEstimatedSeconds
+            TotalModules = $ProgressState.TotalModules
+            CompletedModules = $ProgressState.CompletedModules.Count
+            CompletionRate = [math]::Round(($ProgressState.CompletedModules.Count / $ProgressState.TotalModules) * 100, 2)
+
+            TotalElapsedSeconds = [math]::Round($totalElapsed, 2)
+            TotalElapsedTimeFormatted = [TimeSpan]::FromSeconds($totalElapsed).ToString('hh\:mm\:ss')
+
+            TotalEstimatedSeconds = $ProgressState.TotalEstimatedSeconds
             EstimateAccuracyPercentage = $estimateAccuracy
-            
-            AverageModuleDuration      = [math]::Round($avgDuration, 2)
-            MinimumModuleDuration      = [math]::Round($minDuration, 2)
-            MaximumModuleDuration      = [math]::Round($maxDuration, 2)
-            
-            CompletedModulesList       = $ProgressState.CompletedModules
-            ActualDurations            = $ProgressState.ActualDurations
-            
-            StartTime                  = $ProgressState.StartTime
-            EndTime                    = Get-Date
+
+            AverageModuleDuration = [math]::Round($avgDuration, 2)
+            MinimumModuleDuration = [math]::Round($minDuration, 2)
+            MaximumModuleDuration = [math]::Round($maxDuration, 2)
+
+            CompletedModulesList = $ProgressState.CompletedModules
+            ActualDurations = $ProgressState.ActualDurations
+
+            StartTime = $ProgressState.StartTime
+            EndTime = Get-Date
         }
 
         Write-LogEntry -Level 'INFO' -Component 'PROGRESS-TRACKER' -Message "Progress report: $($report.CompletedModules)/$($report.TotalModules) modules, $($report.TotalElapsedTimeFormatted) elapsed, $($report.EstimateAccuracyPercentage)% estimate accuracy"
@@ -445,3 +445,4 @@ Export-ModuleMember -Function @(
     'Get-ProgressReport',
     'Clear-ProgressBar'
 )
+

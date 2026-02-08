@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - SystemOptimizationAudit.psm1 (Type1 - detection/analysis)
@@ -127,12 +127,12 @@ function Invoke-SystemOptimization {
         # Process optimization opportunities with enhanced logic
         $processedCount = 0
         $optimizationResults = @{
-            Startup  = @{ Applied = 0; Failed = 0; Skipped = 0 }
-            UI       = @{ Applied = 0; Failed = 0; Skipped = 0 }
-            Disk     = @{ Applied = 0; Failed = 0; Skipped = 0; SpaceFreed = 0 }
+            Startup = @{ Applied = 0; Failed = 0; Skipped = 0 }
+            UI = @{ Applied = 0; Failed = 0; Skipped = 0 }
+            Disk = @{ Applied = 0; Failed = 0; Skipped = 0; SpaceFreed = 0 }
             Registry = @{ Applied = 0; Failed = 0; Skipped = 0 }
-            Network  = @{ Applied = 0; Failed = 0; Skipped = 0 }
-            Modern   = @{ Applied = 0; Failed = 0; Skipped = 0 }
+            Network = @{ Applied = 0; Failed = 0; Skipped = 0 }
+            Modern = @{ Applied = 0; Failed = 0; Skipped = 0 }
         }
 
         if ($analysisResults.OptimizationOpportunities) {
@@ -219,30 +219,30 @@ function Invoke-SystemOptimization {
         $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $executionStartTime
         $executionSummary = @{
-            ModuleName    = 'SystemOptimization'
+            ModuleName = 'SystemOptimization'
             ExecutionTime = @{
-                Start      = $executionStartTime.ToString('o')
-                End        = (Get-Date).ToString('o')
+                Start = $executionStartTime.ToString('o')
+                End = (Get-Date).ToString('o')
                 DurationMs = $executionTime.TotalMilliseconds
             }
-            Results       = @{
-                Success        = $true
-                ItemsDetected  = $optimizationCount
+            Results = @{
+                Success = $true
+                ItemsDetected = $optimizationCount
                 ItemsProcessed = $processedCount
-                ItemsFailed    = 0
-                ItemsSkipped   = ($optimizationCount - $processedCount)
+                ItemsFailed = 0
+                ItemsSkipped = ($optimizationCount - $processedCount)
             }
             ExecutionMode = 'Live'
-            LogFiles      = @{
+            LogFiles = @{
                 TextLog = $executionLogPath
                 JsonLog = $executionLogPath -replace '\.log$', '-data.json'
                 Summary = $summaryPath
             }
-            SessionInfo   = @{
-                SessionId    = $env:MAINTENANCE_SESSION_ID
+            SessionInfo = @{
+                SessionId = $env:MAINTENANCE_SESSION_ID
                 ComputerName = $env:COMPUTERNAME
-                UserName     = $env:USERNAME
-                PSVersion    = $PSVersionTable.PSVersion.ToString()
+                UserName = $env:USERNAME
+                PSVersion = $PSVersionTable.PSVersion.ToString()
             }
         }
 
@@ -352,12 +352,12 @@ function Optimize-SystemPerformance {
     # Initialize structured logging and performance tracking
     try {
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Starting comprehensive system optimization' -Data @{
-            CleanupTemp      = $CleanupTemp.IsPresent
-            OptimizeStartup  = $OptimizeStartup.IsPresent
-            OptimizeUI       = $OptimizeUI.IsPresent
+            CleanupTemp = $CleanupTemp.IsPresent
+            OptimizeStartup = $OptimizeStartup.IsPresent
+            OptimizeUI = $OptimizeUI.IsPresent
             OptimizeRegistry = $OptimizeRegistry.IsPresent
-            OptimizeDisk     = $OptimizeDisk.IsPresent
-            OptimizeNetwork  = $OptimizeNetwork.IsPresent
+            OptimizeDisk = $OptimizeDisk.IsPresent
+            OptimizeNetwork = $OptimizeNetwork.IsPresent
         }
         $perfContext = Start-PerformanceTracking -OperationName 'SystemPerformanceOptimization' -Component 'SYSTEM-OPTIMIZATION'
     }
@@ -378,17 +378,17 @@ function Optimize-SystemPerformance {
     # Initialize results tracking
     $results = @{
         TotalOperations = 0
-        Successful      = 0
-        Failed          = 0
-        SpaceFreed      = 0
-        Details         = [System.Collections.ArrayList]::new()
-        Categories      = @{
-            TempCleanup          = @{ Success = 0; Failed = 0; SpaceFreed = 0 }
-            StartupOptimization  = @{ Success = 0; Failed = 0; ItemsOptimized = 0 }
-            UIOptimization       = @{ Success = 0; Failed = 0; SettingsChanged = 0 }
+        Successful = 0
+        Failed = 0
+        SpaceFreed = 0
+        Details = [System.Collections.ArrayList]::new()
+        Categories = @{
+            TempCleanup = @{ Success = 0; Failed = 0; SpaceFreed = 0 }
+            StartupOptimization = @{ Success = 0; Failed = 0; ItemsOptimized = 0 }
+            UIOptimization = @{ Success = 0; Failed = 0; SettingsChanged = 0 }
             RegistryOptimization = @{ Success = 0; Failed = 0; EntriesProcessed = 0 }
-            DiskOptimization     = @{ Success = 0; Failed = 0; TasksCompleted = 0 }
-            NetworkOptimization  = @{ Success = 0; Failed = 0; SettingsApplied = 0 }
+            DiskOptimization = @{ Success = 0; Failed = 0; TasksCompleted = 0 }
+            NetworkOptimization = @{ Success = 0; Failed = 0; SettingsApplied = 0 }
         }
     }
 
@@ -455,18 +455,18 @@ function Optimize-SystemPerformance {
         # Complete performance tracking and structured logging
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $success -ResultData @{
-                TotalOperations       = $results.TotalOperations
-                Successful            = $results.Successful
-                Failed                = $results.Failed
-                SpaceFreed            = $results.SpaceFreed
-                SpaceFreedMB          = $spaceFreedMB
-                Duration              = $duration
+                TotalOperations = $results.TotalOperations
+                Successful = $results.Successful
+                Failed = $results.Failed
+                SpaceFreed = $results.SpaceFreed
+                SpaceFreedMB = $spaceFreedMB
+                Duration = $duration
                 TempCleanupOperations = $results.Categories.TempCleanup
-                StartupOptimizations  = $results.Categories.StartupOptimization
-                UIOptimizations       = $results.Categories.UIOptimization
+                StartupOptimizations = $results.Categories.StartupOptimization
+                UIOptimizations = $results.Categories.UIOptimization
                 RegistryOptimizations = $results.Categories.RegistryOptimization
-                DiskOptimizations     = $results.Categories.DiskOptimization
-                NetworkOptimizations  = $results.Categories.NetworkOptimization
+                DiskOptimizations = $results.Categories.DiskOptimization
+                NetworkOptimizations = $results.Categories.NetworkOptimization
             } | Out-Null
             Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARNING' }) -Component 'SYSTEM-OPTIMIZATION' -Message 'System optimization operation completed' -Data $results
         }
@@ -535,10 +535,10 @@ function Clear-TemporaryFile {
     param()
 
     $results = @{
-        Success    = 0
-        Failed     = 0
+        Success = 0
+        Failed = 0
         SpaceFreed = 0
-        Details    = [System.Collections.ArrayList]::new()
+        Details = [System.Collections.ArrayList]::new()
     }
 
     # Define cleanup targets
@@ -554,11 +554,11 @@ function Clear-TemporaryFile {
 
     foreach ($target in $cleanupTargets) {
         $cleanupResult = @{
-            Name       = $target.Name
-            Path       = $target.Path
-            Success    = $false
+            Name = $target.Name
+            Path = $target.Path
+            Success = $false
             SpaceFreed = 0
-            Error      = $null
+            Error = $null
         }
 
         try {
@@ -639,10 +639,10 @@ function Optimize-StartupProgram {
     param()
 
     $results = @{
-        Success        = 0
-        Failed         = 0
+        Success = 0
+        Failed = 0
         ItemsOptimized = 0
-        Details        = [System.Collections.ArrayList]::new()
+        Details = [System.Collections.ArrayList]::new()
     }
 
     # Get startup programs from registry
@@ -693,19 +693,19 @@ function Optimize-StartupProgram {
                         if ($shouldOptimize) {
                             $operationStart = Get-Date
                             $optimizationResult = @{
-                                Name     = $itemName
-                                Value    = $itemValue
+                                Name = $itemName
+                                Value = $itemValue
                                 Location = $location
-                                Action   = 'Disabled'
-                                Success  = $false
+                                Action = 'Disabled'
+                                Success = $false
                             }
 
                             try {
                                 # Enhanced logging: Pre-action state
                                 Write-OperationStart -Component 'SYSTEM-OPTIMIZATION' -Operation 'Disable' -Target $itemName -AdditionalInfo @{
                                     Location = $location
-                                    Value    = $itemValue
-                                    Type     = 'StartupProgram'
+                                    Value = $itemValue
+                                    Type = 'StartupProgram'
                                 }
 
                                 # Backup the value before removing
@@ -780,10 +780,10 @@ function Optimize-UserInterface {
     param()
 
     $results = @{
-        Success         = 0
-        Failed          = 0
+        Success = 0
+        Failed = 0
         SettingsChanged = 0
-        Details         = [System.Collections.ArrayList]::new()
+        Details = [System.Collections.ArrayList]::new()
     }
 
     # UI optimization settings
@@ -793,23 +793,23 @@ function Optimize-UserInterface {
             'VisualFXSetting' = 2  # Custom (let us set individual settings)
         }
         # Taskbar optimizations
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced'      = @{
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' = @{
             'ShowTaskViewButton' = 0      # Hide Task View button
-            'TaskbarAnimations'  = 0       # Disable taskbar animations
-            'ListviewShadow'     = 0          # Disable shadows
-            'TaskbarSmallIcons'  = 1       # Use small taskbar icons
+            'TaskbarAnimations' = 0       # Disable taskbar animations
+            'ListviewShadow' = 0          # Disable shadows
+            'TaskbarSmallIcons' = 1       # Use small taskbar icons
         }
         # Search optimizations
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search'                 = @{
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search' = @{
             'SearchboxTaskbarMode' = 0    # Hide search box
-            'CortanaConsent'       = 0          # Disable Cortana
+            'CortanaConsent' = 0          # Disable Cortana
         }
         # Performance settings
-        'HKCU:\Control Panel\Desktop'                                            = @{
+        'HKCU:\Control Panel\Desktop' = @{
             'DragFullWindows' = '0'       # Don't drag full windows
-            'MenuShowDelay'   = '0'         # No menu delay
+            'MenuShowDelay' = '0'         # No menu delay
         }
-        'HKCU:\Control Panel\Desktop\WindowMetrics'                              = @{
+        'HKCU:\Control Panel\Desktop\WindowMetrics' = @{
             'MinAnimate' = '0'            # Disable minimize/maximize animations
         }
     }
@@ -818,11 +818,11 @@ function Optimize-UserInterface {
         foreach ($setting in $uiOptimizations[$registryPath].GetEnumerator()) {
             $operationStart = Get-Date
             $settingResult = @{
-                Path    = $registryPath
+                Path = $registryPath
                 Setting = $setting.Key
-                Value   = $setting.Value
+                Value = $setting.Value
                 Success = $false
-                Error   = $null
+                Error = $null
             }
 
             try {
@@ -835,7 +835,7 @@ function Optimize-UserInterface {
                 Write-OperationStart -Component 'SYSTEM-OPTIMIZATION' -Operation 'Modify' -Target "$registryPath\$($setting.Key)" -AdditionalInfo @{
                     OldValue = $oldValue
                     NewValue = $setting.Value
-                    Type     = 'UIOptimization'
+                    Type = 'UIOptimization'
                 }
 
                 # Ensure registry path exists
@@ -857,8 +857,8 @@ function Optimize-UserInterface {
                 if ($newValue -eq $setting.Value) {
                     # Log successful verification
                     Write-OperationSuccess -Component 'SYSTEM-OPTIMIZATION' -Operation 'Verify' -Target "$registryPath\$($setting.Key)" -Metrics @{
-                        ExpectedValue      = $setting.Value
-                        ActualValue        = $newValue
+                        ExpectedValue = $setting.Value
+                        ActualValue = $newValue
                         VerificationPassed = $true
                     }
 
@@ -911,10 +911,10 @@ function Optimize-WindowsRegistry {
     param()
 
     $results = @{
-        Success          = 0
-        Failed           = 0
+        Success = 0
+        Failed = 0
         EntriesProcessed = 0
-        Details          = [System.Collections.ArrayList]::new()
+        Details = [System.Collections.ArrayList]::new()
     }
 
     Write-Warning "Registry optimization requires careful implementation and is currently limited to safe operations"
@@ -923,12 +923,12 @@ function Optimize-WindowsRegistry {
     $safeOptimizations = @{
         # Clear recent documents
         'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs' = @{
-            Action      = 'ClearEntries'
+            Action = 'ClearEntries'
             Description = 'Clear recent documents'
         }
         # Clear run history
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\RunMRU'     = @{
-            Action      = 'ClearEntries'
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\RunMRU' = @{
+            Action = 'ClearEntries'
             Description = 'Clear run command history'
         }
     }
@@ -936,10 +936,10 @@ function Optimize-WindowsRegistry {
     foreach ($registryPath in $safeOptimizations.Keys) {
         $optimization = $safeOptimizations[$registryPath]
         $optimizationResult = @{
-            Path        = $registryPath
+            Path = $registryPath
             Description = $optimization.Description
-            Success     = $false
-            Error       = $null
+            Success = $false
+            Error = $null
         }
 
         try {
@@ -985,10 +985,10 @@ function Optimize-DiskPerformance {
     param()
 
     $results = @{
-        Success        = 0
-        Failed         = 0
+        Success = 0
+        Failed = 0
         TasksCompleted = 0
-        Details        = [System.Collections.ArrayList]::new()
+        Details = [System.Collections.ArrayList]::new()
     }
 
     # Disk optimization tasks
@@ -1000,10 +1000,10 @@ function Optimize-DiskPerformance {
 
     foreach ($task in $diskTasks) {
         $taskResult = @{
-            Name    = $task.Name
-            Action  = $task.Action
+            Name = $task.Name
+            Action = $task.Action
             Success = $false
-            Error   = $null
+            Error = $null
         }
 
         try {
@@ -1056,28 +1056,28 @@ function Optimize-NetworkSetting {
     param()
 
     $results = @{
-        Success         = 0
-        Failed          = 0
+        Success = 0
+        Failed = 0
         SettingsApplied = 0
-        Details         = [System.Collections.ArrayList]::new()
+        Details = [System.Collections.ArrayList]::new()
     }
 
     # Network optimization settings (registry-based)
     $networkOptimizations = @{
         'HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters' = @{
             'TcpAckFrequency' = 1
-            'TCPNoDelay'      = 1
+            'TCPNoDelay' = 1
         }
     }
 
     foreach ($registryPath in $networkOptimizations.Keys) {
         foreach ($setting in $networkOptimizations[$registryPath].GetEnumerator()) {
             $settingResult = @{
-                Path    = $registryPath
+                Path = $registryPath
                 Setting = $setting.Key
-                Value   = $setting.Value
+                Value = $setting.Value
                 Success = $false
-                Error   = $null
+                Error = $null
             }
 
             try {
@@ -1113,9 +1113,9 @@ function Get-DiskUsageMetric {
     try {
         $systemDrive = Get-CimInstance -ClassName Win32_LogicalDisk | Where-Object { $_.DeviceID -eq 'C:' }
         return @{
-            TotalSize      = $systemDrive.Size
-            FreeSpace      = $systemDrive.FreeSpace
-            UsedSpace      = $systemDrive.Size - $systemDrive.FreeSpace
+            TotalSize = $systemDrive.Size
+            FreeSpace = $systemDrive.FreeSpace
+            UsedSpace = $systemDrive.Size - $systemDrive.FreeSpace
             UsedPercentage = [math]::Round((($systemDrive.Size - $systemDrive.FreeSpace) / $systemDrive.Size) * 100, 1)
         }
     }
@@ -1299,27 +1299,27 @@ function Get-EnhancedOptimizationConfig {
 
                 # Map legacy list-based config into enhanced schema
                 $defaultConfig = [PSCustomObject]@{
-                    systemOptimizations   = [PSCustomObject]@{
-                        startup  = [PSCustomObject]@{ enabled = $true; aggressiveMode = $false; safeToDisablePatterns = @(); neverDisablePatterns = @() }
-                        ui       = [PSCustomObject]@{
-                            enabled      = $true
+                    systemOptimizations = [PSCustomObject]@{
+                        startup = [PSCustomObject]@{ enabled = $true; aggressiveMode = $false; safeToDisablePatterns = @(); neverDisablePatterns = @() }
+                        ui = [PSCustomObject]@{
+                            enabled = $true
                             profileBased = $true
-                            profiles     = [PSCustomObject]@{
-                                balanced    = [PSCustomObject]@{ disableAnimations = $false; useSmallTaskbarIcons = $false; hideSearchBox = $false; disableVisualEffects = $false }
+                            profiles = [PSCustomObject]@{
+                                balanced = [PSCustomObject]@{ disableAnimations = $false; useSmallTaskbarIcons = $false; hideSearchBox = $false; disableVisualEffects = $false }
                                 performance = [PSCustomObject]@{ disableAnimations = $true; useSmallTaskbarIcons = $true; hideSearchBox = $true; disableVisualEffects = $true }
                             }
                         }
-                        disk     = [PSCustomObject]@{ enabled = $true; cleanupTargets = @() }
+                        disk = [PSCustomObject]@{ enabled = $true; cleanupTargets = @() }
                         registry = [PSCustomObject]@{ enabled = $false; safeOptimizations = @() }
-                        network  = [PSCustomObject]@{ enabled = $false; tcpOptimizations = [PSCustomObject]@{ enabled = $false; settings = @{} }; dnsOptimizations = [PSCustomObject]@{ enabled = $false; flushDNSCache = $false } }
-                        modern   = [PSCustomObject]@{ windows11 = [PSCustomObject]@{ enabled = $true; optimizations = @() } }
+                        network = [PSCustomObject]@{ enabled = $false; tcpOptimizations = [PSCustomObject]@{ enabled = $false; settings = @{} }; dnsOptimizations = [PSCustomObject]@{ enabled = $false; flushDNSCache = $false } }
+                        modern = [PSCustomObject]@{ windows11 = [PSCustomObject]@{ enabled = $true; optimizations = @() } }
                     }
                     performanceThresholds = [PSCustomObject]@{
                         diskSpace = [PSCustomObject]@{ critical = 5; warning = 15; optimal = 25 }
-                        memory    = [PSCustomObject]@{ high = 85; warning = 70; optimal = 60 }
-                        startup   = [PSCustomObject]@{ tooMany = 15; optimal = 8; minimal = 5 }
+                        memory = [PSCustomObject]@{ high = 85; warning = 70; optimal = 60 }
+                        startup = [PSCustomObject]@{ tooMany = 15; optimal = 8; minimal = 5 }
                     }
-                    adaptiveSettings      = [PSCustomObject]@{ enabled = $true }
+                    adaptiveSettings = [PSCustomObject]@{ enabled = $true }
                 }
 
                 if ($config.startupPrograms) {
@@ -1342,20 +1342,20 @@ function Get-EnhancedOptimizationConfig {
 
     # Return minimal default configuration if file not found
     return @{
-        systemOptimizations   = @{
-            startup  = @{ enabled = $true; aggressiveMode = $false }
-            ui       = @{ enabled = $true; profileBased = $true }
-            disk     = @{ enabled = $true }
+        systemOptimizations = @{
+            startup = @{ enabled = $true; aggressiveMode = $false }
+            ui = @{ enabled = $true; profileBased = $true }
+            disk = @{ enabled = $true }
             registry = @{ enabled = $false }
-            network  = @{ enabled = $false }
-            modern   = @{ windows11 = @{ enabled = $true } }
+            network = @{ enabled = $false }
+            modern = @{ windows11 = @{ enabled = $true } }
         }
         performanceThresholds = @{
             diskSpace = @{ critical = 5; warning = 15; optimal = 25 }
-            memory    = @{ high = 85; warning = 70; optimal = 60 }
-            startup   = @{ tooMany = 15; optimal = 8; minimal = 5 }
+            memory = @{ high = 85; warning = 70; optimal = 60 }
+            startup = @{ tooMany = 15; optimal = 8; minimal = 5 }
         }
-        adaptiveSettings      = @{ enabled = $true }
+        adaptiveSettings = @{ enabled = $true }
     }
 }
 
@@ -1384,25 +1384,25 @@ function Get-SystemPerformanceProfile {
         }
 
         return @{
-            RAM            = $ramGB
-            CPUCores       = $cpuCores
+            RAM = $ramGB
+            CPUCores = $cpuCores
             WindowsVersion = $osVersion.Major
-            WindowsBuild   = $osVersion.Build
-            Profile        = $performanceProfile
-            IsLowEnd       = ($performanceProfile -eq 'lowEnd')
-            IsHighEnd      = ($performanceProfile -eq 'highEnd')
+            WindowsBuild = $osVersion.Build
+            Profile = $performanceProfile
+            IsLowEnd = ($performanceProfile -eq 'lowEnd')
+            IsHighEnd = ($performanceProfile -eq 'highEnd')
         }
     }
     catch {
         Write-Warning "Failed to determine system profile: $($_.Exception.Message)"
         return @{
-            RAM            = 8
-            CPUCores       = 4
+            RAM = 8
+            CPUCores = 4
             WindowsVersion = 10
-            WindowsBuild   = 19044
-            Profile        = 'midRange'
-            IsLowEnd       = $false
-            IsHighEnd      = $false
+            WindowsBuild = 19044
+            Profile = 'midRange'
+            IsLowEnd = $false
+            IsHighEnd = $false
         }
     }
 }
@@ -1551,8 +1551,8 @@ function Invoke-EnhancedUIOptimization {
     # Apply UI optimizations based on profile
     $uiOptimizations = @{
         'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' = @{}
-        'HKCU:\Control Panel\Desktop'                                       = @{}
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search'            = @{}
+        'HKCU:\Control Panel\Desktop' = @{}
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search' = @{}
     }
 
     # Configure based on profile
@@ -2071,6 +2071,8 @@ Export-ModuleMember -Function @(
     'Optimize-SystemPerformance',
     'Get-SystemPerformanceMetric'
 )
+
+
 
 
 

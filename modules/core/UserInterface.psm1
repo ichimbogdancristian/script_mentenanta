@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -129,8 +129,7 @@ function Show-MainMenu {
         SelectedTasks = @()
     }
 
-    # ===== MAIN MENU =====
-    Write-Host "`n===================================================" -ForegroundColor Cyan
+    # ===== MAIN MENU ===== Write-Host "`n===================================================" -ForegroundColor Cyan
     Write-Host "    Windows Maintenance Automation v3.0.0" -ForegroundColor White
     Write-Host "===================================================" -ForegroundColor Cyan
     Write-Host ""
@@ -223,7 +222,7 @@ function Show-MainMenu {
         Complete-PerformanceTracking -Context $perfContext -Status 'Success' -ResultCount $result.SelectedTasks.Count
         Write-LogEntry -Level 'INFO' -Component 'USER-INTERFACE' -Message 'Menu selection completed' -Data @{
             SelectedTaskCount = $result.SelectedTasks.Count
-            SelectedTasks     = ($result.SelectedTasks -join ',')
+            SelectedTasks = ($result.SelectedTasks -join ',')
         }
     }
     catch {
@@ -357,10 +356,10 @@ function Show-Progress {
         }
 
         Write-LogEntry -Level 'INFO' -Component 'USER-INTERFACE' -Message "Progress update" -Data @{
-            Activity        = $Activity
-            Status          = $Status
+            Activity = $Activity
+            Status = $Status
             PercentComplete = $PercentComplete
-            Severity        = $Severity
+            Severity = $Severity
         }
     }
     catch {
@@ -553,9 +552,9 @@ function Show-ResultSummary {
         Write-Host ""
 
         Write-LogEntry -Level 'INFO' -Component 'USER-INTERFACE' -Message "Result summary displayed" -Data @{
-            Title       = $Title
+            Title = $Title
             ResultCount = $Results.Count
-            Total       = $total
+            Total = $total
         }
     }
     catch {
@@ -853,9 +852,9 @@ function ConvertFrom-TaskNumbers {
 
         $uniqueTasks = $selectedTasks | Sort-Object | Get-Unique
         Write-LogEntry -Level 'INFO' -Component 'USER-INTERFACE' -Message "Parsed task selection" -Data @{
-            Input       = $TaskInput
+            Input = $TaskInput
             ParsedCount = $uniqueTasks.Count
-            Tasks       = ($uniqueTasks -join ',')
+            Tasks = ($uniqueTasks -join ',')
         }
 
         return $uniqueTasks
@@ -1006,6 +1005,7 @@ Export-ModuleMember -Function @(
     'Show-ResultSummary',
     'ConvertFrom-TaskNumbers'
 )
+
 
 
 

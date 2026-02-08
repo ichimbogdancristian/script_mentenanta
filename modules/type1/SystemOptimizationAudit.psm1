@@ -100,11 +100,11 @@ function Get-SystemOptimizationAnalysis {
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'SystemOptimizationAudit' -Component 'SYSTEM-OPT-AUDIT'
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPT-AUDIT' -Message 'Starting system optimization audit' -Data @{
-            IncludeStartup  = $IncludeStartup
-            IncludeUI       = $IncludeUI
+            IncludeStartup = $IncludeStartup
+            IncludeUI = $IncludeUI
             IncludeRegistry = $IncludeRegistry
-            IncludeDisk     = $IncludeDisk
-            IncludeNetwork  = $IncludeNetwork
+            IncludeDisk = $IncludeDisk
+            IncludeNetwork = $IncludeNetwork
         }
     }
     catch {
@@ -127,11 +127,11 @@ function Get-SystemOptimizationAnalysis {
 
         # Initialize audit results
         $auditResults = @{
-            AuditTimestamp            = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            SystemInfo                = Get-BasicSystemInfo
+            AuditTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            SystemInfo = Get-BasicSystemInfo
             OptimizationOpportunities = @()
-            PerformanceMetrics        = @{}
-            Recommendations           = @()
+            PerformanceMetrics = @{}
+            Recommendations = @()
         }
 
         # Default to include all categories if none specified
@@ -248,12 +248,12 @@ function Get-BasicSystemInfo {
         $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
 
         return [PSCustomObject]@{
-            OS                = $computerInfo.WindowsProductName
-            Version           = $computerInfo.WindowsVersion
-            Build             = $computerInfo.WindowsBuildLabEx
-            RAM               = [math]::Round($computerInfo.TotalPhysicalMemory / 1GB, 2)
-            CPU               = $cpu.Name
-            Cores             = $cpu.NumberOfCores
+            OS = $computerInfo.WindowsProductName
+            Version = $computerInfo.WindowsVersion
+            Build = $computerInfo.WindowsBuildLabEx
+            RAM = [math]::Round($computerInfo.TotalPhysicalMemory / 1GB, 2)
+            CPU = $cpu.Name
+            Cores = $cpu.NumberOfCores
             LogicalProcessors = $cpu.NumberOfLogicalProcessors
         }
     }
@@ -283,24 +283,24 @@ function Get-StartupOptimizationAudit {
             if ($app.Name -match 'Adobe|Steam|Spotify|Skype|Teams' -and $app.Command -notmatch 'Critical|System') {
                 $highImpactApps += $app
                 $opportunityItem = [PSCustomObject]@{
-                    Category         = 'Startup'
-                    Type             = 'DisableStartupApp'
-                    Description      = "Disable non-essential startup application: $($app.Name)"
-                    Impact           = 'High'
+                    Category = 'Startup'
+                    Type = 'DisableStartupApp'
+                    Description = "Disable non-essential startup application: $($app.Name)"
+                    Impact = 'High'
                     EstimatedSavings = '2-5 seconds boot time'
-                    Target           = $app.Name
+                    Target = $app.Name
                 }
 
                 # Log detected startup optimization opportunity
                 Write-DetectionLog -Operation 'Detect' -Target $app.Name -Component 'SYSOPT-STARTUP' -AdditionalInfo @{
-                    Category         = 'Startup Application'
-                    Location         = $app.Location
-                    Command          = $app.Command
-                    User             = $app.User
-                    Impact           = 'High'
+                    Category = 'Startup Application'
+                    Location = $app.Location
+                    Command = $app.Command
+                    User = $app.User
+                    Impact = 'High'
                     EstimatedSavings = '2-5 seconds boot time'
                     OptimizationType = 'DisableStartupApp'
-                    Reason           = "Non-essential application starting automatically at boot"
+                    Reason = "Non-essential application starting automatically at boot"
                 }
 
                 $opportunities += $opportunityItem
@@ -322,24 +322,24 @@ function Get-StartupOptimizationAudit {
 
         foreach ($service in $nonEssentialServices) {
             $opportunityItem = [PSCustomObject]@{
-                Category         = 'Services'
-                Type             = 'OptimizeService'
-                Description      = "Optimize service startup: $($service.Name)"
-                Impact           = 'Medium'
+                Category = 'Services'
+                Type = 'OptimizeService'
+                Description = "Optimize service startup: $($service.Name)"
+                Impact = 'Medium'
                 EstimatedSavings = '1-2 seconds boot time'
-                Target           = $service.Name
+                Target = $service.Name
             }
 
             # Log detected service optimization opportunity
             Write-DetectionLog -Operation 'Detect' -Target $service.Name -Component 'SYSOPT-SERVICE' -AdditionalInfo @{
-                Category         = 'System Service'
-                DisplayName      = $service.DisplayName
-                Status           = $service.Status
-                StartType        = $service.StartType
-                Impact           = 'Medium'
+                Category = 'System Service'
+                DisplayName = $service.DisplayName
+                Status = $service.Status
+                StartType = $service.StartType
+                Impact = 'Medium'
                 EstimatedSavings = '1-2 seconds boot time'
                 OptimizationType = 'ChangeStartupType'
-                Reason           = "Non-essential service running automatically"
+                Reason = "Non-essential service running automatically"
             }
 
             $opportunities += $opportunityItem
@@ -351,10 +351,10 @@ function Get-StartupOptimizationAudit {
     }
 
     return [PSCustomObject]@{
-        TotalStartupApps    = $startupApps.Count
-        HighImpactApps      = $highImpactApps.Count
+        TotalStartupApps = $startupApps.Count
+        HighImpactApps = $highImpactApps.Count
         OptimizableServices = $nonEssentialServices.Count
-        Opportunities       = $opportunities
+        Opportunities = $opportunities
     }
 }
 
@@ -374,24 +374,24 @@ function Get-UIOptimizationAudit {
         $visualEffects = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -ErrorAction SilentlyContinue
         if ($visualEffects -and $visualEffects.VisualFXSetting -ne 2) {
             $opportunityItem = [PSCustomObject]@{
-                Category         = 'UI'
-                Type             = 'OptimizeVisualEffects'
-                Description      = 'Optimize visual effects for performance'
-                Impact           = 'Medium'
+                Category = 'UI'
+                Type = 'OptimizeVisualEffects'
+                Description = 'Optimize visual effects for performance'
+                Impact = 'Medium'
                 EstimatedSavings = '10-20% UI responsiveness'
-                Target           = 'VisualEffects'
+                Target = 'VisualEffects'
             }
 
             # Log detected visual effects optimization
             Write-DetectionLog -Operation 'Detect' -Target 'Visual Effects' -Component 'SYSOPT-UI' -AdditionalInfo @{
-                Category           = 'User Interface'
-                CurrentSetting     = $visualEffects.VisualFXSetting
+                Category = 'User Interface'
+                CurrentSetting = $visualEffects.VisualFXSetting
                 RecommendedSetting = 2
-                RegistryPath       = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects'
-                Impact             = 'Medium'
-                EstimatedSavings   = '10-20% UI responsiveness improvement'
-                OptimizationType   = 'Registry modification'
-                Reason             = "Visual effects not optimized for performance"
+                RegistryPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects'
+                Impact = 'Medium'
+                EstimatedSavings = '10-20% UI responsiveness improvement'
+                OptimizationType = 'Registry modification'
+                Reason = "Visual effects not optimized for performance"
             }
 
             $opportunities += $opportunityItem
@@ -401,22 +401,22 @@ function Get-UIOptimizationAudit {
         $animationSettings = Get-ItemProperty 'HKCU:\Control Panel\Desktop\WindowMetrics' -ErrorAction SilentlyContinue
         if ($animationSettings) {
             $opportunityItem = [PSCustomObject]@{
-                Category         = 'UI'
-                Type             = 'OptimizeAnimations'
-                Description      = 'Optimize window animations for performance'
-                Impact           = 'Low'
+                Category = 'UI'
+                Type = 'OptimizeAnimations'
+                Description = 'Optimize window animations for performance'
+                Impact = 'Low'
                 EstimatedSavings = '5-10% UI responsiveness'
-                Target           = 'Animations'
+                Target = 'Animations'
             }
 
             # Log detected animation optimization
             Write-DetectionLog -Operation 'Detect' -Target 'Window Animations' -Component 'SYSOPT-UI' -AdditionalInfo @{
-                Category         = 'User Interface'
-                RegistryPath     = 'HKCU:\Control Panel\Desktop\WindowMetrics'
-                Impact           = 'Low'
+                Category = 'User Interface'
+                RegistryPath = 'HKCU:\Control Panel\Desktop\WindowMetrics'
+                Impact = 'Low'
                 EstimatedSavings = '5-10% UI responsiveness improvement'
                 OptimizationType = 'Registry modification'
-                Reason           = "Window animations can be optimized for better performance"
+                Reason = "Window animations can be optimized for better performance"
             }
 
             $opportunities += $opportunityItem
@@ -426,12 +426,12 @@ function Get-UIOptimizationAudit {
         $taskbarSettings = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -ErrorAction SilentlyContinue
         if ($taskbarSettings -and $taskbarSettings.TaskbarAnimations -ne 0) {
             $opportunities += [PSCustomObject]@{
-                Category         = 'UI'
-                Type             = 'OptimizeTaskbar'
-                Description      = 'Disable taskbar animations for better performance'
-                Impact           = 'Low'
+                Category = 'UI'
+                Type = 'OptimizeTaskbar'
+                Description = 'Disable taskbar animations for better performance'
+                Impact = 'Low'
                 EstimatedSavings = '2-5% UI responsiveness'
-                Target           = 'TaskbarAnimations'
+                Target = 'TaskbarAnimations'
             }
         }
 
@@ -442,7 +442,7 @@ function Get-UIOptimizationAudit {
 
     return [PSCustomObject]@{
         UIOptimizations = $opportunities.Count
-        Opportunities   = $opportunities
+        Opportunities = $opportunities
     }
 }
 
@@ -462,12 +462,12 @@ function Get-RegistryOptimizationAudit {
         $tempFiles = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist\*' -ErrorAction SilentlyContinue
         if ($tempFiles.Count -gt 100) {
             $opportunities += [PSCustomObject]@{
-                Category         = 'Registry'
-                Type             = 'CleanUserAssist'
-                Description      = 'Clean UserAssist registry entries'
-                Impact           = 'Low'
+                Category = 'Registry'
+                Type = 'CleanUserAssist'
+                Description = 'Clean UserAssist registry entries'
+                Impact = 'Low'
                 EstimatedSavings = '1-2% registry performance'
-                Target           = 'UserAssist'
+                Target = 'UserAssist'
             }
         }
 
@@ -475,12 +475,12 @@ function Get-RegistryOptimizationAudit {
         $prefetch = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters' -ErrorAction SilentlyContinue
         if ($prefetch -and $prefetch.EnablePrefetcher -eq 0) {
             $opportunities += [PSCustomObject]@{
-                Category         = 'Registry'
-                Type             = 'EnablePrefetch'
-                Description      = 'Enable prefetch for better performance'
-                Impact           = 'Medium'
+                Category = 'Registry'
+                Type = 'EnablePrefetch'
+                Description = 'Enable prefetch for better performance'
+                Impact = 'Medium'
                 EstimatedSavings = '5-10% application startup time'
-                Target           = 'Prefetch'
+                Target = 'Prefetch'
             }
         }
 
@@ -491,7 +491,7 @@ function Get-RegistryOptimizationAudit {
 
     return [PSCustomObject]@{
         RegistryOptimizations = $opportunities.Count
-        Opportunities         = $opportunities
+        Opportunities = $opportunities
     }
 }
 
@@ -513,12 +513,12 @@ function Get-DiskOptimizationAudit {
 
         if ($freeSpacePercent -lt 20) {
             $opportunities += [PSCustomObject]@{
-                Category         = 'Disk'
-                Type             = 'DiskCleanup'
-                Description      = "System drive has low free space ($([math]::Round($freeSpacePercent, 1))%)"
-                Impact           = 'High'
+                Category = 'Disk'
+                Type = 'DiskCleanup'
+                Description = "System drive has low free space ($([math]::Round($freeSpacePercent, 1))%)"
+                Impact = 'High'
                 EstimatedSavings = '1-5GB disk space'
-                Target           = 'SystemDrive'
+                Target = 'SystemDrive'
             }
         }
 
@@ -529,12 +529,12 @@ function Get-DiskOptimizationAudit {
                 $tempSize = (Get-ChildItem $folder -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum
                 if ($tempSize -gt 100MB) {
                     $opportunities += [PSCustomObject]@{
-                        Category         = 'Disk'
-                        Type             = 'CleanTempFiles'
-                        Description      = "Clean temporary files in $folder ($([math]::Round($tempSize/1MB, 1)) MB)"
-                        Impact           = 'Medium'
+                        Category = 'Disk'
+                        Type = 'CleanTempFiles'
+                        Description = "Clean temporary files in $folder ($([math]::Round($tempSize/1MB, 1)) MB)"
+                        Impact = 'Medium'
                         EstimatedSavings = "$([math]::Round($tempSize/1MB, 1)) MB disk space"
-                        Target           = $folder
+                        Target = $folder
                     }
                 }
             }
@@ -546,12 +546,12 @@ function Get-DiskOptimizationAudit {
             $physical = Get-CimInstance Win32_DiskDrive | Where-Object { $_.DeviceID -like "*$($drive.DeviceID.Replace(':',''))*" }
             if ($physical -and $physical.MediaType -match 'Fixed hard disk' -and $physical.MediaType -notmatch 'SSD') {
                 $opportunities += [PSCustomObject]@{
-                    Category         = 'Disk'
-                    Type             = 'DefragmentDisk'
-                    Description      = "Defragment traditional hard disk ($($drive.DeviceID))"
-                    Impact           = 'Medium'
+                    Category = 'Disk'
+                    Type = 'DefragmentDisk'
+                    Description = "Defragment traditional hard disk ($($drive.DeviceID))"
+                    Impact = 'Medium'
                     EstimatedSavings = '10-30% disk performance'
-                    Target           = $drive.DeviceID
+                    Target = $drive.DeviceID
                 }
             }
         }
@@ -563,7 +563,7 @@ function Get-DiskOptimizationAudit {
 
     return [PSCustomObject]@{
         DiskOptimizations = $opportunities.Count
-        Opportunities     = $opportunities
+        Opportunities = $opportunities
     }
 }
 
@@ -588,12 +588,12 @@ function Get-NetworkOptimizationAudit {
                 $rss = Get-NetAdapterRss -Name $adapter.Name -ErrorAction SilentlyContinue
                 if ($rss -and -not $rss.Enabled) {
                     $opportunities += [PSCustomObject]@{
-                        Category         = 'Network'
-                        Type             = 'EnableRSS'
-                        Description      = "Enable Receive Side Scaling (RSS) on $($adapter.Name)"
-                        Impact           = 'Medium'
+                        Category = 'Network'
+                        Type = 'EnableRSS'
+                        Description = "Enable Receive Side Scaling (RSS) on $($adapter.Name)"
+                        Impact = 'Medium'
                         EstimatedSavings = '10-20% network performance'
-                        Target           = $adapter.Name
+                        Target = $adapter.Name
                     }
                 }
             }
@@ -613,12 +613,12 @@ function Get-NetworkOptimizationAudit {
 
         if (-not $hasOptimalDNS) {
             $opportunities += [PSCustomObject]@{
-                Category         = 'Network'
-                Type             = 'OptimizeDNS'
-                Description      = 'Configure faster DNS servers (Google DNS, Cloudflare DNS)'
-                Impact           = 'Medium'
+                Category = 'Network'
+                Type = 'OptimizeDNS'
+                Description = 'Configure faster DNS servers (Google DNS, Cloudflare DNS)'
+                Impact = 'Medium'
                 EstimatedSavings = '10-50% DNS lookup time'
-                Target           = 'DNS'
+                Target = 'DNS'
             }
         }
 
@@ -629,7 +629,7 @@ function Get-NetworkOptimizationAudit {
 
     return [PSCustomObject]@{
         NetworkOptimizations = $opportunities.Count
-        Opportunities        = $opportunities
+        Opportunities = $opportunities
     }
 }
 
@@ -701,6 +701,7 @@ New-Alias -Name 'Get-SystemOptimizationAudit' -Value 'Get-SystemOptimizationAnal
 Export-ModuleMember -Function @(
     'Get-SystemOptimizationAnalysis'  #  v3.0 PRIMARY function
 ) -Alias @('Get-SystemOptimizationAudit')  # Backward compatibility
+
 
 
 

@@ -125,13 +125,13 @@ function Get-WindowsUpdatesAnalysis {
 
         # Initialize audit results
         $auditResults = @{
-            AuditTimestamp     = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            UpdateStatus       = Get-WindowsUpdateStatus
+            AuditTimestamp      = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            UpdateStatus        = Get-WindowsUpdateStatus
             PendingUpdatesCount = 0
-            SecurityFindings   = @()
-            UpdateIssues       = @()
-            SecurityScore      = 0
-            Recommendations    = @()
+            SecurityFindings    = @()
+            UpdateIssues        = @()
+            SecurityScore       = 0
+            Recommendations     = @()
         }
 
         # Audit different categories
@@ -701,7 +701,7 @@ function Get-UpdateHealthScore {
 
     # Combine all issues for scoring (Phase B.3 consolidation)
     $allIssues = @()
-    
+
     # Update issues with increased severity weights
     foreach ($issue in $AuditResults.UpdateIssues) {
         $weightedIssue = $issue.PSObject.Copy()
@@ -712,7 +712,7 @@ function Get-UpdateHealthScore {
         }
         $allIssues += $weightedIssue
     }
-    
+
     # Security findings with higher severity
     foreach ($finding in $AuditResults.SecurityFindings) {
         $weightedFinding = $finding.PSObject.Copy()
@@ -729,18 +729,14 @@ function Get-UpdateHealthScore {
         -Issues $allIssues `
         -ScoreType 'Update Health' `
         -DeductionMap @{ High = 25; Medium = 15; Low = 5 }
-    
+
     # Add additional metadata specific to Windows Updates
     $score | Add-Member -NotePropertyName 'UpdateIssueCount' -NotePropertyValue $AuditResults.UpdateIssues.Count -Force
     $score | Add-Member -NotePropertyName 'SecurityIssueCount' -NotePropertyValue $AuditResults.SecurityFindings.Count -Force
-    
+
     return $score
 }
 
-<#
-.SYNOPSIS
-    Generates Windows Update recommendations
-#>
 <#
 .SYNOPSIS
     Generates update recommendations based on audit results
@@ -762,23 +758,26 @@ function New-UpdateRecommendations {
         -AdditionalIssues $AuditResults.SecurityFindings `
         -IssueType 'update' `
         -SpecificChecks @{
-            SecurityFindings = { param($results)
-                if ($results.SecurityFindings.Count -gt 0) {
-                    " Security: $($results.SecurityFindings.Count) security-related findings require attention"
-                    "   Focus on OS support status and missing security patches"
-                }
+        SecurityFindings = {
+            param($results)
+            if ($results.SecurityFindings.Count -gt 0) {
+                " Security: $($results.SecurityFindings.Count) security-related findings require attention"
+                "   Focus on OS support status and missing security patches"
             }
-            PendingUpdates = { param($results)
-                if ($results.PendingAudit -and $results.PendingAudit.SecurityUpdates -gt 0) {
-                    " Action: Install $($results.PendingAudit.SecurityUpdates) pending security updates"
-                }
+        }
+        PendingUpdates   = {
+            param($results)
+            if ($results.PendingAudit -and $results.PendingAudit.SecurityUpdates -gt 0) {
+                " Action: Install $($results.PendingAudit.SecurityUpdates) pending security updates"
             }
-            RebootRequired = { param($results)
-                if ($results.UpdateStatus -and $results.UpdateStatus.RebootPending) {
-                    " Action: System reboot required to complete previous updates"
-                }
+        }
+        RebootRequired   = {
+            param($results)
+            if ($results.UpdateStatus -and $results.UpdateStatus.RebootPending) {
+                " Action: System reboot required to complete previous updates"
             }
-        } `
+        }
+    } `
         -AuditResults $AuditResults
 }
 
@@ -809,6 +808,7 @@ New-Alias -Name 'Get-WindowsUpdatesAudit' -Value 'Get-WindowsUpdatesAnalysis'
 Export-ModuleMember -Function @(
     'Get-WindowsUpdatesAnalysis'  #  v3.0 PRIMARY function
 ) -Alias @('Get-WindowsUpdatesAudit')  # Backward compatibility
+
 
 
 

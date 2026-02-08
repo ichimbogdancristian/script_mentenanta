@@ -13,7 +13,7 @@
     Architecture: v4.0 - Intelligent Orchestration
     Author: Windows Maintenance Automation Project
     Version: 4.0.0
-    
+
     Design Pattern: Dependency-aware failure cascade analysis
     Features: Impact analysis, retry logic, skip strategies
 #>
@@ -71,7 +71,7 @@ function Get-FailureImpact {
 
         # Find all modules that directly depend on the failed module
         $directDependents = [System.Collections.Generic.List[string]]::new()
-        
+
         foreach ($module in $Graph.Modules) {
             $dependencies = $Graph.AdjacencyList[$module].DependsOn
             if ($dependencies -contains $FailedModule) {
@@ -82,16 +82,16 @@ function Get-FailureImpact {
         # Find transitive dependents (modules that depend on direct dependents)
         $transitiveDependents = [System.Collections.Generic.HashSet[string]]::new()
         $visited = [System.Collections.Generic.HashSet[string]]::new()
-        
+
         function Find-TransitiveDependents {
             param([string]$ModuleName)
-            
+
             if ($visited.Contains($ModuleName)) {
                 return
             }
-            
+
             $null = $visited.Add($ModuleName)
-            
+
             foreach ($module in $Graph.Modules) {
                 $deps = $Graph.AdjacencyList[$module].DependsOn
                 if ($deps -contains $ModuleName) {
@@ -100,7 +100,7 @@ function Get-FailureImpact {
                 }
             }
         }
-        
+
         foreach ($dependent in $directDependents) {
             Find-TransitiveDependents -ModuleName $dependent
         }
@@ -111,23 +111,23 @@ function Get-FailureImpact {
         }
 
         $result = [PSCustomObject]@{
-            FailedModule         = $FailedModule
-            DirectDependents     = [array]$directDependents
+            FailedModule = $FailedModule
+            DirectDependents = [array]$directDependents
             TransitiveDependents = [array]$transitiveDependents
             TotalImpactedModules = $directDependents.Count + $transitiveDependents.Count
-            ImpactLevel          = if ($directDependents.Count + $transitiveDependents.Count -eq 0) { 'None' }
+            ImpactLevel = if ($directDependents.Count + $transitiveDependents.Count -eq 0) { 'None' }
             elseif ($directDependents.Count + $transitiveDependents.Count -le 2) { 'Low' }
             elseif ($directDependents.Count + $transitiveDependents.Count -le 4) { 'Medium' }
             else { 'High' }
-            AnalyzedAt           = Get-Date
+            AnalyzedAt = Get-Date
         }
 
         Write-LogEntry -Level 'INFO' -Component 'FAILURE-HANDLER' -Message "Failure impact: $($result.TotalImpactedModules) modules affected (Level: $($result.ImpactLevel))"
-        
+
         if ($directDependents.Count -gt 0) {
             Write-LogEntry -Level 'WARNING' -Component 'FAILURE-HANDLER' -Message "Direct dependents: $($directDependents -join ', ')"
         }
-        
+
         if ($transitiveDependents.Count -gt 0) {
             Write-LogEntry -Level 'WARNING' -Component 'FAILURE-HANDLER' -Message "Transitive dependents: $($transitiveDependents -join ', ')"
         }
@@ -220,17 +220,17 @@ function Get-FailureStrategy {
         }
 
         $result = [PSCustomObject]@{
-            Strategy         = $strategy
-            Reason           = $reason
+            Strategy = $strategy
+            Reason = $reason
             IsCriticalModule = $isCritical
-            SkipModules      = if ($strategy -eq 'SkipDependents') {
+            SkipModules = if ($strategy -eq 'SkipDependents') {
                 $FailureImpact.DirectDependents + $FailureImpact.TransitiveDependents
             }
             else { @() }
-            RetryModule      = if ($strategy -eq 'Retry') { $FailureImpact.FailedModule } else { $null }
-            AbortExecution   = ($strategy -eq 'Abort')
-            NextAttempt      = if ($strategy -eq 'Retry') { $CurrentAttempt + 1 } else { 0 }
-            DecidedAt        = Get-Date
+            RetryModule = if ($strategy -eq 'Retry') { $FailureImpact.FailedModule } else { $null }
+            AbortExecution = ($strategy -eq 'Abort')
+            NextAttempt = if ($strategy -eq 'Retry') { $CurrentAttempt + 1 } else { 0 }
+            DecidedAt = Get-Date
         }
 
         Write-LogEntry -Level 'INFO' -Component 'FAILURE-HANDLER' -Message "Strategy: $($result.Strategy) - $($result.Reason)"
@@ -309,11 +309,11 @@ function Invoke-FailureHandling {
 
         # Step 4: Update execution state
         $newState = @{
-            FailedModules       = $ExecutionState.FailedModules + @($FailedModule)
-            SkippedModules      = $ExecutionState.SkippedModules + $strategy.SkipModules
-            RetryAttempts       = $ExecutionState.RetryAttempts.Clone()
-            ShouldAbort         = $strategy.AbortExecution
-            LastFailureImpact   = $impact
+            FailedModules = $ExecutionState.FailedModules + @($FailedModule)
+            SkippedModules = $ExecutionState.SkippedModules + $strategy.SkipModules
+            RetryAttempts = $ExecutionState.RetryAttempts.Clone()
+            ShouldAbort = $strategy.AbortExecution
+            LastFailureImpact = $impact
             LastFailureStrategy = $strategy
         }
 
@@ -380,12 +380,12 @@ function New-FailureHandlingPolicy {
     )
 
     return @{
-        MaxRetries                   = $MaxRetries
-        AbortOnCriticalFailure       = $AbortOnCriticalFailure
+        MaxRetries = $MaxRetries
+        AbortOnCriticalFailure = $AbortOnCriticalFailure
         ContinueOnNonCriticalFailure = $ContinueOnNonCriticalFailure
-        CriticalModules              = $CriticalModules
-        RetryDelaySeconds            = 5
-        LogFailureDetails            = $true
+        CriticalModules = $CriticalModules
+        RetryDelaySeconds = 5
+        LogFailureDetails = $true
     }
 }
 
@@ -408,11 +408,11 @@ function Initialize-ExecutionState {
     param()
 
     return @{
-        FailedModules       = @()
-        SkippedModules      = @()
-        RetryAttempts       = @{}
-        ShouldAbort         = $false
-        LastFailureImpact   = $null
+        FailedModules = @()
+        SkippedModules = @()
+        RetryAttempts = @{}
+        ShouldAbort = $false
+        LastFailureImpact = $null
         LastFailureStrategy = $null
     }
 }
@@ -449,15 +449,15 @@ function Get-FailureReport {
         }
 
         $report = [PSCustomObject]@{
-            TotalFailures    = $ExecutionState.FailedModules.Count
-            FailedModules    = $ExecutionState.FailedModules
-            TotalSkipped     = $ExecutionState.SkippedModules.Count
-            SkippedModules   = $ExecutionState.SkippedModules
-            TotalRetries     = $totalRetries
-            RetriedModules   = $ExecutionState.RetryAttempts.Keys
+            TotalFailures = $ExecutionState.FailedModules.Count
+            FailedModules = $ExecutionState.FailedModules
+            TotalSkipped = $ExecutionState.SkippedModules.Count
+            SkippedModules = $ExecutionState.SkippedModules
+            TotalRetries = $totalRetries
+            RetriedModules = $ExecutionState.RetryAttempts.Keys
             ExecutionAborted = $ExecutionState.ShouldAbort
-            LastImpactLevel  = $ExecutionState.LastFailureImpact.ImpactLevel ?? 'None'
-            GeneratedAt      = Get-Date
+            LastImpactLevel = $ExecutionState.LastFailureImpact.ImpactLevel ?? 'None'
+            GeneratedAt = Get-Date
         }
 
         Write-LogEntry -Level 'INFO' -Component 'FAILURE-HANDLER' -Message "Failure report: $($report.TotalFailures) failed, $($report.TotalSkipped) skipped, $($report.TotalRetries) retries"
@@ -482,3 +482,4 @@ Export-ModuleMember -Function @(
     'Get-FailureReport'
 )
 #endregion
+

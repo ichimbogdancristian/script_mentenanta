@@ -88,9 +88,9 @@ function Get-EssentialAppsAnalysis {
     try {
         $perfContext = Start-PerformanceTracking -OperationName 'EssentialAppsAudit' -Component 'ESSENTIAL-APPS-AUDIT'
         Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-AUDIT' -Message 'Starting essential apps audit' -Data @{
-            Categories       = $Categories
+            Categories = $Categories
             IncludeInstalled = $IncludeInstalled
-            Config           = if ($Config) { 'Provided' } else { 'Not provided' }
+            Config = if ($Config) { 'Provided' } else { 'Not provided' }
         }
     }
     catch {
@@ -127,13 +127,13 @@ function Get-EssentialAppsAnalysis {
 
         # Initialize audit results
         $auditResults = @{
-            AuditTimestamp      = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            Categories          = $Categories
-            TotalEssentialApps  = $essentialAppsList.Count
-            InstalledApps       = @()
-            MissingApps         = @()
+            AuditTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            Categories = $Categories
+            TotalEssentialApps = $essentialAppsList.Count
+            InstalledApps = @()
+            MissingApps = @()
             RecommendedInstalls = @()
-            Summary             = @{}
+            Summary = @{}
         }
 
         Write-Information "Analyzing $($essentialAppsList.Count) essential applications..." -InformationAction Continue
@@ -145,9 +145,9 @@ function Get-EssentialAppsAnalysis {
             # Skip LibreOffice if Microsoft Office is installed
             if ($app.name -eq 'LibreOffice' -and $isMicrosoftOfficeInstalled) {
                 Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-SKIP' -Message "Skipped LibreOffice - Microsoft Office detected" -Data @{
-                    SkipReason  = 'Microsoft Office already installed'
-                    Status      = 'Not Needed'
-                    Category    = $app.category
+                    SkipReason = 'Microsoft Office already installed'
+                    Status = 'Not Needed'
+                    Category = $app.category
                     Description = $app.description
                 }
                 continue
@@ -158,20 +158,20 @@ function Get-EssentialAppsAnalysis {
             if ($installationStatus.IsInstalled) {
                 if ($IncludeInstalled) {
                     $installedItem = [PSCustomObject]@{
-                        Name               = $app.name
-                        Category           = $app.category
-                        Description        = $app.description
-                        DetectedVersion    = $installationStatus.Version
+                        Name = $app.name
+                        Category = $app.category
+                        Description = $app.description
+                        DetectedVersion = $installationStatus.Version
                         InstallationSource = $installationStatus.Source
-                        InstallPath        = $installationStatus.InstallPath
+                        InstallPath = $installationStatus.InstallPath
                     }
 
                     # Log detected installed application
                     Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-INSTALLED' -Message "Detected installed: $($app.name)" -Data @{
-                        Status      = 'Already Installed'
-                        Category    = $app.category
-                        Version     = $installationStatus.Version
-                        Source      = $installationStatus.Source
+                        Status = 'Already Installed'
+                        Category = $app.category
+                        Version = $installationStatus.Version
+                        Source = $installationStatus.Source
                         InstallPath = $installationStatus.InstallPath
                         Description = $app.description
                     }
@@ -181,25 +181,25 @@ function Get-EssentialAppsAnalysis {
             }
             else {
                 $missingApp = [PSCustomObject]@{
-                    Name              = $app.name
-                    Category          = $app.category
-                    Description       = $app.description
-                    WingetId          = $app.winget
-                    ChocoId           = $app.choco
-                    Priority          = Get-AppInstallPriority -AppDefinition $app
+                    Name = $app.name
+                    Category = $app.category
+                    Description = $app.description
+                    WingetId = $app.winget
+                    ChocoId = $app.choco
+                    Priority = Get-AppInstallPriority -AppDefinition $app
                     RecommendedMethod = Get-RecommendedInstallMethod -AppDefinition $app
                 }
 
                 # Log detected missing application with detailed metadata
                 Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-MISSING' -Message "Missing app: $($app.name)" -Data @{
-                    Status            = 'Not Installed'
-                    Category          = $app.category
-                    Description       = $app.description
-                    WingetId          = $app.winget
-                    ChocolateyId      = $app.choco
-                    Priority          = $missingApp.Priority
+                    Status = 'Not Installed'
+                    Category = $app.category
+                    Description = $app.description
+                    WingetId = $app.winget
+                    ChocolateyId = $app.choco
+                    Priority = $missingApp.Priority
                     RecommendedMethod = $missingApp.RecommendedMethod
-                    InstallReason     = "Essential $($app.category) application not found on system"
+                    InstallReason = "Essential $($app.category) application not found on system"
                 }
 
                 $auditResults.MissingApps += $missingApp
@@ -210,11 +210,11 @@ function Get-EssentialAppsAnalysis {
 
                     # Log high priority recommendation
                     Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-PRIORITY' -Message "High priority app missing: $($app.name)" -Data @{
-                        Status            = 'High Priority Missing'
-                        Category          = $app.category
-                        Priority          = 'High'
+                        Status = 'High Priority Missing'
+                        Category = $app.category
+                        Priority = 'High'
                         RecommendedMethod = $missingApp.RecommendedMethod
-                        ActionRequired    = 'Install recommended'
+                        ActionRequired = 'Install recommended'
                     }
                 }
             }
@@ -229,12 +229,12 @@ function Get-EssentialAppsAnalysis {
         }
 
         $auditResults.Summary = @{
-            TotalScanned         = $essentialAppsList.Count
-            InstalledCount       = $auditResults.InstalledApps.Count
-            MissingCount         = $auditResults.MissingApps.Count
-            RecommendedCount     = $auditResults.RecommendedInstalls.Count
+            TotalScanned = $essentialAppsList.Count
+            InstalledCount = $auditResults.InstalledApps.Count
+            MissingCount = $auditResults.MissingApps.Count
+            RecommendedCount = $auditResults.RecommendedInstalls.Count
             CompletionPercentage = $completionPercentage
-            CategoryBreakdown    = $auditResults.MissingApps | Group-Object Category | ForEach-Object {
+            CategoryBreakdown = $auditResults.MissingApps | Group-Object Category | ForEach-Object {
                 @{ Category = $_.Name; Count = $_.Count }
             }
         }
@@ -377,8 +377,8 @@ function Test-ApplicationInstallation {
 
     $result = [PSCustomObject]@{
         IsInstalled = $false
-        Version     = $null
-        Source      = $null
+        Version = $null
+        Source = $null
         InstallPath = $null
     }
 
@@ -437,10 +437,10 @@ function Test-MicrosoftOfficeInstallation {
 
         if ($matchedOffice) {
             Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-OFFICE' -Message "Microsoft Office detected: $($matchedOffice.DisplayName)" -Data @{
-                ProductName      = $matchedOffice.DisplayName
-                Version          = $matchedOffice.DisplayVersion
-                Publisher        = $matchedOffice.Publisher
-                InstallDate      = $matchedOffice.InstallDate
+                ProductName = $matchedOffice.DisplayName
+                Version = $matchedOffice.DisplayVersion
+                Publisher = $matchedOffice.Publisher
+                InstallDate = $matchedOffice.InstallDate
                 DetectionPattern = $pattern
             }
             return $true
@@ -462,7 +462,7 @@ function Test-MicrosoftOfficeInstallation {
 
                 if ($officeVersions) {
                     Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-OFFICE' -Message "Microsoft Office detected via registry: $regPath" -Data @{
-                        RegistryPath     = $regPath
+                        RegistryPath = $regPath
                         DetectedVersions = @($officeVersions.Name)
                     }
                     return $true
@@ -477,7 +477,7 @@ function Test-MicrosoftOfficeInstallation {
     Write-LogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS-OFFICE' -Message "No Microsoft Office installation detected" -Data @{
         CheckedPatterns = $officePatterns.Count
         CheckedRegistry = $true
-        Result          = 'Not Found'
+        Result = 'Not Found'
     }
     return $false
 }
@@ -560,6 +560,7 @@ New-Alias -Name 'Get-EssentialAppsAudit' -Value 'Get-EssentialAppsAnalysis'
 Export-ModuleMember -Function @(
     'Get-EssentialAppsAnalysis'  #  v3.0 PRIMARY function
 ) -Alias @('Get-EssentialAppsAudit')  # Backward compatibility
+
 
 
 

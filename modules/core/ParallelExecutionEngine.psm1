@@ -13,7 +13,7 @@
     Architecture: v4.0 - Intelligent Orchestration
     Author: Windows Maintenance Automation Project
     Version: 4.0.0
-    
+
     Design Pattern: Runspace pool for efficient parallelism
     Performance: ~3-4x faster than sequential execution for independent modules
 #>
@@ -99,7 +99,7 @@ function Invoke-ModulesInParallel {
 
         # Prepare module execution jobs
         $jobs = [System.Collections.Generic.List[PSCustomObject]]::new()
-        
+
         foreach ($moduleName in $Modules) {
             if ($moduleName -notin $availableModules.Keys) {
                 Write-LogEntry -Level 'WARNING' -Component 'PARALLEL-ENGINE' -Message "Skipping unavailable module: $moduleName"
@@ -156,14 +156,14 @@ function Invoke-ModulesInParallel {
 
                     # Return standardized result as PSCustomObject for better serialization
                     return [PSCustomObject]@{
-                        ModuleName      = $ModuleName
-                        Status          = 'Success'
-                        Result          = $moduleResult
+                        ModuleName = $ModuleName
+                        Status = 'Success'
+                        Result = $moduleResult
                         DurationSeconds = [math]::Round($duration, 2)
-                        StartTime       = $moduleStartTime
-                        EndTime         = Get-Date
-                        SessionId       = $SessionId
-                        Error           = $null
+                        StartTime = $moduleStartTime
+                        EndTime = Get-Date
+                        SessionId = $SessionId
+                        Error = $null
                     }
                 }
                 catch {
@@ -171,14 +171,14 @@ function Invoke-ModulesInParallel {
                     Write-LogEntry -Level 'ERROR' -Component "PARALLEL-$ModuleName" -Message "Module failed: $_" | Out-Null
 
                     return [PSCustomObject]@{
-                        ModuleName      = $ModuleName
-                        Status          = 'Failed'
-                        Result          = $null
+                        ModuleName = $ModuleName
+                        Status = 'Failed'
+                        Result = $null
                         DurationSeconds = [math]::Round($duration, 2)
-                        StartTime       = $moduleStartTime
-                        EndTime         = Get-Date
-                        SessionId       = $SessionId
-                        Error           = $_.Exception.Message
+                        StartTime = $moduleStartTime
+                        EndTime = Get-Date
+                        SessionId = $SessionId
+                        Error = $_.Exception.Message
                     }
                 }
             }
@@ -197,9 +197,9 @@ function Invoke-ModulesInParallel {
             $jobs.Add([PSCustomObject]@{
                     ModuleName = $moduleName
                     PowerShell = $ps
-                    Handle     = $handle
-                    StartTime  = Get-Date
-                    Processed  = $false
+                    Handle = $handle
+                    StartTime = Get-Date
+                    Processed = $false
                 })
 
             Write-LogEntry -Level 'DEBUG' -Component 'PARALLEL-ENGINE' -Message "Started job for module: $moduleName"
@@ -218,7 +218,7 @@ function Invoke-ModulesInParallel {
         $runspacePool.Dispose()
 
         $totalDuration = ((Get-Date) - $startTime).TotalSeconds
-        
+
         # Ensure results is array
         $resultsArray = @($results)
         $successCount = @($resultsArray | Where-Object { $_.Status -eq 'Success' }).Count
@@ -227,14 +227,14 @@ function Invoke-ModulesInParallel {
         Write-LogEntry -Level 'INFO' -Component 'PARALLEL-ENGINE' -Message "Parallel execution completed: $successCount succeeded, $failedCount failed (${totalDuration}s total)"
 
         return [PSCustomObject]@{
-            ExecutionMode        = 'Parallel'
-            TotalModules         = $Modules.Count
-            SuccessCount         = $successCount
-            FailedCount          = $failedCount
-            Results              = $resultsArray
+            ExecutionMode = 'Parallel'
+            TotalModules = $Modules.Count
+            SuccessCount = $successCount
+            FailedCount = $failedCount
+            Results = $resultsArray
             TotalDurationSeconds = [math]::Round($totalDuration, 2)
-            MaxConcurrency       = $MaxConcurrentModules
-            SessionId            = $SessionId
+            MaxConcurrency = $MaxConcurrentModules
+            SessionId = $SessionId
         }
     }
     catch {
@@ -244,10 +244,10 @@ function Invoke-ModulesInParallel {
     finally {
         # Cleanup
         if ($runspacePool) {
-            try { 
-                $runspacePool.Dispose() 
-            } 
-            catch { 
+            try {
+                $runspacePool.Dispose()
+            }
+            catch {
                 Write-Verbose "Runspace pool disposal error (non-critical): $($_.Exception.Message)"
             }
         }
@@ -302,7 +302,7 @@ function Wait-ParallelModuleCompletion {
                     try {
                         # Retrieve result - EndInvoke returns collection
                         $resultCollection = $job.PowerShell.EndInvoke($job.Handle)
-                        
+
                         # Get first non-null result from collection
                         $result = $null
                         foreach ($item in $resultCollection) {
@@ -311,7 +311,7 @@ function Wait-ParallelModuleCompletion {
                                 break
                             }
                         }
-                        
+
                         if ($result) {
                             $results.Add($result)
                             $duration = ((Get-Date) - $job.StartTime).TotalSeconds
@@ -321,9 +321,9 @@ function Wait-ParallelModuleCompletion {
                         else {
                             # No result returned (unexpected)
                             $results.Add([PSCustomObject]@{
-                                    ModuleName      = $job.ModuleName
-                                    Status          = 'Failed'
-                                    Error           = 'No result returned from module execution'
+                                    ModuleName = $job.ModuleName
+                                    Status = 'Failed'
+                                    Error = 'No result returned from module execution'
                                     DurationSeconds = ((Get-Date) - $job.StartTime).TotalSeconds
                                 })
                             Write-LogEntry -Level 'WARNING' -Component 'PARALLEL-ENGINE' -Message "Module '$($job.ModuleName)' returned no result"
@@ -332,9 +332,9 @@ function Wait-ParallelModuleCompletion {
                     catch {
                         # Execution error
                         $results.Add([PSCustomObject]@{
-                                ModuleName      = $job.ModuleName
-                                Status          = 'Failed'
-                                Error           = $_.Exception.Message
+                                ModuleName = $job.ModuleName
+                                Status = 'Failed'
+                                Error = $_.Exception.Message
                                 DurationSeconds = ((Get-Date) - $job.StartTime).TotalSeconds
                             })
                         Write-LogEntry -Level 'ERROR' -Component 'PARALLEL-ENGINE' -Message "Error retrieving result for '$($job.ModuleName)': $_"
@@ -362,22 +362,22 @@ function Wait-ParallelModuleCompletion {
         # Handle timeouts
         if ($completedJobs -lt $totalJobs) {
             Write-LogEntry -Level 'WARNING' -Component 'PARALLEL-ENGINE' -Message "Timeout reached - $($totalJobs - $completedJobs) jobs did not complete"
-            
+
             foreach ($job in $Jobs | Where-Object { -not $_.Processed }) {
                 $results.Add([PSCustomObject]@{
-                        ModuleName      = $job.ModuleName
-                        Status          = 'Timeout'
-                        Error           = "Execution exceeded ${TimeoutSeconds}s timeout"
+                        ModuleName = $job.ModuleName
+                        Status = 'Timeout'
+                        Error = "Execution exceeded ${TimeoutSeconds}s timeout"
                         DurationSeconds = ((Get-Date) - $job.StartTime).TotalSeconds
                     })
                 Write-LogEntry -Level 'ERROR' -Component 'PARALLEL-ENGINE' -Message "Module '$($job.ModuleName)' timed out"
-                
+
                 # Cleanup
                 try {
                     $job.PowerShell.Stop()
                     $job.PowerShell.Dispose()
                 }
-                catch { 
+                catch {
                     Write-Verbose "PowerShell job disposal error (non-critical): $($_.Exception.Message)"
                 }
             }
@@ -439,27 +439,27 @@ function Merge-ParallelResults {
 
         # Build summary
         $summary = [PSCustomObject]@{
-            ExecutionMode            = 'Parallel'
-            TotalModules             = $ParallelResults.TotalModules
-            SuccessfulModules        = $successfulModules.Count
-            FailedModules            = $failedModules.Count
-            TotalOperations          = $totalOperations
-            SuccessfulOperations     = $successfulOperations
-            FailedOperations         = $failedOperations
-            TotalDurationSeconds     = $ParallelResults.TotalDurationSeconds
-            MaxConcurrency           = $ParallelResults.MaxConcurrency
+            ExecutionMode = 'Parallel'
+            TotalModules = $ParallelResults.TotalModules
+            SuccessfulModules = $successfulModules.Count
+            FailedModules = $failedModules.Count
+            TotalOperations = $totalOperations
+            SuccessfulOperations = $successfulOperations
+            FailedOperations = $failedOperations
+            TotalDurationSeconds = $ParallelResults.TotalDurationSeconds
+            MaxConcurrency = $ParallelResults.MaxConcurrency
             AverageDurationPerModule = if ($ParallelResults.TotalModules -gt 0) {
                 [math]::Round($ParallelResults.TotalDurationSeconds / $ParallelResults.TotalModules, 2)
             }
             else { 0 }
-            SuccessRate              = if ($ParallelResults.TotalModules -gt 0) {
+            SuccessRate = if ($ParallelResults.TotalModules -gt 0) {
                 [math]::Round(($successfulModules.Count / $ParallelResults.TotalModules) * 100, 2)
             }
             else { 0 }
-            SuccessfulModuleNames    = $successfulModules.ModuleName
-            FailedModuleNames        = $failedModules.ModuleName
-            Errors                   = $failedModules | ForEach-Object { @{ Module = $_.ModuleName; Error = $_.Error } }
-            SessionId                = $ParallelResults.SessionId
+            SuccessfulModuleNames = $successfulModules.ModuleName
+            FailedModuleNames = $failedModules.ModuleName
+            Errors = $failedModules | ForEach-Object { @{ Module = $_.ModuleName; Error = $_.Error } }
+            SessionId = $ParallelResults.SessionId
         }
 
         Write-LogEntry -Level 'INFO' -Component 'PARALLEL-ENGINE' -Message "Results merged: $($summary.SuccessfulModules)/$($summary.TotalModules) modules succeeded"
@@ -510,8 +510,8 @@ function Get-AvailableType2Modules {
         foreach ($file in $moduleFiles) {
             $moduleName = $file.BaseName
             $modules[$moduleName] = @{
-                Path         = $file.FullName
-                Name         = $moduleName
+                Path = $file.FullName
+                Name = $moduleName
                 LastModified = $file.LastWriteTime
             }
         }
@@ -535,3 +535,4 @@ Export-ModuleMember -Function @(
     'Get-AvailableType2Modules'
 )
 #endregion
+

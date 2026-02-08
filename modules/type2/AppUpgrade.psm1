@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - AppUpgradeAudit.psm1 (Type1 - detection/analysis)
@@ -158,7 +158,7 @@ function Invoke-AppUpgrade {
 
         # STEP 5: Process upgrades
         if ($diffList.Count -eq 0) {
-            Write-Information "  ℹ  No upgrades to process" -InformationAction Continue
+            Write-Information "  INFO  No upgrades to process" -InformationAction Continue
             Write-StructuredLogEntry -Level 'INFO' -Component 'APP-UPGRADE' -Message "No upgrades required - all applications up to date" -LogPath $executionLogPath -Operation 'Complete' -Result 'NoItemsFound'
         }
         else {
@@ -178,7 +178,7 @@ function Invoke-AppUpgrade {
 
                 if ($upgradeResult.Success) {
                     $itemsProcessed++
-                    Write-Information "     Upgraded: $($upgrade.Name) ($($upgrade.CurrentVersion) → $($upgrade.AvailableVersion)) in $([math]::Round($upgradeResult.Duration / 1000, 2))s" -InformationAction Continue
+                    Write-Information "     Upgraded: $($upgrade.Name) ($($upgrade.CurrentVersion) -> $($upgrade.AvailableVersion)) in $([math]::Round($upgradeResult.Duration / 1000, 2))s" -InformationAction Continue
 
                     # Log summary success
                     Write-StructuredLogEntry -Level 'SUCCESS' -Component 'APP-UPGRADE' -Message "Upgrade completed successfully: $($upgrade.Name)" -LogPath $executionLogPath -Operation 'Upgrade' -Target $upgrade.Name -Result 'Success' -Metadata @{
@@ -224,9 +224,10 @@ function Invoke-AppUpgrade {
             }
             ExecutionMode = 'Live'
             LogFiles      = @{
-                TextLog = $executionLogPath
-                JsonLog = $executionLogPath -replace '\.log$', '-data.json'
-                Summary = $summaryPath
+                TextLog      = $executionLogPath
+                JsonLog      = $executionLogPath -replace '\.log$', '-data.json'
+                Summary      = $summaryPath
+                DiffFilePath = $diffPath
             }
             SessionInfo   = @{
                 SessionId    = $env:MAINTENANCE_SESSION_ID
@@ -265,6 +266,7 @@ function Invoke-AppUpgrade {
             ExecutionTimestamp = Get-Date -Format 'o'
             AdditionalData     = @{}
         }
+        $result.AdditionalData.DiffFilePath = $diffPath
         return $result
     }
     catch {
@@ -274,7 +276,7 @@ function Invoke-AppUpgrade {
         }
 
         Write-Error "AppUpgrade execution failed: $_"
-        
+
         # Build error result object directly
         $result = @{
             Success            = $false
@@ -480,6 +482,7 @@ function Invoke-SingleUpgrade {
 
 # Export public function
 Export-ModuleMember -Function Invoke-AppUpgrade
+
 
 
 

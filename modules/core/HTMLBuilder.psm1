@@ -7,17 +7,17 @@
 .DESCRIPTION
     Provides reusable HTML components for building maintenance reports.
     Eliminates code duplication and ensures consistent styling across all reports.
-    
+
     Architecture Context:
     - Module Type: Core Infrastructure
     - Version: 1.0.0 (Phase 2 - HTML Component Library)
     - Dependencies: CoreInfrastructure.psm1
-    
+
 .MODULE ARCHITECTURE
     Purpose:
         Centralized HTML generation with reusable components
         Reduces ReportGenerator complexity by ~1,000 lines
-    
+
     Components:
         Core (8):
             • New-HtmlCard - Dashboard and metric cards
@@ -28,20 +28,20 @@
             • New-HtmlLogEntry - Log entry display
             • New-HtmlMetric - Metric displays
             • New-HtmlIcon - Icon elements
-        
+
         Composite (4):
             • New-DashboardCardGrid - 4-card executive summary
             • New-ModuleDetailsCard - Complete module result card
             • New-ExecutionLogTable - Operation log table
             • New-ErrorAnalysisSection - Error categorization
-        
+
         Utilities (5):
             • Get-StatusClass - Status → CSS class mapping
             • Format-Duration - Seconds → readable duration
             • Format-FileSize - Bytes → KB/MB/GB
             • Escape-HtmlContent - HTML sanitization
             • Get-LevelIcon - Log level → emoji icon
-    
+
     Export Pattern:
         Export-ModuleMember -Function @(
             'New-Html*',
@@ -51,7 +51,7 @@
             'Format-FileSize',
             'Escape-HtmlContent'
         )
-    
+
     Used By:
         - ReportGenerator.psm1 - Delegates all HTML generation to HTMLBuilder
 
@@ -60,7 +60,7 @@
     Architecture: v3.1.0 - Phase 2 HTML Component Library
     Version: 1.0.0
     Author: Bogdan Ichim
-    
+
     Design Patterns:
     - Component-based rendering
     - Consistent styling and structure
@@ -111,7 +111,7 @@ else {
 
 .EXAMPLE
     New-HtmlCard -Title 'System Health' -Value '95%' -Description 'Overall health score' -Icon '🏥' -StatusClass 'success'
-    
+
     Creates a success-themed card with health metrics
 #>
 function New-HtmlCard {
@@ -120,31 +120,31 @@ function New-HtmlCard {
     param(
         [Parameter(Mandatory)]
         [string]$Title,
-        
+
         [Parameter()]
         [string]$Value = '',
-        
+
         [Parameter()]
         [string]$Description = '',
-        
+
         [Parameter()]
         [string]$Icon = '',
-        
+
         [Parameter()]
         [ValidateSet('success', 'warning', 'error', 'info', '')]
         [string]$StatusClass = '',
-        
+
         [Parameter()]
         [string]$CssClass = 'card'
     )
-    
+
     $statusClassStr = if ($StatusClass) { "status-$StatusClass" } else { '' }
     $fullClass = "$CssClass $statusClassStr".Trim()
-    
+
     $iconHtml = if ($Icon) { "<div class='card-icon'>$Icon</div>" } else { '' }
     $valueHtml = if ($Value) { "<div class='card-value'>$Value</div>" } else { '' }
     $descHtml = if ($Description) { "<p class='card-description'>$Description</p>" } else { '' }
-    
+
     return @"
 <div class="$fullClass">
     <div class="card-header">
@@ -194,7 +194,7 @@ function New-HtmlCard {
         [PSCustomObject]@{ Module = 'Updates'; Status = 'Warning'; Duration = '120.5s' }
     )
     New-HtmlTable -Headers @('Module', 'Status', 'Duration') -Rows $rows -Sortable -Striped
-    
+
     Creates sortable striped table with 3 columns and 2 rows
 #>
 function New-HtmlTable {
@@ -203,38 +203,38 @@ function New-HtmlTable {
     param(
         [Parameter(Mandatory)]
         [string[]]$Headers,
-        
+
         [Parameter(Mandatory)]
         [AllowEmptyCollection()]
         [PSObject[]]$Rows,
-        
+
         [Parameter()]
         [string]$CssClass = 'data-table',
-        
+
         [Parameter()]
         [switch]$Sortable,
-        
+
         [Parameter()]
         [switch]$Striped,
-        
+
         [Parameter()]
         [switch]$Hoverable
     )
-    
+
     # Build CSS classes
     $tableClasses = @($CssClass)
     if ($Sortable) { $tableClasses += 'sortable' }
     if ($Striped) { $tableClasses += 'striped' }
     if ($Hoverable) { $tableClasses += 'hoverable' }
     $tableClassStr = $tableClasses -join ' '
-    
+
     # Build headers
     $headerHtml = @()
     foreach ($header in $Headers) {
         $sortableAttr = if ($Sortable) { ' data-sortable="true"' } else { '' }
         $headerHtml += "            <th$sortableAttr>$header</th>"
     }
-    
+
     # Build rows
     $rowsHtml = @()
     foreach ($row in $Rows) {
@@ -245,7 +245,7 @@ function New-HtmlTable {
         }
         $rowsHtml += "        <tr>`n$($cells -join "`n")`n        </tr>"
     }
-    
+
     return @"
 <table class="$tableClassStr">
     <thead>
@@ -289,7 +289,7 @@ $($rowsHtml -join "`n")
 .EXAMPLE
     $content = New-HtmlTable -Headers @('Name', 'Status') -Rows $data
     New-HtmlSection -Title 'Execution Summary' -Content $content -Icon '📊' -Collapsible -Id 'summary'
-    
+
     Creates collapsible section with embedded table
 #>
 function New-HtmlSection {
@@ -298,26 +298,26 @@ function New-HtmlSection {
     param(
         [Parameter(Mandatory)]
         [string]$Title,
-        
+
         [Parameter(Mandatory)]
         [AllowEmptyString()]
         [string]$Content,
-        
+
         [Parameter()]
         [string]$Icon = '',
-        
+
         [Parameter()]
         [switch]$Collapsible,
-        
+
         [Parameter()]
         [string]$Id = ''
     )
-    
+
     $idAttr = if ($Id) { " id='$Id'" } else { '' }
     $collapsibleClass = if ($Collapsible) { ' collapsible' } else { '' }
     $iconHtml = if ($Icon) { "<span class='section-icon'>$Icon</span> " } else { '' }
     $toggleBtn = if ($Collapsible) { "<button class='toggle-btn' aria-expanded='true'>▼</button>" } else { '' }
-    
+
     return @"
 <section class="content-section$collapsibleClass"$idAttr>
     <div class="section-header">
@@ -353,12 +353,12 @@ $Content
 
 .EXAMPLE
     New-HtmlStatusBadge -Status 'success' -Text 'Completed'
-    
+
     Creates green success badge with "Completed" text
 
 .EXAMPLE
     New-HtmlStatusBadge -Status 'error' -Style 'square'
-    
+
     Creates red square-styled badge with "error" text
 #>
 function New-HtmlStatusBadge {
@@ -367,19 +367,19 @@ function New-HtmlStatusBadge {
     param(
         [Parameter(Mandatory)]
         [string]$Status,
-        
+
         [Parameter()]
         [string]$Text = '',
-        
+
         [Parameter()]
         [ValidateSet('pill', 'square', 'rounded')]
         [string]$Style = 'pill'
     )
-    
+
     $displayText = if ($Text) { $Text } else { $Status }
     $cssClass = Get-StatusClass -Status $Status
     $styleClass = if ($Style -ne 'pill') { " badge-$Style" } else { '' }
-    
+
     return "<span class='status-badge $cssClass$styleClass'>$displayText</span>"
 }
 
@@ -411,7 +411,7 @@ function New-HtmlStatusBadge {
 
 .EXAMPLE
     New-HtmlDetailItem -Name 'Candy Crush' -Description 'Pre-installed bloatware' -Icon '🗑️' -Status 'Removed' -Metadata @{ Size = '150MB'; Location = 'C:\Program Files\' }
-    
+
     Creates detail item with metadata display
 #>
 function New-HtmlDetailItem {
@@ -420,22 +420,22 @@ function New-HtmlDetailItem {
     param(
         [Parameter(Mandatory)]
         [string]$Name,
-        
+
         [Parameter()]
         [string]$Description = '',
-        
+
         [Parameter()]
         [string]$Icon = '📄',
-        
+
         [Parameter()]
         [string]$Status = '',
-        
+
         [Parameter()]
         [hashtable]$Metadata = @{}
     )
-    
+
     $descHtml = if ($Description) { "<div class='detail-item-description'>$Description</div>" } else { '' }
-    
+
     $metadataHtml = @()
     foreach ($key in $Metadata.Keys) {
         $metadataHtml += "$key`: $($Metadata[$key])"
@@ -443,12 +443,12 @@ function New-HtmlDetailItem {
     $metaDisplay = if ($metadataHtml.Count -gt 0) {
         "<div class='detail-item-metadata'>$($metadataHtml -join ' | ')</div>"
     } else { '' }
-    
+
     $statusHtml = if ($Status) {
         $badge = New-HtmlStatusBadge -Status $Status
         "<div class='detail-item-status'>$badge</div>"
     } else { '' }
-    
+
     return @"
 <div class="detail-item">
     <div class="detail-item-icon">$Icon</div>
@@ -487,7 +487,7 @@ function New-HtmlDetailItem {
 
 .EXAMPLE
     New-HtmlLogEntry -Message 'Bloatware removal completed' -Level 'success' -Timestamp (Get-Date) -Component 'BloatwareRemoval'
-    
+
     Creates success-level log entry with timestamp
 #>
 function New-HtmlLogEntry {
@@ -496,22 +496,22 @@ function New-HtmlLogEntry {
     param(
         [Parameter(Mandatory)]
         [string]$Message,
-        
+
         [Parameter()]
         [ValidateSet('success', 'info', 'warning', 'error', 'debug')]
         [string]$Level = 'info',
-        
+
         [Parameter()]
         [datetime]$Timestamp = (Get-Date),
-        
+
         [Parameter()]
         [string]$Component = ''
     )
-    
+
     $timestampStr = $Timestamp.ToString('HH:mm:ss')
     $icon = Get-LevelIcon -Level $Level
     $componentHtml = if ($Component) { "<span class='log-component'>[$Component]</span> " } else { '' }
-    
+
     return @"
 <div class="log-entry $Level">
     <div class="log-timestamp">$timestampStr</div>
@@ -549,7 +549,7 @@ function New-HtmlLogEntry {
 
 .EXAMPLE
     New-HtmlMetric -Label 'CPU Usage' -Value '45' -Unit '%' -Icon '🖥️' -TrendIndicator '↓'
-    
+
     Creates metric display showing CPU usage trending down
 #>
 function New-HtmlMetric {
@@ -558,21 +558,21 @@ function New-HtmlMetric {
     param(
         [Parameter(Mandatory)]
         [string]$Label,
-        
+
         [Parameter(Mandatory)]
         [string]$Value,
-        
+
         [Parameter()]
         [string]$Unit = '',
-        
+
         [Parameter()]
         [string]$Icon = '',
-        
+
         [Parameter()]
         [ValidateSet('↑', '↓', '→', '')]
         [string]$TrendIndicator = ''
     )
-    
+
     $iconHtml = if ($Icon) { "<div class='metric-icon'>$Icon</div>" } else { '' }
     $unitHtml = if ($Unit) { "<span class='metric-unit'>$Unit</span>" } else { '' }
     $trendHtml = if ($TrendIndicator) {
@@ -583,7 +583,7 @@ function New-HtmlMetric {
         }
         "<span class='metric-trend $trendClass'>$TrendIndicator</span>"
     } else { '' }
-    
+
     return @"
 <div class="metric-display">
     $iconHtml
@@ -617,7 +617,7 @@ function New-HtmlMetric {
 
 .EXAMPLE
     New-HtmlIcon -Icon '🔒' -Size 'lg' -Color 'var(--success)'
-    
+
     Creates large green lock icon
 #>
 function New-HtmlIcon {
@@ -626,17 +626,17 @@ function New-HtmlIcon {
     param(
         [Parameter(Mandatory)]
         [string]$Icon,
-        
+
         [Parameter()]
         [ValidateSet('sm', 'md', 'lg', 'xl')]
         [string]$Size = 'md',
-        
+
         [Parameter()]
         [string]$Color = ''
     )
-    
+
     $style = if ($Color) { " style='color: $Color;'" } else { '' }
-    
+
     return "<span class='icon icon-$Size'$style>$Icon</span>"
 }
 
@@ -661,7 +661,7 @@ function New-HtmlIcon {
 .EXAMPLE
     Get-StatusClass -Status 'Success'
     Returns: 'success'
-    
+
     Get-StatusClass -Status 'Failed'
     Returns: 'error'
 #>
@@ -673,9 +673,9 @@ function Get-StatusClass {
         [AllowEmptyString()]
         [string]$Status
     )
-    
+
     $statusLower = $Status.ToLower()
-    
+
     return switch -Regex ($statusLower) {
         '^(success|completed?|removed?|installed?|passed?|ok)$' { 'success' }
         '^(warning|skipped?|pending|partial)$' { 'warning' }
@@ -704,10 +704,10 @@ function Get-StatusClass {
 .EXAMPLE
     Format-Duration -Seconds 5.2
     Returns: "5.2s"
-    
+
     Format-Duration -Seconds 125
     Returns: "2m 5s"
-    
+
     Format-Duration -Seconds 3665
     Returns: "1h 1m"
 #>
@@ -718,7 +718,7 @@ function Format-Duration {
         [Parameter(Mandatory)]
         [double]$Seconds
     )
-    
+
     if ($Seconds -lt 60) {
         return "$([Math]::Round($Seconds, 1))s"
     }
@@ -750,7 +750,7 @@ function Format-Duration {
 .EXAMPLE
     Format-FileSize -Bytes 1024
     Returns: "1.00 KB"
-    
+
     Format-FileSize -Bytes 1572864
     Returns: "1.50 MB"
 #>
@@ -761,16 +761,16 @@ function Format-FileSize {
         [Parameter(Mandatory)]
         [long]$Bytes
     )
-    
+
     $units = @('B', 'KB', 'MB', 'GB', 'TB')
     $unitIndex = 0
     $size = [double]$Bytes
-    
+
     while ($size -ge 1024 -and $unitIndex -lt ($units.Length - 1)) {
         $size /= 1024
         $unitIndex++
     }
-    
+
     return "$([Math]::Round($size, 2)) $($units[$unitIndex])"
 }
 
@@ -800,7 +800,7 @@ function Escape-HtmlContent {
         [AllowEmptyString()]
         [string]$Content
     )
-    
+
     return [System.Net.WebUtility]::HtmlEncode($Content)
 }
 
@@ -820,7 +820,7 @@ function Escape-HtmlContent {
 .EXAMPLE
     Get-LevelIcon -Level 'success'
     Returns: '✓'
-    
+
     Get-LevelIcon -Level 'error'
     Returns: '✗'
 #>
@@ -831,7 +831,7 @@ function Get-LevelIcon {
         [Parameter(Mandatory)]
         [string]$Level
     )
-    
+
     return switch ($Level.ToLower()) {
         'success' { '✓' }
         'info' { 'ℹ' }
@@ -872,7 +872,7 @@ function Get-LevelIcon {
         TotalTasks = 12
     }
     New-DashboardCardGrid -Metrics $metrics
-    
+
     Creates 4-card dashboard grid with provided metrics
 #>
 function New-DashboardCardGrid {
@@ -882,30 +882,30 @@ function New-DashboardCardGrid {
         [Parameter(Mandatory)]
         [hashtable]$Metrics
     )
-    
+
     Write-Verbose "Building dashboard card grid"
-    
+
     # Extract metrics with defaults
     $healthScore = $Metrics.HealthScore ?? 0
     $securityScore = $Metrics.SecurityScore ?? 0
     $successRate = $Metrics.SuccessRate ?? 0
     $totalTasks = $Metrics.TotalTasks ?? 0
-    
+
     # Determine status classes based on scores
     $healthClass = if ($healthScore -ge 85) { 'success' } elseif ($healthScore -ge 70) { 'warning' } else { 'error' }
     $securityClass = if ($securityScore -ge 85) { 'success' } elseif ($securityScore -ge 70) { 'warning' } else { 'error' }
     $successClass = if ($successRate -ge 90) { 'success' } elseif ($successRate -ge 75) { 'warning' } else { 'error' }
-    
+
     # Status text
     $healthText = if ($healthScore -ge 85) { 'Excellent' } elseif ($healthScore -ge 70) { 'Good' } else { 'Needs Attention' }
     $securityText = if ($securityScore -ge 85) { 'Secure' } elseif ($securityScore -ge 70) { 'Fair' } else { 'At Risk' }
-    
+
     # Build cards using New-HtmlCard
     $card1 = New-HtmlCard -Title 'System Health' -Value "${healthScore}%" -Description $healthText -Icon '🏥' -StatusClass $healthClass -CssClass 'card status-card'
     $card2 = New-HtmlCard -Title 'Security Score' -Value "${securityScore}%" -Description $securityText -Icon '🔐' -StatusClass $securityClass -CssClass 'card status-card'
     $card3 = New-HtmlCard -Title 'Success Rate' -Value "${successRate}%" -Description 'Tasks completed successfully' -Icon '✓' -StatusClass $successClass -CssClass 'card status-card'
     $card4 = New-HtmlCard -Title 'Total Tasks' -Value "$totalTasks" -Description 'Maintenance tasks executed' -Icon '📋' -CssClass 'card status-card'
-    
+
     return @"
 <section class="grid grid-4" id="summaryCards">
 $card1
@@ -938,7 +938,7 @@ $card4
 
 .EXAMPLE
     New-ModuleDetailsCard -ModuleResult $moduleResult -ShowLogs -MaxItems 10
-    
+
     Creates full module card with up to 10 items and logs
 #>
 function New-ModuleDetailsCard {
@@ -947,64 +947,64 @@ function New-ModuleDetailsCard {
     param(
         [Parameter(Mandatory)]
         [PSObject]$ModuleResult,
-        
+
         [Parameter()]
         [switch]$ShowLogs = $true,
-        
+
         [Parameter()]
         [int]$MaxItems = 10
     )
-    
+
     Write-Verbose "Building module details card for $($ModuleResult.ModuleName)"
-    
+
     # Module metadata
     $moduleInfo = @{
-        'BloatwareRemoval'    = @{ Icon = '🗑️'; Description = 'Removes unnecessary pre-installed software' }
-        'EssentialApps'       = @{ Icon = '📦'; Description = 'Installs and manages essential applications' }
-        'SystemOptimization'  = @{ Icon = '⚡'; Description = 'Optimizes system performance' }
-        'TelemetryDisable'    = @{ Icon = '🔒'; Description = 'Disables telemetry and enhances privacy' }
-        'WindowsUpdates'      = @{ Icon = '🔄'; Description = 'Manages system updates' }
-        'SecurityAudit'       = @{ Icon = '🛡️'; Description = 'Security assessment and recommendations' }
-        'SystemInventory'     = @{ Icon = '📊'; Description = 'System hardware and software inventory' }
-        'AppUpgrade'          = @{ Icon = '⬆️'; Description = 'Updates applications to latest versions' }
+        'BloatwareRemoval' = @{ Icon = '🗑️'; Description = 'Removes unnecessary pre-installed software' }
+        'EssentialApps' = @{ Icon = '📦'; Description = 'Installs and manages essential applications' }
+        'SystemOptimization' = @{ Icon = '⚡'; Description = 'Optimizes system performance' }
+        'TelemetryDisable' = @{ Icon = '🔒'; Description = 'Disables telemetry and enhances privacy' }
+        'WindowsUpdates' = @{ Icon = '🔄'; Description = 'Manages system updates' }
+        'SecurityAudit' = @{ Icon = '🛡️'; Description = 'Security assessment and recommendations' }
+        'SystemInventory' = @{ Icon = '📊'; Description = 'System hardware and software inventory' }
+        'AppUpgrade' = @{ Icon = '⬆️'; Description = 'Updates applications to latest versions' }
         'SecurityEnhancement' = @{ Icon = '🔐'; Description = 'Applies security configurations' }
     }
-    
+
     $moduleName = $ModuleResult.ModuleName
     $info = $moduleInfo[$moduleName] ?? @{ Icon = '⚙️'; Description = 'Module execution results' }
-    
+
     # Extract metrics
     $totalOps = [int]($ModuleResult.Metrics.ItemsProcessed ?? $ModuleResult.ItemsProcessed ?? 0)
     $successOps = [int]($ModuleResult.Metrics.ItemsSuccessful ?? $ModuleResult.SuccessfulOperations ?? 0)
     $durationSec = [double]($ModuleResult.Metrics.DurationSeconds ?? $ModuleResult.DurationSeconds ?? 0)
     $status = $ModuleResult.Status ?? 'Completed'
-    
+
     # Build detail items for detected/processed items
     $detailsHtml = @()
-    
+
     if ($ModuleResult.DetectedItems -and $ModuleResult.DetectedItems.Count -gt 0) {
         $detailsHtml += "<div class='detail-section'>"
         $detailsHtml += "<h4 class='detail-section-title'><span>🔍</span> Detected Items</h4>"
         $detailsHtml += "<div class='detail-list'>"
-        
+
         foreach ($item in $ModuleResult.DetectedItems | Select-Object -First $MaxItems) {
             $itemName = if ($item.Name) { $item.Name } elseif ($item.DisplayName) { $item.DisplayName } else { $item.ToString() }
             $itemStatus = if ($item.Status) { $item.Status } else { 'Detected' }
             $metadata = @{}
             if ($item.Version) { $metadata.Version = $item.Version }
             if ($item.Size) { $metadata.Size = $item.Size }
-            
+
             $detailsHtml += New-HtmlDetailItem -Name $itemName -Icon '📄' -Status $itemStatus -Metadata $metadata
         }
-        
+
         if ($ModuleResult.DetectedItems.Count -gt $MaxItems) {
             $remaining = $ModuleResult.DetectedItems.Count - $MaxItems
             $detailsHtml += "<div style='text-align: center; padding: 10px; color: var(--text-muted);'>+ $remaining more items...</div>"
         }
-        
+
         $detailsHtml += "</div></div>"
     }
-    
+
     # Build log entries if requested
     $logsHtml = ''
     if ($ShowLogs -and $ModuleResult.Logs -and $ModuleResult.Logs.Count -gt 0) {
@@ -1013,10 +1013,10 @@ function New-ModuleDetailsCard {
             $level = if ($log.Level) { $log.Level.ToLower() } else { 'info' }
             $message = if ($log.Message) { $log.Message } else { $log.ToString() }
             $timestamp = if ($log.Timestamp) { [datetime]::Parse($log.Timestamp) } else { Get-Date }
-            
+
             $logEntries += New-HtmlLogEntry -Message $message -Level $level -Timestamp $timestamp
         }
-        
+
         $logsHtml = @"
 <div class='log-section'>
     <h4 class='log-title'>📝 Recent Activity</h4>
@@ -1026,11 +1026,11 @@ $($logEntries -join "`n")
 </div>
 "@
     }
-    
+
     # Build complete card
     $badge = New-HtmlStatusBadge -Status $status
     $durationFormatted = Format-Duration -Seconds $durationSec
-    
+
     return @"
 <div class='card module-card $(Get-StatusClass -Status $status) fade-in'>
     <div class='card-header'>
@@ -1068,7 +1068,7 @@ $logsHtml
 
 .EXAMPLE
     New-ExecutionLogTable -Operations $moduleResults
-    
+
     Creates table with all module execution results
 #>
 function New-ExecutionLogTable {
@@ -1079,23 +1079,23 @@ function New-ExecutionLogTable {
         [AllowEmptyCollection()]
         [PSCustomObject[]]$Operations
     )
-    
+
     Write-Verbose "Building execution log table with $($Operations.Count) entries"
-    
+
     # Transform operations to include formatted data
     $tableData = @()
     foreach ($op in $Operations) {
         $badge = New-HtmlStatusBadge -Status ($op.Status ?? 'Unknown')
         $duration = if ($op.Duration) { Format-Duration -Seconds $op.Duration } else { 'N/A' }
-        
+
         $tableData += [PSCustomObject]@{
-            Module   = $op.Module ?? 'Unknown'
-            Status   = $badge
+            Module = $op.Module ?? 'Unknown'
+            Status = $badge
             Duration = $duration
-            Items    = $op.Items ?? 0
+            Items = $op.Items ?? 0
         }
     }
-    
+
     return New-HtmlTable -Headers @('Module', 'Status', 'Duration', 'Items') -Rows $tableData -Sortable -Striped -Hoverable
 }
 
@@ -1115,7 +1115,7 @@ function New-ExecutionLogTable {
 
 .EXAMPLE
     New-ErrorAnalysisSection -AggregatedResults $results
-    
+
     Creates error analysis with categorized errors
 #>
 function New-ErrorAnalysisSection {
@@ -1125,35 +1125,35 @@ function New-ErrorAnalysisSection {
         [Parameter(Mandatory)]
         [hashtable]$AggregatedResults
     )
-    
+
     Write-Verbose "Building error analysis section"
-    
+
     # Categorize errors by severity
     $criticalErrors = @()
     $errors = @()
     $warnings = @()
-    
+
     foreach ($moduleResult in $AggregatedResults.ModuleResults.Values) {
         $moduleName = $moduleResult.ModuleName
-        
+
         # Process errors
         if ($moduleResult.Errors -and $moduleResult.Errors.Count -gt 0) {
             foreach ($errorItem in $moduleResult.Errors) {
-                $errorMessage = if ($errorItem.Message) { $errorItem.Message } 
-                                elseif ($errorItem -is [string]) { $errorItem } 
+                $errorMessage = if ($errorItem.Message) { $errorItem.Message }
+                                elseif ($errorItem -is [string]) { $errorItem }
                                 else { $errorItem.ToString() }
-                
+
                 # Determine severity (simple heuristic)
                 $severity = if ($errorMessage -match 'critical|fatal|system') { 'Critical' }
                            elseif ($errorMessage -match 'error|failed|exception') { 'Error' }
                            else { 'Warning' }
-                
+
                 $errorObj = @{
-                    Module  = $moduleName
+                    Module = $moduleName
                     Message = $errorMessage
                     Severity = $severity
                 }
-                
+
                 switch ($severity) {
                     'Critical' { $criticalErrors += $errorObj }
                     'Error' { $errors += $errorObj }
@@ -1161,26 +1161,26 @@ function New-ErrorAnalysisSection {
                 }
             }
         }
-        
+
         # Process warnings
         if ($moduleResult.Warnings -and $moduleResult.Warnings.Count -gt 0) {
             foreach ($warning in $moduleResult.Warnings) {
                 $warningMessage = if ($warning.Message) { $warning.Message }
                                  elseif ($warning -is [string]) { $warning }
                                  else { $warning.ToString() }
-                
+
                 $warnings += @{
-                    Module   = $moduleName
-                    Message  = $warningMessage
+                    Module = $moduleName
+                    Message = $warningMessage
                     Severity = 'Warning'
                 }
             }
         }
     }
-    
+
     # Build error sections
     $sectionsHtml = @()
-    
+
     if ($criticalErrors.Count -gt 0) {
         $criticalItems = @()
         foreach ($item in $criticalErrors) {
@@ -1198,7 +1198,7 @@ $($criticalItems -join "`n")
 </div>
 "@
     }
-    
+
     if ($errors.Count -gt 0) {
         $errorItems = @()
         foreach ($item in $errors) {
@@ -1216,7 +1216,7 @@ $($errorItems -join "`n")
 </div>
 "@
     }
-    
+
     if ($warnings.Count -gt 0) {
         $warningItems = @()
         foreach ($item in $warnings | Select-Object -First 10) {
@@ -1237,13 +1237,13 @@ $($warningItems -join "`n")
 </div>
 "@
     }
-    
+
     $content = if ($sectionsHtml.Count -gt 0) {
         $sectionsHtml -join "`n"
     } else {
         "<div style='text-align: center; padding: 20px; color: var(--success);'>✓ No errors or warnings detected</div>"
     }
-    
+
     return New-HtmlSection -Title 'Error Analysis' -Content $content -Icon '🔍' -Collapsible -Id 'error-analysis'
 }
 
@@ -1274,3 +1274,4 @@ Export-ModuleMember -Function @(
 )
 
 Write-Verbose "HTMLBuilder module loaded successfully (17 functions exported)"
+

@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (for configuration, paths, logging)
 
@@ -69,8 +69,8 @@ function Get-SystemInventory {
     # Use centralized logging if available
     try {
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-INVENTORY' -Message 'Starting comprehensive system inventory collection' -Data @{
-            UseCache        = $UseCache
-            CacheTimeout    = $CacheTimeout
+            UseCache = $UseCache
+            CacheTimeout = $CacheTimeout
             IncludeDetailed = $IncludeDetailed
         }
     }
@@ -162,12 +162,12 @@ function Get-SystemInventory {
 
         # Add metadata
         $inventoryData.Metadata = @{
-            CollectionTime  = $startTime
-            Duration        = ((Get-Date) - $startTime).TotalSeconds
+            CollectionTime = $startTime
+            Duration = ((Get-Date) - $startTime).TotalSeconds
             IncludeDetailed = $IncludeDetailed.IsPresent
-            ComputerName    = $env:COMPUTERNAME
-            UserName        = $env:USERNAME
-            ModuleVersion   = '1.0.0'
+            ComputerName = $env:COMPUTERNAME
+            UserName = $env:USERNAME
+            ModuleVersion = '1.0.0'
         }
 
         $duration = [math]::Round($inventoryData.Metadata.Duration, 2)
@@ -201,10 +201,10 @@ function Get-SystemInventory {
             }
 
             Write-LogEntry -Level 'INFO' -Component 'SYSTEM-INVENTORY' -Message 'System inventory collection completed successfully' -Data @{
-                CollectionTime      = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
+                CollectionTime = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
                 ComponentsCollected = $inventoryData.Keys -join ', '
-                SoftwareItemsFound  = if ($inventoryData.InstalledSoftware) { $inventoryData.InstalledSoftware.Count } else { 0 }
-                ServicesFound       = if ($inventoryData.Services) { $inventoryData.Services.Count } else { 0 }
+                SoftwareItemsFound = if ($inventoryData.InstalledSoftware) { $inventoryData.InstalledSoftware.Count } else { 0 }
+                ServicesFound = if ($inventoryData.Services) { $inventoryData.Services.Count } else { 0 }
             }
         }
         catch {
@@ -222,7 +222,7 @@ function Get-SystemInventory {
             }
 
             Write-LogEntry -Level 'ERROR' -Component 'SYSTEM-INVENTORY' -Message 'System inventory collection failed' -Data @{
-                Error          = $_.Exception.Message
+                Error = $_.Exception.Message
                 CollectionTime = [math]::Round((Get-Date - $startTime).TotalSeconds, 2)
             }
         }
@@ -380,15 +380,15 @@ function Get-BasicSystemInfo {
         $bios = Get-CimInstance -ClassName Win32_BIOS -ErrorAction Stop
 
         return @{
-            ComputerName        = $computerSystem.Name
-            Domain              = $computerSystem.Domain
-            Manufacturer        = $computerSystem.Manufacturer
-            Model               = $computerSystem.Model
+            ComputerName = $computerSystem.Name
+            Domain = $computerSystem.Domain
+            Manufacturer = $computerSystem.Manufacturer
+            Model = $computerSystem.Model
             TotalPhysicalMemory = $computerSystem.TotalPhysicalMemory
-            NumberOfProcessors  = $computerSystem.NumberOfProcessors
-            BIOSVersion         = $bios.SMBIOSBIOSVersion
-            BIOSManufacturer    = $bios.Manufacturer
-            SerialNumber        = $bios.SerialNumber
+            NumberOfProcessors = $computerSystem.NumberOfProcessors
+            BIOSVersion = $bios.SMBIOSBIOSVersion
+            BIOSManufacturer = $bios.Manufacturer
+            SerialNumber = $bios.SerialNumber
         }
     }
     catch {
@@ -411,38 +411,38 @@ function Get-HardwareInfo {
 
         return @{
             Processor = @{
-                Name                      = $processor.Name
-                Architecture              = $processor.Architecture
-                NumberOfCores             = $processor.NumberOfCores
+                Name = $processor.Name
+                Architecture = $processor.Architecture
+                NumberOfCores = $processor.NumberOfCores
                 NumberOfLogicalProcessors = $processor.NumberOfLogicalProcessors
-                MaxClockSpeed             = $processor.MaxClockSpeed
+                MaxClockSpeed = $processor.MaxClockSpeed
             }
-            Memory    = @{
-                TotalModules  = $memory.Count
+            Memory = @{
+                TotalModules = $memory.Count
                 TotalCapacity = ($memory | Measure-Object Capacity -Sum).Sum
-                Modules       = $memory | ForEach-Object {
+                Modules = $memory | ForEach-Object {
                     @{
-                        Capacity     = $_.Capacity
-                        Speed        = $_.Speed
+                        Capacity = $_.Capacity
+                        Speed = $_.Speed
                         Manufacturer = $_.Manufacturer
-                        PartNumber   = $_.PartNumber
+                        PartNumber = $_.PartNumber
                     }
                 }
             }
-            Storage   = $diskDrives | ForEach-Object {
+            Storage = $diskDrives | ForEach-Object {
                 @{
-                    Model         = $_.Model
-                    Size          = $_.Size
+                    Model = $_.Model
+                    Size = $_.Size
                     InterfaceType = $_.InterfaceType
-                    MediaType     = $_.MediaType
+                    MediaType = $_.MediaType
                 }
             }
-            Graphics  = if ($videoController) {
+            Graphics = if ($videoController) {
                 @{
-                    Name          = $videoController.Name
+                    Name = $videoController.Name
                     DriverVersion = $videoController.DriverVersion
-                    DriverDate    = $videoController.DriverDate
-                    AdapterRAM    = $videoController.AdapterRAM
+                    DriverDate = $videoController.DriverDate
+                    AdapterRAM = $videoController.AdapterRAM
                 }
             }
             else { $null }
@@ -464,17 +464,17 @@ function Get-OperatingSystemInfo {
         $timeZone = Get-TimeZone -ErrorAction Stop
 
         return @{
-            Caption                = $os.Caption
-            Version                = $os.Version
-            BuildNumber            = $os.BuildNumber
-            Architecture           = $os.OSArchitecture
-            InstallDate            = $os.InstallDate
-            LastBootUpTime         = $os.LastBootUpTime
-            FreePhysicalMemory     = $os.FreePhysicalMemory
+            Caption = $os.Caption
+            Version = $os.Version
+            BuildNumber = $os.BuildNumber
+            Architecture = $os.OSArchitecture
+            InstallDate = $os.InstallDate
+            LastBootUpTime = $os.LastBootUpTime
+            FreePhysicalMemory = $os.FreePhysicalMemory
             TotalVirtualMemorySize = $os.TotalVirtualMemorySize
-            TimeZone               = $timeZone.DisplayName
-            PowerShellVersion      = $PSVersionTable.PSVersion.ToString()
-            DotNetVersion          = [System.Environment]::Version.ToString()
+            TimeZone = $timeZone.DisplayName
+            PowerShellVersion = $PSVersionTable.PSVersion.ToString()
+            DotNetVersion = [System.Environment]::Version.ToString()
         }
     }
     catch {
@@ -516,12 +516,12 @@ function Get-InstalledSoftwareInfo {
                 $appxPackages = Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike "*Microsoft*" -or $_.Name -like "*Microsoft.Office*" }
                 foreach ($package in $appxPackages) {
                     $installedPrograms.Add(@{
-                            Name            = $package.Name
-                            DisplayName     = $package.PackageFullName
-                            Version         = $package.Version
-                            Publisher       = $package.Publisher
+                            Name = $package.Name
+                            DisplayName = $package.PackageFullName
+                            Version = $package.Version
+                            Publisher = $package.Publisher
                             InstallLocation = $package.InstallLocation
-                            Source          = 'AppX'
+                            Source = 'AppX'
                         })
                 }
 
@@ -540,10 +540,10 @@ function Get-InstalledSoftwareInfo {
                     foreach ($line in $wingetLines) {
                         if ($line -match '^(.+?)\s+(.+?)\s+(.+?)\s+(.+?)$') {
                             $installedPrograms.Add(@{
-                                    Name      = $matches[1].Trim()
-                                    Version   = $matches[2].Trim()
+                                    Name = $matches[1].Trim()
+                                    Version = $matches[2].Trim()
                                     Publisher = $matches[4].Trim()
-                                    Source    = 'Winget'
+                                    Source = 'Winget'
                                 })
                         }
                     }
@@ -563,10 +563,10 @@ function Get-InstalledSoftwareInfo {
                     foreach ($line in $chocoOutput) {
                         if ($line -match '^(.+?)\s+(.+?)$') {
                             $installedPrograms.Add(@{
-                                    Name      = $matches[1].Trim()
-                                    Version   = $matches[2].Trim()
+                                    Name = $matches[1].Trim()
+                                    Version = $matches[2].Trim()
                                     Publisher = 'Chocolatey'
-                                    Source    = 'Chocolatey'
+                                    Source = 'Chocolatey'
                                 })
                         }
                     }
@@ -591,15 +591,15 @@ function Get-InstalledSoftwareInfo {
 
                 foreach ($program in $programs) {
                     $installedPrograms.Add(@{
-                            Name            = $program.DisplayName
-                            DisplayName     = $program.DisplayName
-                            Version         = $program.DisplayVersion
-                            Publisher       = $program.Publisher
-                            InstallDate     = $program.InstallDate
+                            Name = $program.DisplayName
+                            DisplayName = $program.DisplayName
+                            Version = $program.DisplayVersion
+                            Publisher = $program.Publisher
+                            InstallDate = $program.InstallDate
                             InstallLocation = $program.InstallLocation
                             UninstallString = $program.UninstallString
-                            Size            = $program.EstimatedSize
-                            Source          = 'Registry'
+                            Size = $program.EstimatedSize
+                            Source = 'Registry'
                         })
                 }
 
@@ -624,7 +624,7 @@ function Get-InstalledSoftwareInfo {
 
             return @{
                 TotalCount = $sortedPrograms.Count
-                Programs   = $sortedPrograms
+                Programs = $sortedPrograms
             }
         }
         catch {
@@ -665,10 +665,10 @@ function Get-ServiceInfo {
             $wmiServices = Get-CimInstance -ClassName Win32_Service -ErrorAction Stop
             $services = $wmiServices | ForEach-Object {
                 [PSCustomObject]@{
-                    Name        = $_.Name
+                    Name = $_.Name
                     DisplayName = $_.DisplayName
-                    Status      = if ($_.State -eq 'Running') { 'Running' } else { 'Stopped' }
-                    StartType   = $_.StartMode
+                    Status = if ($_.State -eq 'Running') { 'Running' } else { 'Stopped' }
+                    StartType = $_.StartMode
                 }
             }
         }
@@ -682,10 +682,10 @@ function Get-ServiceInfo {
                 try {
                     $service = Get-Service -Name $serviceName -ErrorAction Stop
                     $services += [PSCustomObject]@{
-                        Name        = $service.Name
+                        Name = $service.Name
                         DisplayName = $service.DisplayName
-                        Status      = $service.Status
-                        StartType   = $service.StartType
+                        Status = $service.Status
+                        StartType = $service.StartType
                     }
                 }
                 catch {
@@ -699,12 +699,12 @@ function Get-ServiceInfo {
         if ($services.Count -eq 0) {
             Write-Warning "No services could be queried. This may indicate permission restrictions."
             return @{
-                TotalCount       = 0
-                RunningCount     = 0
-                StoppedCount     = 0
-                RunningServices  = @()
+                TotalCount = 0
+                RunningCount = 0
+                StoppedCount = 0
+                RunningServices = @()
                 CriticalServices = @()
-                Note             = "Limited permissions - service details unavailable"
+                Note = "Limited permissions - service details unavailable"
             }
         }
 
@@ -712,24 +712,24 @@ function Get-ServiceInfo {
         $stoppedServices = $services | Where-Object { $_.Status -eq 'Stopped' }
 
         return @{
-            TotalCount       = $services.Count
-            RunningCount     = $runningServices.Count
-            StoppedCount     = $stoppedServices.Count
-            RunningServices  = $runningServices | ForEach-Object {
+            TotalCount = $services.Count
+            RunningCount = $runningServices.Count
+            StoppedCount = $stoppedServices.Count
+            RunningServices = $runningServices | ForEach-Object {
                 @{
-                    Name        = $_.Name
+                    Name = $_.Name
                     DisplayName = $_.DisplayName
-                    Status      = $_.Status
-                    StartType   = $_.StartType
+                    Status = $_.Status
+                    StartType = $_.StartType
                 }
             }
             CriticalServices = $runningServices | Where-Object {
                 $_.Name -in @('Winlogon', 'CSRSS', 'Wininit', 'Services', 'Lsass', 'Spooler')
             } | ForEach-Object {
                 @{
-                    Name        = $_.Name
+                    Name = $_.Name
                     DisplayName = $_.DisplayName
-                    Status      = $_.Status
+                    Status = $_.Status
                 }
             }
         }
@@ -737,12 +737,12 @@ function Get-ServiceInfo {
     catch {
         Write-Warning "Failed to collect services info: $_"
         return @{
-            TotalCount       = 0
-            RunningCount     = 0
-            StoppedCount     = 0
-            RunningServices  = @()
+            TotalCount = 0
+            RunningCount = 0
+            StoppedCount = 0
+            RunningServices = @()
             CriticalServices = @()
-            Error            = $_.Exception.Message
+            Error = $_.Exception.Message
         }
     }
 }
@@ -757,18 +757,18 @@ function Get-NetworkInfo {
         $ipConfig = Get-NetIPConfiguration -ErrorAction Stop | Where-Object { $_.NetAdapter.Status -eq 'Up' }
 
         return @{
-            Adapters             = $adapters | ForEach-Object {
+            Adapters = $adapters | ForEach-Object {
                 $config = $ipConfig | Where-Object { $_.InterfaceAlias -eq $_.Name }
                 @{
-                    Name           = $_.Name
-                    Description    = $_.InterfaceDescription
-                    LinkSpeed      = $_.LinkSpeed
-                    MediaType      = $_.MediaType
-                    MacAddress     = $_.MacAddress
-                    IPAddress      = $config.IPv4Address.IPAddress -join ', '
-                    SubnetMask     = $config.IPv4Address.PrefixLength -join ', '
+                    Name = $_.Name
+                    Description = $_.InterfaceDescription
+                    LinkSpeed = $_.LinkSpeed
+                    MediaType = $_.MediaType
+                    MacAddress = $_.MacAddress
+                    IPAddress = $config.IPv4Address.IPAddress -join ', '
+                    SubnetMask = $config.IPv4Address.PrefixLength -join ', '
                     DefaultGateway = $config.IPv4DefaultGateway.NextHop -join ', '
-                    DNSServers     = $config.DNSServer.ServerAddresses -join ', '
+                    DNSServers = $config.DNSServer.ServerAddresses -join ', '
                 }
             }
             InternetConnectivity = Test-InternetConnectivity
@@ -788,9 +788,9 @@ function Get-DetailedSystemInfo {
     try {
         return @{
             InstalledUpdates = Get-InstalledUpdateInfo
-            StartupPrograms  = Get-StartupProgramsInfo
-            ScheduledTasks   = Get-ScheduledTasksInfo
-            EventLogSummary  = Get-EventLogSummary
+            StartupPrograms = Get-StartupProgramsInfo
+            ScheduledTasks = Get-ScheduledTasksInfo
+            EventLogSummary = Get-EventLogSummary
         }
     }
     catch {
@@ -810,10 +810,10 @@ function Get-InstalledUpdateInfo {
         Select-Object -First 20
 
         return @{
-            RecentCount   = $updates.Count
+            RecentCount = $updates.Count
             RecentUpdates = $updates | ForEach-Object {
                 @{
-                    HotFixID    = $_.HotFixID
+                    HotFixID = $_.HotFixID
                     Description = $_.Description
                     InstalledOn = $_.InstalledOn
                     InstalledBy = $_.InstalledBy
@@ -850,8 +850,8 @@ function Get-StartupProgramsInfo {
                     foreach ($property in $items.PSObject.Properties) {
                         if ($property.Name -notin @('PSPath', 'PSParentPath', 'PSChildName', 'PSDrive', 'PSProvider')) {
                             $startupItems += @{
-                                Name     = $property.Name
-                                Command  = $property.Value
+                                Name = $property.Name
+                                Command = $property.Value
                                 Location = $path
                             }
                         }
@@ -866,7 +866,7 @@ function Get-StartupProgramsInfo {
 
         return @{
             TotalCount = $startupItems.Count
-            Items      = $startupItems
+            Items = $startupItems
         }
     }
     catch {
@@ -886,14 +886,14 @@ function Get-ScheduledTasksInfo {
         $enabledTasks = $tasks | Where-Object { $_.State -eq 'Ready' }
 
         return @{
-            TotalCount   = $tasks.Count
+            TotalCount = $tasks.Count
             RunningCount = $runningTasks.Count
             EnabledCount = $enabledTasks.Count
             RunningTasks = $runningTasks | Select-Object -First 10 | ForEach-Object {
                 @{
                     TaskName = $_.TaskName
                     TaskPath = $_.TaskPath
-                    State    = $_.State
+                    State = $_.State
                 }
             }
         }
@@ -920,15 +920,15 @@ function Get-EventLogSummary {
                 $warnings = $events | Where-Object { $_.LevelDisplayName -eq 'Warning' }
 
                 $summary[$logName] = @{
-                    TotalEvents  = $events.Count
-                    ErrorCount   = $errors.Count
+                    TotalEvents = $events.Count
+                    ErrorCount = $errors.Count
                     WarningCount = $warnings.Count
                     RecentErrors = $errors | Select-Object -First 5 | ForEach-Object {
                         @{
-                            TimeCreated      = $_.TimeCreated
-                            Id               = $_.Id
+                            TimeCreated = $_.TimeCreated
+                            Id = $_.Id
                             LevelDisplayName = $_.LevelDisplayName
-                            Message          = $_.Message.Substring(0, [Math]::Min(200, $_.Message.Length))
+                            Message = $_.Message.Substring(0, [Math]::Min(200, $_.Message.Length))
                         }
                     }
                 }
@@ -980,6 +980,7 @@ Export-ModuleMember -Function @(
     'Get-SystemInventoryAnalysis',
     'Export-SystemInventory'
 )
+
 
 
 

@@ -7,7 +7,7 @@
 .DESCRIPTION
     Phase C.4 enhancement module that provides OS-aware recommendations
     based on Windows version (10 vs 11), build number, and supported features.
-    
+
     Integrates with ReportGenerator.psm1 to add OS-specific context and
     tailored recommendations to maintenance reports.
 
@@ -15,16 +15,16 @@
     Purpose:
         Generate OS-specific recommendations and format OS context for reports.
         Separates OS intelligence from report generation for maintainability.
-    
+
     Dependencies:
         • CoreInfrastructure.psm1 - For Get-WindowsVersionContext and logging
-    
+
     Exports:
         • Get-OSSpecificRecommendations - Generate OS-aware recommendations
         • Format-OSContextForReport - Format OS context for HTML display
         • Build-OSContextSection - Build complete OS section HTML
         • Test-OSFeatureAvailability - Check feature support for current OS
-    
+
     Used By:
         - ReportGenerator.psm1 (enhances report generation with OS context)
         - MaintenanceOrchestrator.ps1 (optional - for OS checks)
@@ -35,7 +35,7 @@
     Version: 1.0.0
     Author: Bogdan Ichim
     Created: February 2026
-    
+
     Key Features:
     - Windows 10 vs 11 differentiation
     - Build-specific recommendations
@@ -74,7 +74,7 @@ else {
 .EXAMPLE
     PS> $osContext = Get-WindowsVersionContext
     PS> $recommendations = Get-OSSpecificRecommendations -OSContext $osContext
-    
+
 .NOTES
     Recommendation categories:
     - System: OS updates, feature optimization
@@ -88,114 +88,114 @@ function Get-OSSpecificRecommendations {
     param(
         [Parameter(Mandatory)]
         [PSCustomObject]$OSContext,
-        
+
         [Parameter()]
         [hashtable]$MaintenanceResults
     )
-    
+
     Write-Verbose "Generating OS-specific recommendations for $($OSContext.DisplayText)"
-    
+
     $recommendations = [System.Collections.Generic.List[PSCustomObject]]::new()
-    
+
     # Windows 11 Specific Recommendations
     if ($OSContext.IsWindows11) {
         # Security recommendations
         $recommendations.Add([PSCustomObject]@{
-                Category    = 'Security'
-                Priority    = 'High'
-                Title       = 'TPM 2.0 Security Verification'
+                Category = 'Security'
+                Priority = 'High'
+                Title = 'TPM 2.0 Security Verification'
                 Description = 'Windows 11 requires TPM 2.0. Verify TPM is enabled and firmware is up-to-date for optimal security.'
-                Action      = 'Run tpm.msc to verify TPM status'
-                Icon        = '🔐'
-                OSSpecific  = $true
+                Action = 'Run tpm.msc to verify TPM status'
+                Icon = '🔐'
+                OSSpecific = $true
             })
-        
+
         # Feature recommendations
         if ($OSContext.SupportedFeatures.AndroidApps) {
             $recommendations.Add([PSCustomObject]@{
-                    Category    = 'Features'
-                    Priority    = 'Low'
-                    Title       = 'Windows Subsystem for Android'
+                    Category = 'Features'
+                    Priority = 'Low'
+                    Title = 'Windows Subsystem for Android'
                     Description = 'Your system supports Android apps. Consider installing WSA if you need mobile app functionality.'
-                    Action      = 'Install from Microsoft Store: Windows Subsystem for Android'
-                    Icon        = '📱'
-                    OSSpecific  = $true
+                    Action = 'Install from Microsoft Store: Windows Subsystem for Android'
+                    Icon = '📱'
+                    OSSpecific = $true
                 })
         }
-        
+
         if ($OSContext.SupportedFeatures.DirectStorage) {
             $recommendations.Add([PSCustomObject]@{
-                    Category    = 'Performance'
-                    Priority    = 'Medium'
-                    Title       = 'DirectStorage Optimization'
+                    Category = 'Performance'
+                    Priority = 'Medium'
+                    Title = 'DirectStorage Optimization'
                     Description = 'Windows 11 supports DirectStorage for faster game loading. Ensure NVMe drivers are current.'
-                    Action      = 'Update NVMe drivers and enable DirectStorage in supported games'
-                    Icon        = '⚡'
-                    OSSpecific  = $true
+                    Action = 'Update NVMe drivers and enable DirectStorage in supported games'
+                    Icon = '⚡'
+                    OSSpecific = $true
                 })
         }
-        
+
         # Snap Layouts recommendation
         $recommendations.Add([PSCustomObject]@{
-                Category    = 'Productivity'
-                Priority    = 'Low'
-                Title       = 'Snap Layouts for Multitasking'
+                Category = 'Productivity'
+                Priority = 'Low'
+                Title = 'Snap Layouts for Multitasking'
                 Description = 'Use Windows 11 Snap Layouts (hover over maximize button) for efficient window management.'
-                Action      = 'Enable: Settings > System > Multitasking > Snap windows'
-                Icon        = '🪟'
-                OSSpecific  = $true
+                Action = 'Enable: Settings > System > Multitasking > Snap windows'
+                Icon = '🪟'
+                OSSpecific = $true
             })
-        
+
         # Widget customization
         $recommendations.Add([PSCustomObject]@{
-                Category    = 'Productivity'
-                Priority    = 'Low'
-                Title       = 'Widgets Panel Optimization'
+                Category = 'Productivity'
+                Priority = 'Low'
+                Title = 'Widgets Panel Optimization'
                 Description = 'Customize Windows 11 Widgets panel for quick access to news, weather, and system info.'
-                Action      = 'Open Widgets panel (Win + W) and customize feed'
-                Icon        = '📊'
-                OSSpecific  = $true
+                Action = 'Open Widgets panel (Win + W) and customize feed'
+                Icon = '📊'
+                OSSpecific = $true
             })
     }
-    
+
     # Windows 10 Specific Recommendations
     if ($OSContext.IsWindows10) {
         # Update path recommendation
         $recommendations.Add([PSCustomObject]@{
-                Category    = 'System'
-                Priority    = 'High'
-                Title       = 'Windows 11 Upgrade Consideration'
+                Category = 'System'
+                Priority = 'High'
+                Title = 'Windows 11 Upgrade Consideration'
                 Description = 'Windows 10 reaches end of support October 2025. Evaluate Windows 11 upgrade for continued security updates.'
-                Action      = 'Check compatibility: Settings > Update & Security > Windows Update'
-                Icon        = '⚠️'
-                OSSpecific  = $true
+                Action = 'Check compatibility: Settings > Update & Security > Windows Update'
+                Icon = '⚠️'
+                OSSpecific = $true
             })
-        
+
         # Classic features
         $recommendations.Add([PSCustomObject]@{
-                Category    = 'Features'
-                Priority    = 'Medium'
-                Title       = 'Classic Start Menu Customization'
+                Category = 'Features'
+                Priority = 'Medium'
+                Title = 'Classic Start Menu Customization'
                 Description = 'Windows 10 supports Live Tiles. Pin frequently used apps for quick access.'
-                Action      = 'Right-click apps > Pin to Start'
-                Icon        = '📌'
-                OSSpecific  = $true
+                Action = 'Right-click apps > Pin to Start'
+                Icon = '📌'
+                OSSpecific = $true
             })
-        
+
         # Taskbar positioning
         $recommendations.Add([PSCustomObject]@{
-                Category    = 'Productivity'
-                Priority    = 'Low'
-                Title       = 'Taskbar Positioning'
+                Category = 'Productivity'
+                Priority = 'Low'
+                Title = 'Taskbar Positioning'
                 Description = 'Windows 10 allows taskbar on any screen edge. Optimize for your workflow (unavailable in Windows 11).'
-                Action      = 'Taskbar Settings > Taskbar location on screen'
-                Icon        = '🎯'
-                OSSpecific  = $true
+                Action = 'Taskbar Settings > Taskbar location on screen'
+                Icon = '🎯'
+                OSSpecific = $true
             })
     }
-    
+
     # Universal recommendations (all Windows versions)
-    
+
     # Disk cleanup based on OS
     $diskRecommendation = if ($OSContext.IsWindows11) {
         'Use Settings > System > Storage > Cleanup recommendations for intelligent storage management.'
@@ -203,17 +203,17 @@ function Get-OSSpecificRecommendations {
     else {
         'Use Disk Cleanup utility or Storage Sense to free up disk space.'
     }
-    
+
     $recommendations.Add([PSCustomObject]@{
-            Category    = 'Maintenance'
-            Priority    = 'Medium'
-            Title       = 'Regular Disk Cleanup'
+            Category = 'Maintenance'
+            Priority = 'Medium'
+            Title = 'Regular Disk Cleanup'
             Description = $diskRecommendation
-            Action      = 'Run disk cleanup monthly'
-            Icon        = '🗑️'
-            OSSpecific  = $false
+            Action = 'Run disk cleanup monthly'
+            Icon = '🗑️'
+            OSSpecific = $false
         })
-    
+
     # Windows Update recommendation
     $updateRecommendation = if ($OSContext.BuildNumber) {
         "Current build: $($OSContext.BuildNumber). Check for the latest quality and feature updates."
@@ -221,77 +221,77 @@ function Get-OSSpecificRecommendations {
     else {
         "Keep Windows updated for security and performance improvements."
     }
-    
+
     $recommendations.Add([PSCustomObject]@{
-            Category    = 'Security'
-            Priority    = 'High'
-            Title       = 'Windows Update Status'
+            Category = 'Security'
+            Priority = 'High'
+            Title = 'Windows Update Status'
             Description = $updateRecommendation
-            Action      = 'Settings > Update & Security > Check for updates'
-            Icon        = '🔄'
-            OSSpecific  = $false
+            Action = 'Settings > Update & Security > Check for updates'
+            Icon = '🔄'
+            OSSpecific = $false
         })
-    
+
     # Driver updates
     $recommendations.Add([PSCustomObject]@{
-            Category    = 'Performance'
-            Priority    = 'Medium'
-            Title       = 'Driver Updates'
+            Category = 'Performance'
+            Priority = 'Medium'
+            Title = 'Driver Updates'
             Description = 'Outdated drivers can cause performance and stability issues. Check for updates regularly.'
-            Action      = 'Device Manager > Scan for hardware changes, or use manufacturer tools'
-            Icon        = '🔧'
-            OSSpecific  = $false
+            Action = 'Device Manager > Scan for hardware changes, or use manufacturer tools'
+            Icon = '🔧'
+            OSSpecific = $false
         })
-    
+
     # Add maintenance-result-based recommendations if available
     if ($MaintenanceResults) {
         # Security score-based recommendation
         if ($MaintenanceResults.ContainsKey('SecurityScore') -and $MaintenanceResults.SecurityScore -lt 80) {
             $recommendations.Add([PSCustomObject]@{
-                    Category    = 'Security'
-                    Priority    = 'High'
-                    Title       = 'Security Hardening Required'
+                    Category = 'Security'
+                    Priority = 'High'
+                    Title = 'Security Hardening Required'
                     Description = "System security score is below optimal ($($MaintenanceResults.SecurityScore)%). Review security audit results."
-                    Action      = 'Run SecurityEnhancement module and review recommendations'
-                    Icon        = '🛡️'
-                    OSSpecific  = $false
+                    Action = 'Run SecurityEnhancement module and review recommendations'
+                    Icon = '🛡️'
+                    OSSpecific = $false
                 })
         }
-        
+
         # Bloatware detection-based recommendation
         if ($MaintenanceResults.ContainsKey('BloatwareCount') -and $MaintenanceResults.BloatwareCount -gt 5) {
             $recommendations.Add([PSCustomObject]@{
-                    Category    = 'Performance'
-                    Priority    = 'Medium'
-                    Title       = 'Excessive Bloatware Detected'
+                    Category = 'Performance'
+                    Priority = 'Medium'
+                    Title = 'Excessive Bloatware Detected'
                     Description = "$($MaintenanceResults.BloatwareCount) bloatware items found. Remove unnecessary applications to improve performance."
-                    Action      = 'Run BloatwareRemoval module to clean system'
-                    Icon        = '🧹'
-                    OSSpecific  = $false
+                    Action = 'Run BloatwareRemoval module to clean system'
+                    Icon = '🧹'
+                    OSSpecific = $false
                 })
         }
     }
-    
+
     # Sort recommendations by priority
     $priorityOrder = @{
-        'High'   = 1
+        'High' = 1
         'Medium' = 2
-        'Low'    = 3
+        'Low' = 3
     }
-    
+
     $sortedRecommendations = $recommendations | Sort-Object { $priorityOrder[$_.Priority] }
-    
+
     return [PSCustomObject]@{
-        OSVersion            = $OSContext.DisplayText
-        IsWindows11          = $OSContext.IsWindows11
-        IsWindows10          = $OSContext.IsWindows10
+        OSVersion = $OSContext.DisplayText
+        IsWindows11 = $OSContext.IsWindows11
+        IsWindows10 = $OSContext.IsWindows10
         TotalRecommendations = $sortedRecommendations.Count
-        HighPriority         = ($sortedRecommendations | Where-Object Priority -eq 'High').Count
-        MediumPriority       = ($sortedRecommendations | Where-Object Priority -eq 'Medium').Count
-        LowPriority          = ($sortedRecommendations | Where-Object Priority -eq 'Low').Count
-        OSSpecificCount      = ($sortedRecommendations | Where-Object OSSpecific -eq $true).Count
-        Recommendations      = $sortedRecommendations
-        GeneratedAt          = Get-Date
+        HighPriority = ($sortedRecommendations | Where-Object Priority -eq 'High').Count
+        MediumPriority = ($sortedRecommendations | Where-Object Priority -eq 'Medium').Count
+        LowPriority = ($sortedRecommendations | Where-Object Priority -eq 'Low').Count
+        OSSpecificCount = ($sortedRecommendations | Where-Object OSSpecific -eq $true).Count
+        Recommendations = $sortedRecommendations
+        GeneratedAt = Get-Date
     }
 }
 
@@ -320,10 +320,10 @@ function Format-OSContextForReport {
         [Parameter(Mandatory)]
         [PSCustomObject]$OSContext
     )
-    
+
     $badgeClass = if ($OSContext.IsWindows11) { 'os-badge-win11' } else { 'os-badge-win10' }
     $osIcon = if ($OSContext.IsWindows11) { '🪟' } else { '🖥️' }
-    
+
     $html = @"
 <div class="os-context-section">
     <div class="os-badge $badgeClass">
@@ -346,7 +346,7 @@ function Format-OSContextForReport {
     </div>
 </div>
 "@
-    
+
     return $html
 }
 
@@ -380,27 +380,27 @@ function Build-OSContextSection {
     param(
         [Parameter(Mandatory)]
         [PSCustomObject]$OSContext,
-        
+
         [Parameter()]
         [hashtable]$MaintenanceResults,
-        
+
         [Parameter()]
         [int]$MaxRecommendations = 8
     )
-    
+
     # Get OS-specific recommendations
     $params = @{ OSContext = $OSContext }
     if ($MaintenanceResults) { $params.MaintenanceResults = $MaintenanceResults }
-    
+
     $recommendationsData = Get-OSSpecificRecommendations @params
-    
+
     # Format OS context
     $osContextHtml = Format-OSContextForReport -OSContext $OSContext
-    
+
     # Build recommendations HTML
     $recommendationsHtml = ""
     $displayedRecommendations = $recommendationsData.Recommendations | Select-Object -First $MaxRecommendations
-    
+
     foreach ($rec in $displayedRecommendations) {
         $priorityClass = switch ($rec.Priority) {
             'High' { 'priority-high' }
@@ -408,9 +408,9 @@ function Build-OSContextSection {
             'Low' { 'priority-low' }
             default { 'priority-medium' }
         }
-        
+
         $osTag = if ($rec.OSSpecific) { '<span class="os-specific-tag">OS-Specific</span>' } else { '' }
-        
+
         $recommendationsHtml += @"
 <div class="recommendation-item $priorityClass">
     <div class="rec-header">
@@ -429,7 +429,7 @@ function Build-OSContextSection {
 </div>
 "@
     }
-    
+
     # Build complete section
     $sectionHtml = @"
 <section class="card os-recommendations-section">
@@ -441,7 +441,7 @@ function Build-OSContextSection {
     </div>
     <div class="card-content">
         $osContextHtml
-        
+
         <div class="recommendations-summary">
             <div class="summary-stat">
                 <span class="stat-value">$($recommendationsData.TotalRecommendations)</span>
@@ -464,7 +464,7 @@ function Build-OSContextSection {
                 <span class="stat-label">OS-Specific</span>
             </div>
         </div>
-        
+
         <div class="recommendations-container">
             <h4 class="recommendations-title">📋 Recommended Actions</h4>
             $recommendationsHtml
@@ -472,7 +472,7 @@ function Build-OSContextSection {
     </div>
 </section>
 "@
-    
+
     return $sectionHtml
 }
 
@@ -503,20 +503,20 @@ function Test-OSFeatureAvailability {
     param(
         [Parameter(Mandatory)]
         [PSCustomObject]$OSContext,
-        
+
         [Parameter(Mandatory)]
         [string]$FeatureName
     )
-    
+
     if (-not $OSContext.SupportedFeatures) {
         Write-Warning "OS context does not contain SupportedFeatures property"
         return $false
     }
-    
+
     if ($OSContext.SupportedFeatures.ContainsKey($FeatureName)) {
         return [bool]$OSContext.SupportedFeatures[$FeatureName]
     }
-    
+
     Write-Verbose "Feature '$FeatureName' not found in OS context"
     return $false
 }
@@ -533,3 +533,4 @@ Export-ModuleMember -Function @(
 )
 
 #endregion
+

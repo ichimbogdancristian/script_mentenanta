@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 # PSScriptAnalyzer -IgnoreRule PSUseConsistentWhitespace
 
 <#
@@ -18,14 +18,14 @@
 .NOTES
     Module Type: Type 2 (System Modification)
     Dependencies: SecurityAudit.psm1 (Type1), CoreInfrastructure.psm1
-    Architecture: v3.0 → v3.1 (Consolidated)
+    Architecture: v3.0 -> v3.1 (Consolidated)
     Author: Windows Maintenance Automation Project
     Version: 3.1.0 (Integrated from Windows-Security-Hardening.ps1 v3.0)
     Created: November 30, 2025
     Integrated: January 28, 2026
 
     Public Functions:
-    - Invoke-SecurityEnhancement: Modular security enhancements (Type2→Type1 pattern)
+    - Invoke-SecurityEnhancement: Modular security enhancements (Type2->Type1 pattern)
     - Invoke-ComprehensiveSecurityHardening: Full 20-task hardening suite
 #>
 
@@ -68,7 +68,7 @@ if (-not (Get-Command -Name 'Get-SecurityAuditAnalysis' -ErrorAction SilentlyCon
     Main execution function for security enhancements - v3.0 Architecture Pattern
 
 .DESCRIPTION
-    Standardized entry point that implements the Type2 → Type1 flow:
+    Standardized entry point that implements the Type2 -> Type1 flow:
     1. Loads security configuration from security-config.json
     2. Calls SecurityAudit (Type1) to analyze current security posture
     3. Validates findings and logs results
@@ -155,9 +155,9 @@ function Invoke-SecurityEnhancement {
 
         if ($securityConfig) {
             Write-Information "   [OK] Security configuration loaded successfully" -InformationAction Continue
-            Write-Information "   • CIS Baseline: $($securityConfig.compliance.enableCISBaseline)" -InformationAction Continue
-            Write-Information "   • Digital Signature Verification: $($securityConfig.security.enableDigitalSignatureVerification)" -InformationAction Continue
-            Write-Information "   • Malware Scanning: $($securityConfig.security.enableMalwareScan)" -InformationAction Continue
+            Write-Information "   - CIS Baseline: $($securityConfig.compliance.enableCISBaseline)" -InformationAction Continue
+            Write-Information "   - Digital Signature Verification: $($securityConfig.security.enableDigitalSignatureVerification)" -InformationAction Continue
+            Write-Information "   - Malware Scanning: $($securityConfig.security.enableMalwareScan)" -InformationAction Continue
         }
         else {
             Write-Warning "   Security configuration not found - using default policies"
@@ -186,7 +186,7 @@ function Invoke-SecurityEnhancement {
         }
 
         Write-Information "   [OK] Security audit completed" -InformationAction Continue
-        Write-Information "   • Security issues detected: $issuesDetected" -InformationAction Continue
+        Write-Information "   - Security issues detected: $issuesDetected" -InformationAction Continue
 
         # Step 3: Apply security enhancements
         Write-Information "" -InformationAction Continue
@@ -256,9 +256,9 @@ function Invoke-SecurityEnhancement {
 
         Write-Information "" -InformationAction Continue
         Write-Information "[COMPLETED] Security enhancement finished successfully" -InformationAction Continue
-        Write-Information "   • Security issues detected: $issuesDetected" -InformationAction Continue
-        Write-Information "   • Enhancements applied: $itemsProcessed" -InformationAction Continue
-        Write-Information "   • Execution time: $([math]::Round($executionDuration, 2)) seconds" -InformationAction Continue
+        Write-Information "   - Security issues detected: $issuesDetected" -InformationAction Continue
+        Write-Information "   - Enhancements applied: $itemsProcessed" -InformationAction Continue
+        Write-Information "   - Execution time: $([math]::Round($executionDuration, 2)) seconds" -InformationAction Continue
 
         if ($executionLogPath) {
             Write-StructuredLogEntry -Level 'SUCCESS' -Component 'SECURITY-ENHANCEMENT' -Message 'Security enhancement completed' -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ IssuesDetected = $issuesDetected; EnhancementsApplied = $itemsProcessed; DurationSeconds = [math]::Round($executionDuration, 2) }
@@ -657,9 +657,9 @@ function Invoke-ComprehensiveSecurityHardening {
 
     if ($Validate) {
         $Script:GlobalWhatIf = $true
-        Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Cyan
+        Write-Host "=======================================================" -ForegroundColor Cyan
         Write-Host "  VALIDATION MODE: No changes will be applied" -ForegroundColor Cyan
-        Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Cyan
+        Write-Host "=======================================================" -ForegroundColor Cyan
     }
 
     $hardeningOptions = @{
@@ -681,11 +681,11 @@ function Invoke-ComprehensiveSecurityHardening {
         }
 
         Write-Host "`n"
-        Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+        Write-Host "===============================================================" -ForegroundColor Cyan
         Write-Host "   WINDOWS SECURITY HARDENING v3.0 (Module Integration)" -ForegroundColor Cyan
-        Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+        Write-Host "===============================================================" -ForegroundColor Cyan
         Write-Host "  Compliance: GDPR | HIPAA | NIS2 | NIST 800-171/800-53" -ForegroundColor White
-        Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+        Write-Host "===============================================================" -ForegroundColor Cyan
         Write-Host "`n"
 
         # Write-LogEntry equivalent
@@ -749,6 +749,8 @@ Export-ModuleMember -Function @(
     'Invoke-SecurityEnhancement',
     'Invoke-ComprehensiveSecurityHardening'
 )
+
+
 
 
 

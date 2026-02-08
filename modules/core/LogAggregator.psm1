@@ -1,4 +1,4 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 
 <#
 .SYNOPSIS
@@ -115,20 +115,20 @@ else {
 
 # Module results collection - keyed by module name for quick access
 $script:SessionResults = @{
-    SessionId         = $null
-    CorrelationId     = $null
-    StartTime         = $null
-    EndTime           = $null
-    Results           = [ordered]@{}  # ModuleName => ModuleResult
-    ErrorLog          = [System.Collections.Generic.List[PSObject]]::new()
-    WarningLog        = [System.Collections.Generic.List[PSObject]]::new()
+    SessionId = $null
+    CorrelationId = $null
+    StartTime = $null
+    EndTime = $null
+    Results = [ordered]@{}  # ModuleName => ModuleResult
+    ErrorLog = [System.Collections.Generic.List[PSObject]]::new()
+    WarningLog = [System.Collections.Generic.List[PSObject]]::new()
     ExecutionSequence = 0
 }
 
 # Configuration
 $script:Config = @{
-    MaxErrors        = 1000
-    MaxWarnings      = 5000
+    MaxErrors = 1000
+    MaxWarnings = 5000
     ResultsCachePath = $null
     EnableAutoExport = $true
 }
@@ -317,33 +317,33 @@ function New-ModuleResult {
     if ($null -eq $EndTime) { $EndTime = Get-Date }
 
     $moduleResult = [PSCustomObject]@{
-        PSTypeName        = 'MaintenanceAutomation.ModuleResult'
-        ModuleName        = $ModuleName
-        Status            = $Status
-        CorrelationId     = $script:SessionResults.CorrelationId
+        PSTypeName = 'MaintenanceAutomation.ModuleResult'
+        ModuleName = $ModuleName
+        Status = $Status
+        CorrelationId = $script:SessionResults.CorrelationId
         ExecutionSequence = ++$script:SessionResults.ExecutionSequence
 
-        Metrics           = [PSCustomObject]@{
-            ItemsDetected   = [int]$ItemsDetected
-            ItemsProcessed  = [int]$ItemsProcessed
-            ItemsSkipped    = [int]$ItemsSkipped
-            ItemsFailed     = [int]$ItemsFailed
+        Metrics = [PSCustomObject]@{
+            ItemsDetected = [int]$ItemsDetected
+            ItemsProcessed = [int]$ItemsProcessed
+            ItemsSkipped = [int]$ItemsSkipped
+            ItemsFailed = [int]$ItemsFailed
             DurationSeconds = [decimal]$DurationSeconds
-            StartTime       = $StartTime.ToString('o')
-            EndTime         = $EndTime.ToString('o')
+            StartTime = $StartTime.ToString('o')
+            EndTime = $EndTime.ToString('o')
         }
 
-        Results           = $Results
-        Errors            = @($Errors)
-        Warnings          = @($Warnings)
-        LogPath           = $LogPath
-        Timestamp         = Get-Date
+        Results = $Results
+        Errors = @($Errors)
+        Warnings = @($Warnings)
+        LogPath = $LogPath
+        Timestamp = Get-Date
 
         # Enhanced reporting fields
-        Summary           = $Summary
-        ExecutionPhases   = $ExecutionPhases
-        Recommendations   = @($Recommendations)
-        Icon              = $Icon
+        Summary = $Summary
+        ExecutionPhases = $ExecutionPhases
+        Recommendations = @($Recommendations)
+        Icon = $Icon
     }
 
     return $moduleResult
@@ -397,8 +397,8 @@ function Add-ModuleResult {
                 if ($script:SessionResults.ErrorLog.Count -lt $script:Config.MaxErrors) {
                     $script:SessionResults.ErrorLog.Add(@{
                             ModuleName = $moduleName
-                            Error      = $_
-                            Timestamp  = Get-Date
+                            Error = $_
+                            Timestamp = Get-Date
                         })
                 }
             }
@@ -409,8 +409,8 @@ function Add-ModuleResult {
                 if ($script:SessionResults.WarningLog.Count -lt $script:Config.MaxWarnings) {
                     $script:SessionResults.WarningLog.Add(@{
                             ModuleName = $moduleName
-                            Warning    = $_
-                            Timestamp  = Get-Date
+                            Warning = $_
+                            Timestamp = Get-Date
                         })
                 }
             }
@@ -509,16 +509,16 @@ function Get-ResultsSummary {
     $allResults = Get-AggregatedResults
 
     $summary = [PSCustomObject]@{
-        TotalModules         = $allResults.Count
-        SuccessfulModules    = ($allResults | Where-Object { $_.Status -eq 'Success' }).Count
-        FailedModules        = ($allResults | Where-Object { $_.Status -eq 'Failed' }).Count
-        SkippedModules       = ($allResults | Where-Object { $_.Status -eq 'Skipped' }).Count
+        TotalModules = $allResults.Count
+        SuccessfulModules = ($allResults | Where-Object { $_.Status -eq 'Success' }).Count
+        FailedModules = ($allResults | Where-Object { $_.Status -eq 'Failed' }).Count
+        SkippedModules = ($allResults | Where-Object { $_.Status -eq 'Skipped' }).Count
         TotalDurationSeconds = ($allResults | Measure-Object -Property { $_.Metrics.DurationSeconds } -Sum).Sum
-        TotalItemsDetected   = ($allResults | Measure-Object -Property { $_.Metrics.ItemsDetected } -Sum).Sum
-        TotalItemsProcessed  = ($allResults | Measure-Object -Property { $_.Metrics.ItemsProcessed } -Sum).Sum
-        TotalErrors          = $script:SessionResults.ErrorLog.Count
-        TotalWarnings        = $script:SessionResults.WarningLog.Count
-        SuccessRate          = if ($allResults.Count -gt 0) {
+        TotalItemsDetected = ($allResults | Measure-Object -Property { $_.Metrics.ItemsDetected } -Sum).Sum
+        TotalItemsProcessed = ($allResults | Measure-Object -Property { $_.Metrics.ItemsProcessed } -Sum).Sum
+        TotalErrors = $script:SessionResults.ErrorLog.Count
+        TotalWarnings = $script:SessionResults.WarningLog.Count
+        SuccessRate = if ($allResults.Count -gt 0) {
             [math]::Round(($allResults | Where-Object { $_.Status -eq 'Success' }).Count / $allResults.Count * 100, 2)
         }
         else { 0 }
@@ -552,15 +552,15 @@ function Complete-ResultCollection {
     $script:SessionResults.EndTime = Get-Date
 
     $sessionData = @{
-        SessionId       = $script:SessionResults.SessionId
-        CorrelationId   = $script:SessionResults.CorrelationId
-        StartTime       = $script:SessionResults.StartTime.ToString('o')
-        EndTime         = $script:SessionResults.EndTime.ToString('o')
+        SessionId = $script:SessionResults.SessionId
+        CorrelationId = $script:SessionResults.CorrelationId
+        StartTime = $script:SessionResults.StartTime.ToString('o')
+        EndTime = $script:SessionResults.EndTime.ToString('o')
         DurationSeconds = ($script:SessionResults.EndTime - $script:SessionResults.StartTime).TotalSeconds
-        Summary         = Get-ResultsSummary
-        ModuleResults   = @($script:SessionResults.Results.Values)
-        Errors          = $script:SessionResults.ErrorLog
-        Warnings        = $script:SessionResults.WarningLog
+        Summary = Get-ResultsSummary
+        ModuleResults = @($script:SessionResults.Results.Values)
+        Errors = $script:SessionResults.ErrorLog
+        Warnings = $script:SessionResults.WarningLog
     }
 
     if (-not [string]::IsNullOrEmpty($ExportPath)) {
@@ -716,6 +716,7 @@ Export-ModuleMember -Function @(
 )
 
 #endregion
+
 
 
 

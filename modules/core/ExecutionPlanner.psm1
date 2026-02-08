@@ -7,7 +7,7 @@
 .DESCRIPTION
     Analyzes Type1 audit results and creates intelligent execution plans.
     Determines which Type2 modules need to run based on detected issues.
-    
+
     This module enables audit-first execution where the system:
     1. Runs all Type1 audits to detect issues
     2. Creates an execution plan based on findings
@@ -19,7 +19,7 @@
     Architecture: v4.0 - Intelligent Orchestration (Phase C.3)
     Author: Windows Maintenance Automation Project
     Version: 4.0.0
-    
+
     Key Design Patterns:
     - Audit-first execution (Type1 before Type2)
     - Intelligent module skipping (saves time)
@@ -43,7 +43,7 @@ if (Test-Path $CoreInfraPath) {
 .DESCRIPTION
     Analyzes Type1 audit results to determine which Type2 modules need execution.
     Skips modules that have nothing to do, saving time and resources.
-    
+
     Module Decision Logic:
     - BloatwareRemoval: Run if bloatware detected (count > 0)
     - EssentialApps: Run if missing apps detected (count > 0)
@@ -55,7 +55,7 @@ if (Test-Path $CoreInfraPath) {
 
 .PARAMETER AuditResults
     Hashtable containing results from all Type1 audit modules
-    Expected keys: Bloatware, EssentialApps, SystemOptimization, Telemetry, 
+    Expected keys: Bloatware, EssentialApps, SystemOptimization, Telemetry,
                    Security, WindowsUpdates, AppUpgrade
 
 .PARAMETER Config
@@ -93,25 +93,24 @@ function New-ExecutionPlan {
 
     $plan = @{
         RequiredModules = [System.Collections.Generic.List[PSCustomObject]]::new()
-        SkippedModules  = [System.Collections.Generic.List[PSCustomObject]]::new()
-        TotalDetected   = 0
-        TotalToProcess  = 0
-        AnalysisTime    = Get-Date
+        SkippedModules = [System.Collections.Generic.List[PSCustomObject]]::new()
+        TotalDetected = 0
+        TotalToProcess = 0
+        AnalysisTime = Get-Date
     }
 
     # Priority order for modules (1 = highest priority)
     $modulePriority = @{
-        'BloatwareRemoval'    = 1
+        'BloatwareRemoval' = 1
         'SecurityEnhancement' = 2
-        'SystemOptimization'  = 3
-        'TelemetryDisable'    = 4
-        'EssentialApps'       = 5
-        'WindowsUpdates'      = 6
-        'AppUpgrade'          = 7
+        'SystemOptimization' = 3
+        'TelemetryDisable' = 4
+        'EssentialApps' = 5
+        'WindowsUpdates' = 6
+        'AppUpgrade' = 7
     }
 
-    # === Bloatware Removal ===
-    $bloatwareCount = 0
+    # === Bloatware Removal === $bloatwareCount = 0
     if ($AuditResults.Bloatware) {
         if ($AuditResults.Bloatware -is [Array]) {
             $bloatwareCount = $AuditResults.Bloatware.Count
@@ -123,25 +122,24 @@ function New-ExecutionPlan {
 
     if ($bloatwareCount -gt 0) {
         $plan.RequiredModules.Add([PSCustomObject]@{
-                Name                 = 'BloatwareRemoval'
-                Reason               = "$bloatwareCount bloatware item(s) detected"
-                Priority             = $modulePriority['BloatwareRemoval']
-                ItemCount            = $bloatwareCount
+                Name = 'BloatwareRemoval'
+                Reason = "$bloatwareCount bloatware item(s) detected"
+                Priority = $modulePriority['BloatwareRemoval']
+                ItemCount = $bloatwareCount
                 EstimatedDurationSec = [math]::Max(10, $bloatwareCount * 3)
-                Category             = 'Cleanup'
+                Category = 'Cleanup'
             })
         $plan.TotalDetected += $bloatwareCount
         $plan.TotalToProcess += $bloatwareCount
     }
     else {
         $plan.SkippedModules.Add([PSCustomObject]@{
-                Name   = 'BloatwareRemoval'
+                Name = 'BloatwareRemoval'
                 Reason = 'No bloatware detected'
             })
     }
 
-    # === Essential Apps Installation ===
-    $missingApps = 0
+    # === Essential Apps Installation === $missingApps = 0
     if ($AuditResults.EssentialApps) {
         if ($AuditResults.EssentialApps.MissingApps) {
             $missingApps = $AuditResults.EssentialApps.MissingApps.Count
@@ -153,25 +151,24 @@ function New-ExecutionPlan {
 
     if ($missingApps -gt 0) {
         $plan.RequiredModules.Add([PSCustomObject]@{
-                Name                 = 'EssentialApps'
-                Reason               = "$missingApps missing essential app(s)"
-                Priority             = $modulePriority['EssentialApps']
-                ItemCount            = $missingApps
+                Name = 'EssentialApps'
+                Reason = "$missingApps missing essential app(s)"
+                Priority = $modulePriority['EssentialApps']
+                ItemCount = $missingApps
                 EstimatedDurationSec = [math]::Max(30, $missingApps * 15)  # Longer for installations
-                Category             = 'Installation'
+                Category = 'Installation'
             })
         $plan.TotalDetected += $missingApps
         $plan.TotalToProcess += $missingApps
     }
     else {
         $plan.SkippedModules.Add([PSCustomObject]@{
-                Name   = 'EssentialApps'
+                Name = 'EssentialApps'
                 Reason = 'All essential apps already installed'
             })
     }
 
-    # === System Optimization ===
-    $optimizationCount = 0
+    # === System Optimization === $optimizationCount = 0
     if ($AuditResults.SystemOptimization) {
         if ($AuditResults.SystemOptimization.OptimizationOpportunities) {
             $optimizationCount = $AuditResults.SystemOptimization.OptimizationOpportunities.Count
@@ -180,25 +177,24 @@ function New-ExecutionPlan {
 
     if ($optimizationCount -gt 0) {
         $plan.RequiredModules.Add([PSCustomObject]@{
-                Name                 = 'SystemOptimization'
-                Reason               = "$optimizationCount optimization(s) available"
-                Priority             = $modulePriority['SystemOptimization']
-                ItemCount            = $optimizationCount
+                Name = 'SystemOptimization'
+                Reason = "$optimizationCount optimization(s) available"
+                Priority = $modulePriority['SystemOptimization']
+                ItemCount = $optimizationCount
                 EstimatedDurationSec = [math]::Max(15, $optimizationCount * 5)
-                Category             = 'Optimization'
+                Category = 'Optimization'
             })
         $plan.TotalDetected += $optimizationCount
         $plan.TotalToProcess += $optimizationCount
     }
     else {
         $plan.SkippedModules.Add([PSCustomObject]@{
-                Name   = 'SystemOptimization'
+                Name = 'SystemOptimization'
                 Reason = 'System already optimized'
             })
     }
 
-    # === Telemetry Disable ===
-    $telemetryCount = 0
+    # === Telemetry Disable === $telemetryCount = 0
     if ($AuditResults.Telemetry) {
         if ($AuditResults.Telemetry.ActiveTelemetryCount) {
             $telemetryCount = $AuditResults.Telemetry.ActiveTelemetryCount
@@ -210,25 +206,24 @@ function New-ExecutionPlan {
 
     if ($telemetryCount -gt 0) {
         $plan.RequiredModules.Add([PSCustomObject]@{
-                Name                 = 'TelemetryDisable'
-                Reason               = "$telemetryCount active telemetry service(s)"
-                Priority             = $modulePriority['TelemetryDisable']
-                ItemCount            = $telemetryCount
+                Name = 'TelemetryDisable'
+                Reason = "$telemetryCount active telemetry service(s)"
+                Priority = $modulePriority['TelemetryDisable']
+                ItemCount = $telemetryCount
                 EstimatedDurationSec = [math]::Max(10, $telemetryCount * 2)
-                Category             = 'Privacy'
+                Category = 'Privacy'
             })
         $plan.TotalDetected += $telemetryCount
         $plan.TotalToProcess += $telemetryCount
     }
     else {
         $plan.SkippedModules.Add([PSCustomObject]@{
-                Name   = 'TelemetryDisable'
+                Name = 'TelemetryDisable'
                 Reason = 'Telemetry already minimized'
             })
     }
 
-    # === Security Enhancement ===
-    $securityScore = 100
+    # === Security Enhancement === $securityScore = 100
     $needsSecurity = $false
     if ($AuditResults.Security) {
         if ($AuditResults.Security.SecurityScore) {
@@ -245,25 +240,24 @@ function New-ExecutionPlan {
     if ($needsSecurity) {
         $issueCount = if ($AuditResults.Security.Issues) { $AuditResults.Security.Issues.Count } else { 1 }
         $plan.RequiredModules.Add([PSCustomObject]@{
-                Name                 = 'SecurityEnhancement'
-                Reason               = "Security score: $securityScore% (below 85% threshold)"
-                Priority             = $modulePriority['SecurityEnhancement']
-                ItemCount            = $issueCount
+                Name = 'SecurityEnhancement'
+                Reason = "Security score: $securityScore% (below 85% threshold)"
+                Priority = $modulePriority['SecurityEnhancement']
+                ItemCount = $issueCount
                 EstimatedDurationSec = 20
-                Category             = 'Security'
+                Category = 'Security'
             })
         $plan.TotalDetected += $issueCount
         $plan.TotalToProcess += $issueCount
     }
     else {
         $plan.SkippedModules.Add([PSCustomObject]@{
-                Name   = 'SecurityEnhancement'
+                Name = 'SecurityEnhancement'
                 Reason = "Security score acceptable ($securityScore%)"
             })
     }
 
-    # === Windows Updates ===
-    $pendingUpdates = 0
+    # === Windows Updates === $pendingUpdates = 0
     if ($AuditResults.WindowsUpdates) {
         if ($AuditResults.WindowsUpdates.PendingUpdatesCount) {
             $pendingUpdates = $AuditResults.WindowsUpdates.PendingUpdatesCount
@@ -275,25 +269,24 @@ function New-ExecutionPlan {
 
     if ($pendingUpdates -gt 0) {
         $plan.RequiredModules.Add([PSCustomObject]@{
-                Name                 = 'WindowsUpdates'
-                Reason               = "$pendingUpdates pending update(s)"
-                Priority             = $modulePriority['WindowsUpdates']
-                ItemCount            = $pendingUpdates
+                Name = 'WindowsUpdates'
+                Reason = "$pendingUpdates pending update(s)"
+                Priority = $modulePriority['WindowsUpdates']
+                ItemCount = $pendingUpdates
                 EstimatedDurationSec = [math]::Max(60, $pendingUpdates * 30)  # Updates take longer
-                Category             = 'Updates'
+                Category = 'Updates'
             })
         $plan.TotalDetected += $pendingUpdates
         $plan.TotalToProcess += $pendingUpdates
     }
     else {
         $plan.SkippedModules.Add([PSCustomObject]@{
-                Name   = 'WindowsUpdates'
+                Name = 'WindowsUpdates'
                 Reason = 'System is up to date'
             })
     }
 
-    # === App Upgrades ===
-    $upgradeCount = 0
+    # === App Upgrades === $upgradeCount = 0
     if ($AuditResults.AppUpgrade) {
         if ($AuditResults.AppUpgrade -is [Array]) {
             $upgradeCount = $AuditResults.AppUpgrade.Count
@@ -305,19 +298,19 @@ function New-ExecutionPlan {
 
     if ($upgradeCount -gt 0) {
         $plan.RequiredModules.Add([PSCustomObject]@{
-                Name                 = 'AppUpgrade'
-                Reason               = "$upgradeCount app upgrade(s) available"
-                Priority             = $modulePriority['AppUpgrade']
-                ItemCount            = $upgradeCount
+                Name = 'AppUpgrade'
+                Reason = "$upgradeCount app upgrade(s) available"
+                Priority = $modulePriority['AppUpgrade']
+                ItemCount = $upgradeCount
                 EstimatedDurationSec = [math]::Max(20, $upgradeCount * 10)
-                Category             = 'Updates'
+                Category = 'Updates'
             })
         $plan.TotalDetected += $upgradeCount
         $plan.TotalToProcess += $upgradeCount
     }
     else {
         $plan.SkippedModules.Add([PSCustomObject]@{
-                Name   = 'AppUpgrade'
+                Name = 'AppUpgrade'
                 Reason = 'All apps up to date'
             })
     }
@@ -331,21 +324,21 @@ function New-ExecutionPlan {
 
     # Create final plan object
     $executionPlan = [PSCustomObject]@{
-        RequiredModules          = $plan.RequiredModules
-        SkippedModules           = $plan.SkippedModules
-        TotalRequiredModules     = $plan.RequiredModules.Count
-        TotalSkippedModules      = $plan.SkippedModules.Count
-        TotalItemsDetected       = $plan.TotalDetected
-        TotalItemsToProcess      = $plan.TotalToProcess
+        RequiredModules = $plan.RequiredModules
+        SkippedModules = $plan.SkippedModules
+        TotalRequiredModules = $plan.RequiredModules.Count
+        TotalSkippedModules = $plan.SkippedModules.Count
+        TotalItemsDetected = $plan.TotalDetected
+        TotalItemsToProcess = $plan.TotalToProcess
         EstimatedDurationSeconds = $totalEstimatedSeconds
         EstimatedDurationMinutes = $estimatedMinutes
-        AnalysisTime             = $plan.AnalysisTime
-        OSContext                = if ($Config.OSContext) { $Config.OSContext.DisplayText } else { 'Unknown' }
+        AnalysisTime = $plan.AnalysisTime
+        OSContext = if ($Config.OSContext) { $Config.OSContext.DisplayText } else { 'Unknown' }
     }
 
     Write-LogEntry -Level 'SUCCESS' -Component 'EXECUTION-PLANNER' -Message "Execution plan created: $($executionPlan.TotalRequiredModules) required, $($executionPlan.TotalSkippedModules) skipped" -Data @{
-        RequiredModules   = $executionPlan.TotalRequiredModules
-        SkippedModules    = $executionPlan.TotalSkippedModules
+        RequiredModules = $executionPlan.TotalRequiredModules
+        SkippedModules = $executionPlan.TotalSkippedModules
         EstimatedDuration = "$estimatedMinutes minutes"
     }
 
@@ -361,7 +354,7 @@ function New-ExecutionPlan {
     - Analysis summary (total items, estimated duration, OS context)
     - Required tasks list with priorities and estimates
     - Skipped tasks list with reasons
-    
+
     Uses color-coding and Unicode symbols for visual clarity.
 
 .PARAMETER ExecutionPlan
@@ -427,3 +420,4 @@ Export-ModuleMember -Function @(
     'New-ExecutionPlan',
     'Show-ExecutionPlan'
 )
+

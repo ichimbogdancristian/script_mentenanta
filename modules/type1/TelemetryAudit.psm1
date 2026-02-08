@@ -97,7 +97,7 @@ function Get-TelemetryAnalysis {
             IncludeServices = $IncludeServices
             IncludeRegistry = $IncludeRegistry
             IncludeFeatures = $IncludeFeatures
-            IncludeApps     = $IncludeApps
+            IncludeApps = $IncludeApps
         }
     }
     catch {
@@ -125,14 +125,14 @@ function Get-TelemetryAnalysis {
 
         # Initialize audit results
         $auditResults = @{
-            AuditTimestamp      = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            TelemetryFindings   = @()
-            PrivacyIssues       = @()
-            ActiveServices      = @()
+            AuditTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            TelemetryFindings = @()
+            PrivacyIssues = @()
+            ActiveServices = @()
             ActiveTelemetryItems = @()
             ActiveTelemetryCount = 0
-            PrivacyScore        = 0
-            Recommendations     = @()
+            PrivacyScore = 0
+            Recommendations = @()
         }
 
         # Audit different categories
@@ -262,16 +262,16 @@ function Get-TelemetryServicesAudit {
 
     # Known telemetry services
     $telemetryServices = @{
-        'DiagTrack'        = 'Connected User Experiences and Telemetry'
+        'DiagTrack' = 'Connected User Experiences and Telemetry'
         'dmwappushservice' = 'Device Management Wireless Application Protocol'
-        'RetailDemo'       = 'Retail Demo Service'
-        'WerSvc'           = 'Windows Error Reporting Service'
-        'PcaSvc'           = 'Program Compatibility Assistant'
-        'DusmSvc'          = 'Data Usage'
-        'MapsBroker'       = 'Downloaded Maps Manager'
-        'lfsvc'            = 'Geolocation Service'
-        'SharedAccess'     = 'Internet Connection Sharing (ICS)'
-        'TrkWks'           = 'Distributed Link Tracking Client'
+        'RetailDemo' = 'Retail Demo Service'
+        'WerSvc' = 'Windows Error Reporting Service'
+        'PcaSvc' = 'Program Compatibility Assistant'
+        'DusmSvc' = 'Data Usage'
+        'MapsBroker' = 'Downloaded Maps Manager'
+        'lfsvc' = 'Geolocation Service'
+        'SharedAccess' = 'Internet Connection Sharing (ICS)'
+        'TrkWks' = 'Distributed Link Tracking Client'
     }
 
     try {
@@ -279,37 +279,37 @@ function Get-TelemetryServicesAudit {
             $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
             if ($service) {
                 $serviceInfo = [PSCustomObject]@{
-                    Name        = $serviceName
+                    Name = $serviceName
                     DisplayName = $service.DisplayName
-                    Status      = $service.Status
-                    StartType   = $service.StartType
+                    Status = $service.Status
+                    StartType = $service.StartType
                     Description = $telemetryServices[$serviceName]
                 }
 
                 if ($service.Status -eq 'Running' -or $service.StartType -eq 'Automatic') {
                     $activeServices += $serviceInfo
                     $issueItem = [PSCustomObject]@{
-                        Category         = 'Services'
-                        Type             = 'ActiveTelemetryService'
-                        Description      = "Active telemetry service: $($service.DisplayName)"
-                        Impact           = 'High'
-                        Service          = $serviceName
-                        CurrentStatus    = $service.Status
+                        Category = 'Services'
+                        Type = 'ActiveTelemetryService'
+                        Description = "Active telemetry service: $($service.DisplayName)"
+                        Impact = 'High'
+                        Service = $serviceName
+                        CurrentStatus = $service.Status
                         CurrentStartType = $service.StartType
-                        Recommendation   = 'Disable service to improve privacy'
+                        Recommendation = 'Disable service to improve privacy'
                     }
 
                     # Log detected active telemetry service
                     Write-DetectionLog -Operation 'Detect' -Target $serviceName -Component 'TELEMETRY-SERVICE' -AdditionalInfo @{
-                        Category       = 'Telemetry Service'
-                        DisplayName    = $service.DisplayName
-                        Description    = $telemetryServices[$serviceName]
-                        Status         = $service.Status
-                        StartType      = $service.StartType
-                        Impact         = 'High'
-                        PrivacyRisk    = 'Service actively collecting or transmitting telemetry data'
+                        Category = 'Telemetry Service'
+                        DisplayName = $service.DisplayName
+                        Description = $telemetryServices[$serviceName]
+                        Status = $service.Status
+                        StartType = $service.StartType
+                        Impact = 'High'
+                        PrivacyRisk = 'Service actively collecting or transmitting telemetry data'
                         Recommendation = 'Stop and disable service'
-                        Reason         = "Telemetry service running or set to automatic start"
+                        Reason = "Telemetry service running or set to automatic start"
                     }
 
                     $issues += $issueItem
@@ -323,8 +323,8 @@ function Get-TelemetryServicesAudit {
 
     return [PSCustomObject]@{
         TotalServicesChecked = $telemetryServices.Count
-        ActiveServices       = $activeServices
-        Issues               = $issues
+        ActiveServices = $activeServices
+        Issues = $issues
     }
 }
 
@@ -341,45 +341,45 @@ function Get-PrivacyRegistryAudit {
 
     # Registry locations and their privacy implications
     $privacySettings = @{
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection\AllowTelemetry'                                                          = @{
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection\AllowTelemetry' = @{
             ExpectedValue = 0
-            Description   = 'Telemetry data collection level'
-            Impact        = 'High'
+            Description = 'Telemetry data collection level'
+            Impact = 'High'
         }
-        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection\AllowTelemetry'                                           = @{
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection\AllowTelemetry' = @{
             ExpectedValue = 0
-            Description   = 'Alternative telemetry setting'
-            Impact        = 'High'
+            Description = 'Alternative telemetry setting'
+            Impact = 'High'
         }
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo\DisabledByGroupPolicy'                                                  = @{
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo\DisabledByGroupPolicy' = @{
             ExpectedValue = 1
-            Description   = 'Advertising ID for apps'
-            Impact        = 'Medium'
+            Description = 'Advertising ID for apps'
+            Impact = 'Medium'
         }
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\AdvertisingInfo\Enabled'                                                          = @{
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\AdvertisingInfo\Enabled' = @{
             ExpectedValue = 0
-            Description   = 'User advertising ID'
-            Impact        = 'Medium'
+            Description = 'User advertising ID'
+            Impact = 'Medium'
         }
-        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\EnableActivityFeed'                                               = @{
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\EnableActivityFeed' = @{
             ExpectedValue = 0
-            Description   = 'Activity feed and timeline'
-            Impact        = 'Medium'
+            Description = 'Activity feed and timeline'
+            Impact = 'Medium'
         }
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System\EnableActivityFeed'                                                              = @{
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System\EnableActivityFeed' = @{
             ExpectedValue = 0
-            Description   = 'Activity feed policy setting'
-            Impact        = 'Medium'
+            Description = 'Activity feed policy setting'
+            Impact = 'Medium'
         }
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\Start_TrackProgs'                                               = @{
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\Start_TrackProgs' = @{
             ExpectedValue = 0
-            Description   = 'Track program launches in Start menu'
-            Impact        = 'Low'
+            Description = 'Track program launches in Start menu'
+            Impact = 'Low'
         }
         'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Sensor\Overrides\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}\SensorPermissionState' = @{
             ExpectedValue = 0
-            Description   = 'Location sensor permission'
-            Impact        = 'High'
+            Description = 'Location sensor permission'
+            Impact = 'High'
         }
     }
 
@@ -396,13 +396,13 @@ function Get-PrivacyRegistryAudit {
                     $actualValue = $currentValue.$valueName
                     if ($actualValue -ne $setting.ExpectedValue) {
                         $issues += [PSCustomObject]@{
-                            Category       = 'Registry'
-                            Type           = 'PrivacySetting'
-                            Description    = "Privacy setting not optimal: $($setting.Description)"
-                            Impact         = $setting.Impact
-                            RegistryPath   = $registryPath
-                            CurrentValue   = $actualValue
-                            ExpectedValue  = $setting.ExpectedValue
+                            Category = 'Registry'
+                            Type = 'PrivacySetting'
+                            Description = "Privacy setting not optimal: $($setting.Description)"
+                            Impact = $setting.Impact
+                            RegistryPath = $registryPath
+                            CurrentValue = $actualValue
+                            ExpectedValue = $setting.ExpectedValue
                             Recommendation = "Set to $($setting.ExpectedValue) for better privacy"
                         }
                     }
@@ -410,13 +410,13 @@ function Get-PrivacyRegistryAudit {
                 else {
                     # Setting doesn't exist, might be default (potentially privacy-invasive)
                     $issues += [PSCustomObject]@{
-                        Category       = 'Registry'
-                        Type           = 'MissingPrivacySetting'
-                        Description    = "Privacy setting not configured: $($setting.Description)"
-                        Impact         = $setting.Impact
-                        RegistryPath   = $registryPath
-                        CurrentValue   = 'Not Set'
-                        ExpectedValue  = $setting.ExpectedValue
+                        Category = 'Registry'
+                        Type = 'MissingPrivacySetting'
+                        Description = "Privacy setting not configured: $($setting.Description)"
+                        Impact = $setting.Impact
+                        RegistryPath = $registryPath
+                        CurrentValue = 'Not Set'
+                        ExpectedValue = $setting.ExpectedValue
                         Recommendation = "Create setting with value $($setting.ExpectedValue)"
                     }
                 }
@@ -432,7 +432,7 @@ function Get-PrivacyRegistryAudit {
 
     return [PSCustomObject]@{
         SettingsChecked = $privacySettings.Count
-        Issues          = $issues
+        Issues = $issues
     }
 }
 
@@ -451,28 +451,28 @@ function Get-ConsumerFeaturesAudit {
     $consumerFeatures = @{
         'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\SystemPaneSuggestionsEnabled' = @{
             ExpectedValue = 0
-            Description   = 'System pane suggestions'
-            Impact        = 'Medium'
+            Description = 'System pane suggestions'
+            Impact = 'Medium'
         }
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\SilentInstalledAppsEnabled'   = @{
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\SilentInstalledAppsEnabled' = @{
             ExpectedValue = 0
-            Description   = 'Silent app installations'
-            Impact        = 'High'
+            Description = 'Silent app installations'
+            Impact = 'High'
         }
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\PreInstalledAppsEnabled'      = @{
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\PreInstalledAppsEnabled' = @{
             ExpectedValue = 0
-            Description   = 'Pre-installed app suggestions'
-            Impact        = 'Medium'
+            Description = 'Pre-installed app suggestions'
+            Impact = 'Medium'
         }
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\SoftLandingEnabled'           = @{
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\SoftLandingEnabled' = @{
             ExpectedValue = 0
-            Description   = 'Windows tips and suggestions'
-            Impact        = 'Low'
+            Description = 'Windows tips and suggestions'
+            Impact = 'Low'
         }
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent\DisableWindowsConsumerFeatures'               = @{
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent\DisableWindowsConsumerFeatures' = @{
             ExpectedValue = 1
-            Description   = 'Windows consumer features'
-            Impact        = 'High'
+            Description = 'Windows consumer features'
+            Impact = 'High'
         }
     }
 
@@ -489,26 +489,26 @@ function Get-ConsumerFeaturesAudit {
                     $actualValue = $currentValue.$valueName
                     if ($actualValue -ne $setting.ExpectedValue) {
                         $issues += [PSCustomObject]@{
-                            Category       = 'Features'
-                            Type           = 'ConsumerFeature'
-                            Description    = "Consumer feature enabled: $($setting.Description)"
-                            Impact         = $setting.Impact
-                            RegistryPath   = $registryPath
-                            CurrentValue   = $actualValue
-                            ExpectedValue  = $setting.ExpectedValue
+                            Category = 'Features'
+                            Type = 'ConsumerFeature'
+                            Description = "Consumer feature enabled: $($setting.Description)"
+                            Impact = $setting.Impact
+                            RegistryPath = $registryPath
+                            CurrentValue = $actualValue
+                            ExpectedValue = $setting.ExpectedValue
                             Recommendation = "Disable for reduced tracking and ads"
                         }
                     }
                 }
                 else {
                     $issues += [PSCustomObject]@{
-                        Category       = 'Features'
-                        Type           = 'UnconfiguredFeature'
-                        Description    = "Consumer feature not configured: $($setting.Description)"
-                        Impact         = $setting.Impact
-                        RegistryPath   = $registryPath
-                        CurrentValue   = 'Default (Likely Enabled)'
-                        ExpectedValue  = $setting.ExpectedValue
+                        Category = 'Features'
+                        Type = 'UnconfiguredFeature'
+                        Description = "Consumer feature not configured: $($setting.Description)"
+                        Impact = $setting.Impact
+                        RegistryPath = $registryPath
+                        CurrentValue = 'Default (Likely Enabled)'
+                        ExpectedValue = $setting.ExpectedValue
                         Recommendation = "Configure to improve privacy"
                     }
                 }
@@ -524,7 +524,7 @@ function Get-ConsumerFeaturesAudit {
 
     return [PSCustomObject]@{
         FeaturesChecked = $consumerFeatures.Count
-        Issues          = $issues
+        Issues = $issues
     }
 }
 
@@ -541,17 +541,17 @@ function Get-BuiltInAppsAudit {
 
     # Apps known for telemetry collection
     $telemetryApps = @{
-        'Microsoft.BingWeather'         = 'Weather app with location tracking'
-        'Microsoft.BingNews'            = 'News app with usage tracking'
-        'Microsoft.BingFinance'         = 'Finance app with usage tracking'
-        'Microsoft.BingSports'          = 'Sports app with usage tracking'
-        'Microsoft.Xbox*'               = 'Xbox apps with gaming telemetry'
-        'Microsoft.XboxGameOverlay'     = 'Xbox Game Bar with performance tracking'
-        'Microsoft.XboxGamingOverlay'   = 'Xbox Gaming Overlay'
-        'Microsoft.YourPhone'           = 'Your Phone app with device sync'
-        'Microsoft.People'              = 'People app with contact sync'
+        'Microsoft.BingWeather' = 'Weather app with location tracking'
+        'Microsoft.BingNews' = 'News app with usage tracking'
+        'Microsoft.BingFinance' = 'Finance app with usage tracking'
+        'Microsoft.BingSports' = 'Sports app with usage tracking'
+        'Microsoft.Xbox*' = 'Xbox apps with gaming telemetry'
+        'Microsoft.XboxGameOverlay' = 'Xbox Game Bar with performance tracking'
+        'Microsoft.XboxGamingOverlay' = 'Xbox Gaming Overlay'
+        'Microsoft.YourPhone' = 'Your Phone app with device sync'
+        'Microsoft.People' = 'People app with contact sync'
         'Microsoft.MixedReality.Portal' = 'Mixed Reality Portal'
-        'Microsoft.Advertising.Xaml'    = 'Advertising framework'
+        'Microsoft.Advertising.Xaml' = 'Advertising framework'
     }
 
     try {
@@ -570,14 +570,14 @@ function Get-BuiltInAppsAudit {
                     if ($apps) {
                         foreach ($app in $apps) {
                             $issues += [PSCustomObject]@{
-                                Category        = 'Apps'
-                                Type            = 'TelemetryApp'
-                                Description     = "Telemetry-enabled app installed: $($app.Name)"
-                                Impact          = 'Medium'
-                                AppName         = $app.Name
-                                Version         = $app.Version
+                                Category = 'Apps'
+                                Type = 'TelemetryApp'
+                                Description = "Telemetry-enabled app installed: $($app.Name)"
+                                Impact = 'Medium'
+                                AppName = $app.Name
+                                Version = $app.Version
                                 InstallLocation = $app.InstallLocation
-                                Recommendation  = $telemetryApps[$appPattern]
+                                Recommendation = $telemetryApps[$appPattern]
                             }
                         }
                     }
@@ -592,14 +592,14 @@ function Get-BuiltInAppsAudit {
                 $cortana = Get-AppxPackage -AllUsers -Name 'Microsoft.549981C3F5F10' -ErrorAction SilentlyContinue
                 if ($cortana) {
                     $issues += [PSCustomObject]@{
-                        Category        = 'Apps'
-                        Type            = 'CortanaApp'
-                        Description     = 'Cortana voice assistant is installed'
-                        Impact          = 'High'
-                        AppName         = $cortana.Name
-                        Version         = $cortana.Version
+                        Category = 'Apps'
+                        Type = 'CortanaApp'
+                        Description = 'Cortana voice assistant is installed'
+                        Impact = 'High'
+                        AppName = $cortana.Name
+                        Version = $cortana.Version
                         InstallLocation = $cortana.InstallLocation
-                        Recommendation  = 'Remove for enhanced privacy (collects voice data)'
+                        Recommendation = 'Remove for enhanced privacy (collects voice data)'
                     }
                 }
             }
@@ -610,14 +610,14 @@ function Get-BuiltInAppsAudit {
         else {
             # Add a notification about AppX not being available
             $issues += [PSCustomObject]@{
-                Category        = 'Apps'
-                Type            = 'PlatformLimitation'
-                Description     = 'AppX package auditing not available on this platform'
-                Impact          = 'Low'
-                AppName         = 'N/A'
-                Version         = 'N/A'
+                Category = 'Apps'
+                Type = 'PlatformLimitation'
+                Description = 'AppX package auditing not available on this platform'
+                Impact = 'Low'
+                AppName = 'N/A'
+                Version = 'N/A'
                 InstallLocation = 'N/A'
-                Recommendation  = 'Manual review of installed apps recommended'
+                Recommendation = 'Manual review of installed apps recommended'
             }
         }
 
@@ -628,7 +628,7 @@ function Get-BuiltInAppsAudit {
 
     return [PSCustomObject]@{
         AppsChecked = $telemetryApps.Count
-        Issues      = $issues
+        Issues = $issues
     }
 }
 
@@ -675,7 +675,7 @@ function New-PrivacyRecommendations {
         -Issues $AuditResults.PrivacyIssues `
         -IssueType 'privacy' `
         -SpecificChecks @{
-            ActiveServices = { param($results) 
+            ActiveServices = { param($results)
                 if ($results.ActiveServices.Count -gt 0) {
                     " Services: Consider disabling $($results.ActiveServices.Count) telemetry services"
                 }
@@ -711,6 +711,7 @@ New-Alias -Name 'Get-TelemetryAudit' -Value 'Get-TelemetryAnalysis'
 Export-ModuleMember -Function @(
     'Get-TelemetryAnalysis'  #  v3.0 PRIMARY function
 ) -Alias @('Get-TelemetryAudit')  # Backward compatibility
+
 
 
 
