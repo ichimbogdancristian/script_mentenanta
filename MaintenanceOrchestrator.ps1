@@ -49,7 +49,26 @@ if (-not $ScriptRoot) {
     $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 }
 $WorkingDirectory = if ($env:WORKING_DIRECTORY) { $env:WORKING_DIRECTORY } else { $ScriptRoot }
-$ProjectRoot = if ($WorkingDirectory -and (Test-Path $WorkingDirectory)) { $WorkingDirectory } else { $ScriptRoot }
+
+function Resolve-ProjectRoot {
+    param(
+        [string]$PrimaryPath,
+        [string]$FallbackPath
+    )
+
+    $candidates = @($PrimaryPath, $FallbackPath) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+    foreach ($candidate in $candidates) {
+        $configDir = Join-Path $candidate 'config'
+        $modulesDir = Join-Path $candidate 'modules'
+        if ((Test-Path $configDir) -and (Test-Path $modulesDir)) {
+            return $candidate
+        }
+    }
+
+    return if ($PrimaryPath -and (Test-Path $PrimaryPath)) { $PrimaryPath } else { $FallbackPath }
+}
+
+$ProjectRoot = Resolve-ProjectRoot -PrimaryPath $WorkingDirectory -FallbackPath $ScriptRoot
 Write-Information "Windows Maintenance Automation - Central Orchestrator v3.1.0" -InformationAction Continue
 Write-Information "Working Directory: $WorkingDirectory" -InformationAction Continue
 Write-Information "Script Root: $ScriptRoot" -InformationAction Continue
