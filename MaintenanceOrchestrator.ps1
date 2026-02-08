@@ -2330,7 +2330,7 @@ try {
             $taskNumbersArray = $TaskNumbers -split ',' | ForEach-Object { [int]$_.Trim() }
             $ExecutionParams.SelectedTasks = @()
             foreach ($taskNum in $taskNumbersArray) {
-                if ($taskNum -ge 1 -and $taskNum - le $AvailableTasks.Count) {
+                if ($taskNum -ge 1 -and $taskNum -le $AvailableTasks.Count) {
                     $ExecutionParams.SelectedTasks += $AvailableTasks[$taskNum - 1]
                 }
                 else {
