@@ -124,60 +124,24 @@ catch {
     Moves maintenance.log from repository root to organized temp_files/logs location
 
 .DESCRIPTION
-    Handles moving bootstrap maintenance.log from script root to the organized logs directory.
-    This is called by LogProcessor on first invocation to organize logs that were written
-    during the bootstrap phase. LogProcessor is aware of the project root and temp paths
-    through the Initialize-GlobalPathDiscovery system.
-
+    OBSOLETE: As of script.bat v2.1+, maintenance.log is created directly in 
+    temp_files\logs\ from the start. This function is now a no-op for backward compatibility.
+    
+    Previous behavior (deprecated):
     - Source: $ProjectRoot/maintenance.log (from bootstrap phase)
     - Target: $ProjectRoot/temp_files/logs/maintenance.log
 
-    Uses atomic MOVE when possible, falls back to COPY+DELETE for compatibility.
-    Idempotent: Safe to call multiple times, only moves if source exists and target doesn't.
-
 .OUTPUTS
-    Boolean - $true if moved/already organized, $false if not found or error
+    Boolean - Always returns $true (logs already in correct location)
 #>
 function Move-MaintenanceLogToOrganized {
     [CmdletBinding()]
     [OutputType([bool])]
     param()
 
-    try {
-        # Get paths from initialized path discovery system
-        $projectRoot = (Get-MaintenancePaths).ProjectRoot
-        $tempRoot = (Get-MaintenancePaths).TempRoot
-
-        if (-not $projectRoot -or -not $tempRoot) {
-            Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message 'Path discovery not fully initialized, cannot organize maintenance.log'
-            return $false
-        }
-
-        $sourceLog = Join-Path $projectRoot 'maintenance.log'
-        $targetLog = Join-Path $tempRoot 'logs\maintenance.log'
-
-        # Check if source exists
-        if (-not (Test-Path $sourceLog)) {
-            Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "Bootstrap maintenance.log not found at root (already organized or first run): $sourceLog"
-            return $true
-        }
-
-        # Check if already organized
-        if (Test-Path $targetLog) {
-            Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message "maintenance.log already at organized location: $targetLog"
-            return $true
-        }
-
-        # Ensure target directory exists
-        $targetDir = Split-Path -Parent $targetLog
-        if (-not (Test-Path $targetDir)) {
-            New-Item -Path $targetDir -ItemType Directory -Force | Out-Null
-        }
-
-        Write-LogEntry -Level 'INFO' -Component 'LOG-PROCESSOR' -Message "Organizing maintenance.log from bootstrap location to: $targetLog"
-
-        # Try atomic MOVE first (preferred)
-        try {
+    # FIX: No-op function - maintenance.log now starts in temp_files\logs\ directly
+    Write-LogEntry -Level 'DEBUG' -Component 'LOG-PROCESSOR' -Message 'Move-MaintenanceLogToOrganized: No action needed (logs already in temp_files\logs)'
+    return $true
             Move-Item -Path $sourceLog -Destination $targetLog -Force -ErrorAction Stop
             Write-LogEntry -Level 'SUCCESS' -Component 'LOG-PROCESSOR' -Message "Successfully moved maintenance.log to organized location"
             return $true

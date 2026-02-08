@@ -96,9 +96,12 @@ IF "%SCRIPT_PATH:~0,2%"=="\\" (
     CALL :LOG_MESSAGE "Running from local location: %SCRIPT_PATH%" "INFO" "LAUNCHER"
 )
 
-REM Setup logging - Create maintenance.log at repository root initially
-REM v3.1 FIX: Use ORIGINAL_SCRIPT_DIR to ensure log is created in correct location
-SET "LOG_FILE=%ORIGINAL_SCRIPT_DIR%maintenance.log"
+REM FIX: Create temp_files\logs directory BEFORE any logging
+IF NOT EXIST "%WORKING_DIR%temp_files" MKDIR "%WORKING_DIR%temp_files" >nul 2>&1
+IF NOT EXIST "%WORKING_DIR%temp_files\logs" MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1
+
+REM Setup logging - Point directly to temp_files\logs\maintenance.log (no bootstrap at root)
+SET "LOG_FILE=%WORKING_DIR%temp_files\logs\maintenance.log"
 
 REM FIX #1: Initialize the log file immediately on startup (don't wait for first LOG_MESSAGE call)
 REM Get current date/time for banner using more reliable methods (ALWAYS, not just on first run)
@@ -190,15 +193,7 @@ SET "RESTART_SIGNALS="
 SET "RESTART_NEEDED_WU=NO"
 SET "RESTART_SIGNALS_WU="
 
-REM Reboot loop guard (prevents repeated restart cycles after a reboot)
-SET "REBOOT_GUARD_FILE=%WORKING_DIR%temp_files\reboot_guard.txt"
-SET "REBOOT_GUARD_ACTIVE=NO"
-SET "REBOOT_GUARD_MINUTES=-1"
-FOR /F "tokens=*" %%A IN ('powershell -NoProfile -ExecutionPolicy Bypass -Command "try { if (Test-Path '%REBOOT_GUARD_FILE%') { $age = (Get-Date) - (Get-Item '%REBOOT_GUARD_FILE%').LastWriteTime; [int]$age.TotalMinutes } else { -1 } } catch { -1 }"') DO SET "REBOOT_GUARD_MINUTES=%%A"
-IF NOT "!REBOOT_GUARD_MINUTES!"=="-1" IF !REBOOT_GUARD_MINUTES! LSS 30 (
-    SET "REBOOT_GUARD_ACTIVE=YES"
-    CALL :LOG_MESSAGE "Reboot loop guard active (last reboot attempt !REBOOT_GUARD_MINUTES! min ago)" "WARN" "LAUNCHER"
-)
+REM FIX: Reboot guard functionality removed per user request
 
 REM Prefer PSWindowsUpdate if available, but always evaluate registry signals too
 powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; $updates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot; $needs = $updates | Where-Object { $_.RebootRequired -eq $true }; if ($needs) { Write-Host 'RESTART_REQUIRED_UPDATES'; exit 1 } else { Write-Host 'NO_RESTART_REQUIRED_UPDATES'; exit 0 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 2 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 3 }" >nul 2>&1
@@ -270,15 +265,7 @@ IF /I "%RESTART_NEEDED_WU%"=="YES" (
 )
 
 IF /I "%RESTART_NEEDED_WU%"=="YES" (
-    IF /I "%REBOOT_GUARD_ACTIVE%"=="YES" (
-        CALL :LOG_MESSAGE "Restart suppressed by loop guard; continuing without reboot" "WARN" "LAUNCHER"
-        GOTO :AFTER_RESTART_CHECK
-    )
     CALL :LOG_MESSAGE "Pending Windows Update restart detected (signals: %RESTART_SIGNALS_WU%). Creating startup task and restarting..." "WARN" "LAUNCHER"
-
-    REM Create/update reboot guard marker
-    if not exist "%WORKING_DIR%temp_files" mkdir "%WORKING_DIR%temp_files" >nul 2>&1
-    echo %DATE% %TIME% > "%REBOOT_GUARD_FILE%"
 
     REM Ensure any previous startup task is removed
     schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
@@ -443,9 +430,26 @@ IF EXIST "%EXTRACTED_PATH%" (
     )
     
     REM Update working directory to extracted folder for proper module loading
+    SET "OLD_WORKING_DIR=%WORKING_DIR%"
     SET "WORKING_DIR=%EXTRACTED_PATH%\"
     SET "WORKING_DIRECTORY=%WORKING_DIR%"
     CALL :LOG_MESSAGE "Updated working directory to: %WORKING_DIR%" "INFO" "LAUNCHER"
+    
+    REM FIX: Recreate temp_files in new extracted location and update LOG_FILE
+    IF NOT EXIST "%WORKING_DIR%temp_files" MKDIR "%WORKING_DIR%temp_files" >nul 2>&1
+    IF NOT EXIST "%WORKING_DIR%temp_files\logs" MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1    
+    SET "LOG_FILE=%WORKING_DIR%temp_files\logs\maintenance.log"
+    CALL :LOG_MESSAGE "Log file relocated to extracted folder: %LOG_FILE%" "INFO" "LAUNCHER"
+    
+    REM Clean up old temp_files from original location if it exists
+    IF EXIST "%OLD_WORKING_DIR%temp_files" (
+        RMDIR /S /Q "%OLD_WORKING_DIR%temp_files" >nul 2>&1
+        IF EXIST "%OLD_WORKING_DIR%temp_files" (
+            CALL :LOG_MESSAGE "Could not remove old temp_files (non-critical)" "DEBUG" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Removed temp_files from original location" "DEBUG" "LAUNCHER"
+        )
+    )
     
     REM Set orchestrator path within the extracted folder
     IF EXIST "%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1" (
@@ -467,21 +471,6 @@ IF EXIST "%EXTRACTED_PATH%" (
 
 REM Clean up
 DEL /Q "%ZIP_FILE%" >nul 2>&1
-
-REM Ensure orchestrator temp_files location exists
-IF NOT EXIST "%WORKING_DIR%temp_files" (
-    MKDIR "%WORKING_DIR%temp_files" >nul 2>&1
-    CALL :LOG_MESSAGE "Created temp_files directory at %WORKING_DIR%temp_files" "DEBUG" "LAUNCHER"
-)
-
-REM Create logs subdirectory if it doesn't exist
-IF NOT EXIST "%WORKING_DIR%temp_files\logs" (
-    MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1
-)
-
-REM NOTE: maintenance.log will be organized by LogProcessor module
-REM The module will handle moving logs from root to temp_files/logs/ when it initializes
-CALL :LOG_MESSAGE "Log organization will be handled by LogProcessor module" "DEBUG" "LAUNCHER"
 
 REM Set environment variables so PowerShell can access bootstrap paths
 SET "ORIGINAL_LOG_FILE=%LOG_FILE%"
@@ -1502,29 +1491,8 @@ REM Post-Execution Cleanup and Reporting
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "PowerShell orchestrator final execution completed with exit code: %FINAL_EXIT_CODE%" "INFO" "LAUNCHER"
 
-REM v3.1: Ensure bootstrap maintenance.log is organized to temp_files/logs/
-REM This is a safety fallback in case PowerShell organization failed
-SET "BOOTSTRAP_LOG=%ORIGINAL_SCRIPT_DIR%maintenance.log"
-SET "ORGANIZED_LOG=%WORKING_DIR%temp_files\logs\maintenance.log"
-
-IF EXIST "%BOOTSTRAP_LOG%" (
-    IF EXIST "%ORGANIZED_LOG%" (
-        REM Log already organized by PowerShell, append bootstrap content and delete source
-        CALL :LOG_MESSAGE "Appending remaining bootstrap logs to organized location" "DEBUG" "LAUNCHER"
-        TYPE "%BOOTSTRAP_LOG%" >> "%ORGANIZED_LOG%" 2>nul
-        DEL /Q "%BOOTSTRAP_LOG%" >nul 2>&1
-    ) ELSE (
-        REM Log not yet organized, move it now
-        CALL :LOG_MESSAGE "Organizing bootstrap maintenance.log to temp_files/logs/" "INFO" "LAUNCHER"
-        IF NOT EXIST "%WORKING_DIR%temp_files\logs" MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1
-        MOVE /Y "%BOOTSTRAP_LOG%" "%ORGANIZED_LOG%" >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Bootstrap log organized successfully" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "Failed to organize bootstrap log (non-critical)" "WARN" "LAUNCHER"
-        )
-    )
-)
+REM FIX: No need to organize bootstrap log - it's already in temp_files\logs\maintenance.log
+CALL :LOG_MESSAGE "All logs written to %WORKING_DIR%temp_files\logs\maintenance.log" "INFO" "LAUNCHER"
 
 IF %FINAL_EXIT_CODE% EQU 0 (
     CALL :LOG_MESSAGE "Maintenance execution completed successfully" "SUCCESS" "LAUNCHER"

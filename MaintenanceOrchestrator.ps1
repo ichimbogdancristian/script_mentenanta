@@ -1412,29 +1412,10 @@ try {
     }
     #endregion
 
-    #region Maintenance Log Organization (v3.1 - Early organization)
-    # NEW v3.1: Organize bootstrap maintenance.log to temp_files/logs/ early
-    # This ensures logs are properly organized even if execution fails later
-    Write-Information "`nOrganizing maintenance logs..." -InformationAction Continue
-
-    if (Get-Command -Name 'Move-MaintenanceLogToOrganized' -ErrorAction SilentlyContinue) {
-        try {
-            $logOrganized = Move-MaintenanceLogToOrganized
-            if ($logOrganized) {
-                Write-Information "   [OK] Maintenance log organized successfully" -InformationAction Continue
-            }
-            else {
-                Write-Information "   [INFO] Maintenance log already organized or not found at root" -InformationAction Continue
-            }
-        }
-        catch {
-            Write-Warning "   Failed to organize maintenance log: $($_.Exception.Message)"
-            Write-Information "   [INFO] Continuing execution (non-critical)" -InformationAction Continue
-        }
-    }
-    else {
-        Write-Information "   [INFO] Log organization function not available (continuing)" -InformationAction Continue
-    }
+    #region Maintenance Log Organization (No longer needed - logs start in temp_files\logs)
+    # FIX: maintenance.log now created directly in temp_files\logs\ by script.bat
+    # No need to organize/move bootstrap logs anymore
+    Write-Information "`nMaintenance logs configured at: $LogFilePath" -InformationAction Continue
     #endregion
 
     #region Task Definitions
