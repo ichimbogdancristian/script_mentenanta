@@ -113,6 +113,24 @@ function Get-AppUpgradeAnalysis {
         # Convert to array for return
         $resultArray = [Array]$allUpgrades
 
+        # Save results to standardized audit path for log processing
+        try {
+            if (Get-Command 'Get-AuditResultsPath' -ErrorAction SilentlyContinue) {
+                $outputPath = Get-AuditResultsPath -ModuleName 'AppUpgrade'
+            }
+            else {
+                $outputPath = Join-Path (Get-MaintenancePath 'TempRoot') "data\app-upgrade-results.json"
+            }
+
+            if ($outputPath) {
+                $resultArray | ConvertTo-Json -Depth 10 | Set-Content -Path $outputPath -Encoding UTF8
+                Write-Information "   App upgrade audit saved to: $outputPath" -InformationAction Continue
+            }
+        }
+        catch {
+            Write-Warning "Failed to save app upgrade audit results: $($_.Exception.Message)"
+        }
+
         # Complete performance tracking
         try {
             if ($perfContext) {

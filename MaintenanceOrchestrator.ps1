@@ -123,16 +123,23 @@ $InventoryDir = Join-Path $TempRoot 'inventory'
 }
 Write-Information "Temp Root Directory: $TempRoot" -InformationAction Continue
 
-# Set up log file
+# Set up log file (transcript) in temp_files/logs
 if (-not $LogFilePath) {
-    $LogFilePath = if ($env:SCRIPT_LOG_FILE) {
-        $env:SCRIPT_LOG_FILE
-    }
-    else {
-        Join-Path $ScriptRoot 'maintenance.log'
-    }
+    $LogFilePath = Join-Path $LogsDir 'maintenance.log'
 }
+$env:SCRIPT_LOG_FILE = $LogFilePath
 Write-Information "Log File: $LogFilePath" -InformationAction Continue
+
+# Start transcript for full project execution
+$script:TranscriptStarted = $false
+try {
+    Start-Transcript -Path $LogFilePath -Append -ErrorAction Stop | Out-Null
+    $script:TranscriptStarted = $true
+    Write-Information "Transcript started: $LogFilePath" -InformationAction Continue
+}
+catch {
+    Write-Warning "Failed to start transcript: $($_.Exception.Message)"
+}
 #endregion
 
 #region Module Loading
@@ -1819,73 +1826,85 @@ try {
         Write-Host "║          PRE-EXECUTION AUDIT MODULES (TYPE1)               ║" -ForegroundColor Yellow
         Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Yellow
         Write-Host ""
-        Write-Host "Do you want to run audit modules before task selection?" -ForegroundColor Cyan
         Write-Host "Type1 modules perform read-only analysis (no system changes)" -ForegroundColor Gray
         Write-Host ""
-        Write-Host "  [Y] Yes - Select Type1 modules to run" -ForegroundColor Green
-        Write-Host "  [N] No  - Skip to Type2 task selection (default)" -ForegroundColor Yellow
-        Write-Host ""
-        
-        $type1Choice = Read-Host "Run Type1 audits? [Y/N]"
-        
-        if ($type1Choice -eq 'Y' -or $type1Choice -eq 'y') {
-            # Discover available Type1 modules
-            $type1Path = Join-Path $script:ModulesPath 'type1'
-            $type1ModulesAvailable = @()
-            
-            if (Test-Path $type1Path) {
-                $type1Files = Get-ChildItem -Path $type1Path -Filter "*.psm1"
-                foreach ($file in $type1Files) {
-                    $type1ModulesAvailable += @{
-                        Name = $file.BaseName
-                        Path = $file.FullName
-                    }
+
+        # Discover available Type1 modules
+        $type1Path = Join-Path $script:ModulesPath 'type1'
+        $type1ModulesAvailable = @()
+
+        if (Test-Path $type1Path) {
+            $type1Files = Get-ChildItem -Path $type1Path -Filter "*.psm1"
+            foreach ($file in $type1Files) {
+                $type1ModulesAvailable += @{
+                    Name = $file.BaseName
+                    Path = $file.FullName
                 }
             }
-            
-            if ($type1ModulesAvailable.Count -gt 0) {
-                # Show Type1 module selection menu
-                $type1SelectionResult = Show-Type1ModuleMenu `
-                    -CountdownSeconds 10 `
-                    -AvailableModules $type1ModulesAvailable
-                
-                # Execute selected Type1 modules
-                if ($type1SelectionResult -and $type1SelectionResult.SelectedModules.Count -gt 0) {
-                    Write-Host "`nExecuting selected Type1 audit modules..." -ForegroundColor Cyan
-                    
-                    foreach ($selectedModule in $type1SelectionResult.SelectedModules) {
-                        Write-Host "  → Running: $($selectedModule.Name)..." -NoNewline -ForegroundColor White
-                        
-                        try {
-                            Import-Module $selectedModule.Path -Force -ErrorAction Stop
-                            
-                            # Execute based on module type (call appropriate function)
-                            $functionName = "Get-$($selectedModule.Name -replace 'Audit$', '')"
-                            if (Get-Command -Name $functionName -ErrorAction SilentlyContinue) {
-                                & $functionName | Out-Null
-                                Write-Host " ✓" -ForegroundColor Green
-                            }
-                            else {
-                                Write-Host " ⚠ (No execution function found)" -ForegroundColor Yellow
-                            }
-                        }
-                        catch {
-                            Write-Host " ✗ (Error: $_)" -ForegroundColor Red
-                        }
-                    }
-                    
-                    Write-Host "`nType1 audit execution complete.`n" -ForegroundColor Green
-                }
-                else {
-                    Write-Host "`nNo Type1 modules selected. Continuing to task selection...`n" -ForegroundColor Yellow
-                }
+        }
+
+        if ($type1ModulesAvailable.Count -gt 0) {
+            # Show Type1 module selection menu (auto-default to all after countdown)
+            $selectedIndices = Show-Type1ModuleMenu -CountdownSeconds 10 -AvailableModules $type1ModulesAvailable
+
+            # Resolve selection to module list
+            $selectedModules = @()
+            if ($selectedIndices -contains 0) {
+                $selectedModules = $type1ModulesAvailable
             }
             else {
-                Write-Host "`nNo Type1 modules found in: $type1Path`n" -ForegroundColor Yellow
+                foreach ($index in $selectedIndices) {
+                    if ($index -ge 1 -and $index -le $type1ModulesAvailable.Count) {
+                        $selectedModules += $type1ModulesAvailable[$index - 1]
+                    }
+                }
+            }
+
+            if ($selectedModules.Count -gt 0) {
+                Write-Host "`nExecuting selected Type1 audit modules..." -ForegroundColor Cyan
+
+                foreach ($selectedModule in $selectedModules) {
+                    Write-Host "  → Running: $($selectedModule.Name)..." -NoNewline -ForegroundColor White
+
+                    try {
+                        Import-Module $selectedModule.Path -Force -ErrorAction Stop
+
+                        $moduleBase = $selectedModule.Name
+                        $rootName = $moduleBase
+                        if ($moduleBase -match 'DetectionAudit$') { $rootName = $moduleBase -replace 'DetectionAudit$', '' }
+                        elseif ($moduleBase -match 'Audit$') { $rootName = $moduleBase -replace 'Audit$', '' }
+
+                        $candidateFunctions = @(
+                            "Get-$rootName`Analysis",
+                            "Get-$moduleBase`Analysis",
+                            "Get-$moduleBase",
+                            "Start-$moduleBase",
+                            "Get-$rootName",
+                            "Start-$rootName"
+                        )
+
+                        $functionName = $candidateFunctions | Where-Object { Get-Command -Name $_ -ErrorAction SilentlyContinue } | Select-Object -First 1
+                        if ($functionName) {
+                            & $functionName | Out-Null
+                            Write-Host " ✓" -ForegroundColor Green
+                        }
+                        else {
+                            Write-Host " ⚠ (No execution function found)" -ForegroundColor Yellow
+                        }
+                    }
+                    catch {
+                        Write-Host " ✗ (Error: $_)" -ForegroundColor Red
+                    }
+                }
+
+                Write-Host "`nType1 audit execution complete.`n" -ForegroundColor Green
+            }
+            else {
+                Write-Host "`nNo Type1 modules selected. Continuing to task selection...`n" -ForegroundColor Yellow
             }
         }
         else {
-            Write-Host "`nSkipping Type1 audits. Proceeding to task selection...`n" -ForegroundColor Yellow
+            Write-Host "`nNo Type1 modules found in: $type1Path`n" -ForegroundColor Yellow
         }
         
         # Show hierarchical menu with integrated task selection
@@ -1903,6 +1922,46 @@ try {
     }
     elseif ($NonInteractive) {
         Write-Information "`nNon-interactive mode enabled" -InformationAction Continue
+        Write-Information "Running all Type1 audit modules (non-interactive)..." -InformationAction Continue
+
+        $type1Path = Join-Path $script:ModulesPath 'type1'
+        if (Test-Path $type1Path) {
+            $type1Files = Get-ChildItem -Path $type1Path -Filter "*.psm1"
+            foreach ($file in $type1Files) {
+                Write-Information "  → Running: $($file.BaseName)..." -InformationAction Continue
+                try {
+                    Import-Module $file.FullName -Force -ErrorAction Stop
+                    $moduleBase = $file.BaseName
+                    $rootName = $moduleBase
+                    if ($moduleBase -match 'DetectionAudit$') { $rootName = $moduleBase -replace 'DetectionAudit$', '' }
+                    elseif ($moduleBase -match 'Audit$') { $rootName = $moduleBase -replace 'Audit$', '' }
+
+                    $candidateFunctions = @(
+                        "Get-$rootName`Analysis",
+                        "Get-$moduleBase`Analysis",
+                        "Get-$moduleBase",
+                        "Start-$moduleBase",
+                        "Get-$rootName",
+                        "Start-$rootName"
+                    )
+
+                    $functionName = $candidateFunctions | Where-Object { Get-Command -Name $_ -ErrorAction SilentlyContinue } | Select-Object -First 1
+                    if ($functionName) {
+                        & $functionName | Out-Null
+                        Write-Information "    [OK] $($file.BaseName)" -InformationAction Continue
+                    }
+                    else {
+                        Write-Warning "    No execution function found for $($file.BaseName)"
+                    }
+                }
+                catch {
+                    Write-Warning "    Failed to run $($file.BaseName): $($_.Exception.Message)"
+                }
+            }
+        }
+        else {
+            Write-Warning "Type1 modules directory not found: $type1Path"
+        }
     }
     
     # Handle TaskNumbers parameter
@@ -1992,6 +2051,150 @@ try {
                 Error = $_.Exception.Message
             }
         }
+        # Pre-Type2 planning: process Type1 logs and decide which Type2 tasks to run
+        Write-Information "`n=== Phase 1.5: Log Processing for Action Planning ===" -InformationAction Continue
+        $preExecutionSkipped = @()
+
+        try {
+            if (Get-Command -Name 'Invoke-LogProcessing' -ErrorAction SilentlyContinue) {
+                Invoke-LogProcessing | Out-Null
+            }
+            else {
+                Write-Warning "LogProcessor not available - skipping log-based action planning"
+            }
+        }
+        catch {
+            Write-Warning "Log processing failed during action planning: $($_.Exception.Message)"
+        }
+
+        $moduleResultsPath = Join-Path $env:MAINTENANCE_TEMP_ROOT 'processed\module-results.json'
+        $type1AuditResults = @{}
+        if (Test-Path $moduleResultsPath) {
+            try {
+                $moduleResults = Get-Content $moduleResultsPath -Raw | ConvertFrom-Json -AsHashtable
+                if ($moduleResults.Type1AuditResults) {
+                    $type1AuditResults = $moduleResults.Type1AuditResults
+                }
+            }
+            catch {
+                Write-Warning "Failed to read module results for action planning: $($_.Exception.Message)"
+            }
+        }
+        else {
+            Write-Warning "Module results not found for action planning: $moduleResultsPath"
+        }
+
+        function Get-CountFromAuditData {
+            param([object]$Data, [string[]]$PropertyPaths = @())
+
+            if ($null -eq $Data) { return 0 }
+
+            foreach ($path in $PropertyPaths) {
+                $value = $Data
+                foreach ($segment in ($path -split '\.')) {
+                    if ($null -eq $value) { break }
+                    if ($value -is [hashtable] -and $value.ContainsKey($segment)) {
+                        $value = $value[$segment]
+                    }
+                    elseif ($value.PSObject.Properties[$segment]) {
+                        $value = $value.$segment
+                    }
+                    else {
+                        $value = $null
+                    }
+                }
+                if ($value -is [System.Collections.ICollection]) { return $value.Count }
+                if ($value -is [int]) { return $value }
+            }
+
+            if ($Data -is [System.Collections.ICollection]) { return $Data.Count }
+            return 0
+        }
+
+        $skipTasks = @()
+        foreach ($task in $ExecutionParams.SelectedTasks) {
+            if ($task.Type -ne 'Type2') { continue }
+
+            $auditKey = $null
+            $shouldRun = $true
+            $reason = $null
+
+            switch ($task.Name) {
+                'BloatwareRemoval' { $auditKey = 'bloatware-detection' }
+                'EssentialApps' { $auditKey = 'essential-apps' }
+                'SystemOptimization' { $auditKey = 'system-optimization' }
+                'TelemetryDisable' { $auditKey = 'telemetry' }
+                'WindowsUpdates' { $auditKey = 'windows-updates' }
+                'AppUpgrade' { $auditKey = 'app-upgrade' }
+                'SecurityEnhancement' { $auditKey = 'security-audit' }
+            }
+
+            $auditData = if ($auditKey -and $type1AuditResults.ContainsKey($auditKey)) { $type1AuditResults[$auditKey] } else { $null }
+
+            if (-not $auditData) {
+                $shouldRun = $false
+                $reason = 'No audit data available'
+            }
+            elseif ($task.Name -eq 'SecurityEnhancement') {
+                $score = 100
+                if ($auditData.Summary -and $auditData.Summary.PercentageScore) { $score = [int]$auditData.Summary.PercentageScore }
+                elseif ($auditData.SecurityScore -and $auditData.MaxScore) { $score = [int]([math]::Round(($auditData.SecurityScore / [Math]::Max($auditData.MaxScore, 1)) * 100)) }
+                if ($score -ge 85) {
+                    $shouldRun = $false
+                    $reason = "Security score $score% (no actions needed)"
+                }
+            }
+            else {
+                $count = switch ($task.Name) {
+                    'BloatwareRemoval' { Get-CountFromAuditData -Data $auditData }
+                    'EssentialApps' { Get-CountFromAuditData -Data $auditData -PropertyPaths @('MissingApps', 'Summary.MissingCount') }
+                    'SystemOptimization' { Get-CountFromAuditData -Data $auditData -PropertyPaths @('OptimizationOpportunities') }
+                    'TelemetryDisable' { Get-CountFromAuditData -Data $auditData -PropertyPaths @('ActiveTelemetryCount') }
+                    'WindowsUpdates' { Get-CountFromAuditData -Data $auditData -PropertyPaths @('PendingUpdatesCount', 'PendingAudit.PendingCount') }
+                    'AppUpgrade' { Get-CountFromAuditData -Data $auditData }
+                    default { Get-CountFromAuditData -Data $auditData }
+                }
+
+                if ($count -le 0) {
+                    $shouldRun = $false
+                    $reason = 'No actions required based on audit data'
+                }
+            }
+
+            if (-not $shouldRun) {
+                $skipTasks += $task
+                Write-Information "  Skipping $($task.Name): $reason" -InformationAction Continue
+                Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Skipping $($task.Name)" -Data @{ Reason = $reason }
+
+                if ($script:ResultCollectionEnabled) {
+                    try {
+                        $moduleResultObj = New-ModuleResult -ModuleName $task.Name -Status 'Skipped' -ItemsDetected 0 -ItemsProcessed 0 -DurationSeconds 0
+                        Add-ModuleResult -Result $moduleResultObj
+                    }
+                    catch {
+                        Write-Warning "Failed to record skipped result for $($task.Name): $($_.Exception.Message)"
+                    }
+                }
+
+                $preExecutionSkipped += [PSCustomObject]@{
+                    TaskName    = $task.Name
+                    Description = $task.Description
+                    Type        = $task.Type
+                    Category    = $task.Category
+                    StartTime   = Get-Date
+                    Success     = $true
+                    Output      = 'Skipped'
+                    Error       = $null
+                    Duration    = 0
+                    Skipped     = $true
+                }
+            }
+        }
+
+        if ($skipTasks.Count -gt 0) {
+            $ExecutionParams.SelectedTasks = $ExecutionParams.SelectedTasks | Where-Object { $_ -notin $skipTasks }
+        }
+
         Write-Information "`n=== Phase 2: System Modifications (Type2) ===" -InformationAction Continue
         # Log execution start
         Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Starting maintenance execution" -Data @{
@@ -2015,6 +2218,9 @@ try {
         }
         # Initialize execution tracking
         $TaskResults = @()
+        if ($preExecutionSkipped.Count -gt 0) {
+            $TaskResults += $preExecutionSkipped
+        }
         # $StartTime already initialized above for all execution paths
         Write-Information "`nExecuting tasks..." -InformationAction Continue
         Write-Information "" -InformationAction Continue
@@ -2234,6 +2440,19 @@ try {
     }  # End of else block for Manual/NonInteractive task execution
     #endregion
     
+    # Stop transcript before report generation
+    if ($script:TranscriptStarted) {
+        Write-Information " Finalizing transcript logging (pre-report)..." -InformationAction Continue
+        try {
+            Stop-Transcript -ErrorAction Stop | Out-Null
+            $script:TranscriptStarted = $false
+            Write-Information "  [OK] Transcript stopped and saved" -InformationAction Continue
+        }
+        catch {
+            Write-Warning "Transcript stop error: $($_.Exception.Message)"
+        }
+    }
+
     #region Report Generation (v3.1 Architecture - Enhanced)
     # Generate comprehensive reports using v3.0 split architecture: LogProcessor → ReportGenerator
     Write-Information "" -InformationAction Continue
@@ -2542,14 +2761,17 @@ else {
 }
 
 #region Stop Transcript
-Write-Information "" -InformationAction Continue
-Write-Information " Finalizing transcript logging..." -InformationAction Continue
-try {
-    Stop-Transcript -ErrorAction Stop
-    Write-Information "  [OK] Transcript stopped and saved" -InformationAction Continue
-}
-catch {
-    Write-Verbose "Transcript stop error (expected if not started): $_"
+if ($script:TranscriptStarted) {
+    Write-Information "" -InformationAction Continue
+    Write-Information " Finalizing transcript logging..." -InformationAction Continue
+    try {
+        Stop-Transcript -ErrorAction Stop | Out-Null
+        $script:TranscriptStarted = $false
+        Write-Information "  [OK] Transcript stopped and saved" -InformationAction Continue
+    }
+    catch {
+        Write-Verbose "Transcript stop error (expected if not started): $_"
+    }
 }
 #endregion
 

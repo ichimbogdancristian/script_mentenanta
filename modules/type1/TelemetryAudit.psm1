@@ -125,12 +125,14 @@ function Get-TelemetryAnalysis {
 
         # Initialize audit results
         $auditResults = @{
-            AuditTimestamp    = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            TelemetryFindings = @()
-            PrivacyIssues     = @()
-            ActiveServices    = @()
-            PrivacyScore      = 0
-            Recommendations   = @()
+            AuditTimestamp      = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            TelemetryFindings   = @()
+            PrivacyIssues       = @()
+            ActiveServices      = @()
+            ActiveTelemetryItems = @()
+            ActiveTelemetryCount = 0
+            PrivacyScore        = 0
+            Recommendations     = @()
         }
 
         # Audit different categories
@@ -158,6 +160,38 @@ function Get-TelemetryAnalysis {
             $auditResults.AppsAudit = Get-BuiltInAppsAudit
             $auditResults.PrivacyIssues += $auditResults.AppsAudit.Issues
         }
+
+        # Build telemetry items list for Type2 consumption
+        $telemetryItems = [System.Collections.Generic.List[PSCustomObject]]::new()
+
+        if ($auditResults.ServicesAudit -and $auditResults.ServicesAudit.ActiveServices) {
+            foreach ($service in $auditResults.ServicesAudit.ActiveServices) {
+                $telemetryItems.Add([PSCustomObject]@{
+                        Type = 'Service'
+                        Name = $service.DisplayName ?? $service.Name
+                    })
+            }
+        }
+
+        if ($auditResults.PrivacyIssues) {
+            foreach ($issue in $auditResults.PrivacyIssues) {
+                $issueType = switch ($issue.Category) {
+                    'Services' { 'Service' }
+                    'Features' { 'ConsumerFeature' }
+                    'Apps' { 'App' }
+                    'Registry' { 'Registry' }
+                    default { 'Unknown' }
+                }
+
+                $telemetryItems.Add([PSCustomObject]@{
+                        Type = $issueType
+                        Name = $issue.Description
+                    })
+            }
+        }
+
+        $auditResults.ActiveTelemetryItems = $telemetryItems
+        $auditResults.ActiveTelemetryCount = $telemetryItems.Count
 
         # Calculate privacy score and generate recommendations
         $auditResults.PrivacyScore = Get-PrivacyScore -AuditResults $auditResults

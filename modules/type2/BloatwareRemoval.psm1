@@ -122,6 +122,7 @@ function Invoke-BloatwareRemoval {
 
         # STEP 1: Always run Type1 detection first and save to temp_files/data/
         $executionLogPath = Get-SessionPath -Category 'logs' -SubCategory 'bloatware-removal' -FileName 'execution.log'
+        $executionLogDir = Split-Path -Parent $executionLogPath
 
         Write-StructuredLogEntry -Level 'INFO' -Component 'BLOATWARE-REMOVAL' -Message 'Starting bloatware detection' -LogPath $executionLogPath -Operation 'Detect'
         # Explicit assignment to prevent pipeline contamination

@@ -1,1123 +1,1113 @@
-# 🎯 Windows Maintenance Automation System - Comprehensive Refactoring & Analysis Prompt
-
-## 📋 Executive Summary
-
-Perform a comprehensive audit, refactoring plan, and implementation roadmap for the Windows Maintenance Automation System (v3.1.0+). This prompt guides the analysis of current architecture, identification of issues, module consolidation opportunities, and next-generation improvements aligned with the project's vision for intelligent, OS-aware, unattended execution.
+# 🚀 PowerShell Maintenance Project - Complete Overhaul Guide
+## VSCode Copilot Comprehensive Analysis & Implementation Prompt
 
 ---
 
-## 🎯 Project Vision & Requirements
+## 📋 Table of Contents
 
-### Core Execution Flow
-The system must support **fully unattended execution** on any Windows 10/11 computer with the following behavior:
+1. [Project Overview](#project-overview)
+2. [Critical Analysis Requirements](#critical-analysis-requirements)
+3. [Architecture & Execution Flow](#architecture--execution-flow)
+4. [Module Analysis Framework](#module-analysis-framework)
+5. [Implementation Requirements](#implementation-requirements)
+6. [Quality Assurance Checklist](#quality-assurance-checklist)
+7. [Copilot Command Reference](#copilot-command-reference)
 
-### Stage 1: System Inventory Collection
+---
+
+## 🎯 Project Overview
+
+### Primary Objective
+Create an enterprise-grade, unattended Windows 10/11 maintenance automation system that can run monthly via Task Scheduler from any network location.
+
+### Execution Environment
+- **Target Systems**: Windows 10/11 workstations
+- **Execution Trigger**: Monthly via Task Scheduler
+- **Autonomy Level**: Fully unattended with optional user intervention
+
+### Core Workflow
 ```
-╔══════════════════════════════════════════════════════╗
-║  Stage 1: Gather System Inventory                   ║
-║  ─────────────────────────────────────────────────  ║
-║  0 - Run All Type1 Modules (Default)                ║
-║  1 - BloatwareDetectionAudit                         ║
-║  2 - EssentialAppsAudit                              ║
-║  3 - SystemOptimizationAudit                         ║
-║  4 - SecurityAudit                                   ║
-║  ...                                                 ║
-║  ─────────────────────────────────────────────────  ║
-║  ⏱️  Starting in 10 seconds... (Press 0-N to select) ║
-╚══════════════════════════════════════════════════════╝
-```
-
-**Behavior:**
-- **10-second countdown** begins automatically
-- **User input (0-N)**: Runs selected Type1 module(s)
-- **No input (timeout)**: Runs option 0 (all Type1 modules)
-- Each Type1 module creates **inventory files** for its domain
-- All Type1 modules **must use OS-specific detection** (Windows 10/11)
-
-### Stage 2: Intelligent Orchestration
-- **Log Processing:** Type1 audit results are analyzed to determine necessary Type2 actions
-- **Smart Skipping:** If no actionable items found, module announces "No actions required" and skips
-- **OS-Specific Execution:** Both Type1 and Type2 modules use OS-appropriate commands, paths, and tools
-- **Perfect Correspondence:** Every Type2 module has a matching Type1 audit module
-
-### Stage 3: Reporting & Cleanup
-1. **HTML Report Generation:**
-   - Comprehensive report of all actions taken during execution
-   - Copy report to same directory as `script.bat` (repository root)
-   - Modern, readable design with module status, metrics, and OS context
-
-2. **Post-Execution Countdown (120 seconds):**
-   ```
-   ╔════════════════════════════════════════════════════╗
-   ║  Maintenance Complete!                            ║
-   ║  ────────────────────────────────────────────────  ║
-   ║  System will restart in 120 seconds...            ║
-   ║  Press any key to abort and keep files            ║
-   ╚════════════════════════════════════════════════════╝
-   ```
-   - **No user interaction:** Remove repository folder + restart system
-   - **Any key pressed:** Abort countdown, preserve all files and state
-
-### Critical Infrastructure Requirements
-
-#### Directory Structure
-```
-repo_folder/
-├── script.bat              # Entry point
-├── MaintenanceOrchestrator.ps1
-├── maintenance.log         # PowerShell transcript for entire execution ⭐
-├── temp_files/             # Created in repo root (not user temp) ⭐
-│   ├── data/               # Type1 audit results (JSON)
-│   ├── logs/               # Type2 execution logs
-│   ├── reports/            # Generated HTML reports
-│   ├── processed/          # Processed data
-│   └── inventory/          # System inventory snapshots
-├── modules/
-├── config/
-└── ...
+script.bat → Download latest repo from GitHub → Extract → Execute project → 
+Generate HTML report → Cleanup → System reboot (with countdown option)
 ```
 
-#### Logging Standards
-- **maintenance.log**: PowerShell transcript capturing entire orchestrator execution
-- **Structured logging**: All modules use `Write-LogEntry` from CoreInfrastructure
-- **Correlation**: Session-based tracking across all modules
-- **Formats**: JSON for data, text for human-readable logs
+---
+
+## 🔍 Critical Analysis Requirements
+
+### Phase 1: Comprehensive Module Analysis
+
+**Primary Copilot Prompt:**
+```
+@workspace Perform deep analysis of the PowerShell Maintenance Project:
+
+ARCHITECTURE REVIEW:
+1. Analyze /core folder structure and dependencies
+2. Analyze /config folder - configuration files, format validation, error handling
+3. Map all Type1 modules (system inventory gatherers)
+4. Map all Type2 modules (maintenance action executors)
+5. Document MaintenanceOrchestrator.ps1 execution flow
+6. Identify script.bat → orchestrator → module chain
+7. Create complete dependency graph showing all module relationships
+
+MODULE CLASSIFICATION:
+For each module, determine:
+- Type 1 (Inventory/Data Collection) or Type 2 (Action/Maintenance)
+- OS-specific requirements (Windows 10 vs 11 compatibility)
+- Required system tools and paths (must be OS-aware)
+- Input dependencies from other modules
+- Output file locations and formats
+- Error handling completeness
+- Logging implementation quality
+
+CROSS-MODULE DATA FLOW:
+1. Trace how Type1 modules collect system inventory
+2. Verify Type1 output files are created in /temp_files
+3. Trace how Type2 modules consume Type1 inventory data
+4. Identify data transformation or loss points
+5. Verify log processing determines Type2 actions
+6. Document which Type2 modules should skip if no actions needed
+
+Provide detailed findings with:
+- Module name and type
+- Current implementation analysis
+- Logic errors or edge cases
+- Missing error handling
+- Integration issues
+- Optimization opportunities
+- Code examples for critical issues
+```
+
+### Phase 2: Logic and Optimization Review
+
+**Copilot Prompt:**
+```
+@workspace Find critical logic flaws and optimization opportunities:
+
+CRITICAL ISSUES (Fix First):
+1. Null references without guards
+2. Empty catch blocks with no logging
+3. Infinite loops or recursion without exit
+4. Missing error handling on system-modifying operations
+5. Hardcoded paths that break network deployment
+6. Variables assigned but never used
+7. Functions defined but never called
+8. Incomplete if/else branches
+9. Type mismatches in parameter passing
+10. Resource leaks (file handles, connections)
+
+PERFORMANCE BOTTLENECKS:
+1. Nested loops with high complexity
+2. Repeated expensive operations (registry, WMI, file I/O)
+3. Inefficient PowerShell pipelines
+4. Unnecessary file reads/writes
+5. Missing parallel execution opportunities
+6. Redundant data collection
+7. Memory-intensive operations without cleanup
+
+OS COMPATIBILITY:
+1. Windows 10 vs 11 specific paths
+2. Different tool locations (system32, syswow64)
+3. PowerShell version requirements
+4. .NET Framework dependencies
+5. WMI vs CIM cmdlet usage
+6. Registry key differences
+
+For each issue found:
+- Module name and line number
+- Severity: Critical/High/Medium/Low
+- Current problematic code
+- Recommended fix with code example
+- Impact if not fixed
+```
+
+### Phase 3: Code Quality and Duplication
+
+**Copilot Prompt:**
+```
+@workspace Identify code duplication and quality issues:
+
+DUPLICATE CODE ANALYSIS:
+1. Find identical or near-identical functions across modules
+2. Identify repeated code blocks (3+ lines appearing 2+ times)
+3. Locate similar patterns that could be abstracted
+4. Show where helper functions should be created
+5. Suggest proper placement in /core for shared utilities
+
+REFACTORING OPPORTUNITIES:
+For each duplicate:
+- Show all locations where code appears
+- Propose unified function signature
+- Suggest module placement (/core/utilities.ps1?)
+- Provide before/after refactoring example
+- List all modules that would benefit
+
+CODE QUALITY ISSUES:
+1. Functions without help documentation
+2. Missing parameter validation
+3. No ShouldProcess on destructive operations
+4. Inconsistent error handling patterns
+5. Magic numbers without constants
+6. Unclear variable names
+7. Functions doing too many things
+8. Missing output types
+
+Provide refactoring plan with migration steps.
+```
+
+### Phase 4: Logging and Reporting Infrastructure
+
+**Copilot Prompt:**
+```
+@workspace Analyze logging and reporting implementation:
+
+LOGGING REQUIREMENTS:
+The maintenance.log must be a PowerShell transcript for the ENTIRE project execution.
+
+Current State Analysis:
+1. When is maintenance.log created?
+2. Is Start-Transcript called at project start?
+3. Is Stop-Transcript called before cleanup?
+4. Where is the log file stored during execution?
+5. Is it moved to /temp_files/logs by LogProcessor?
+6. What modules write to the log?
+7. Is everything logged (every decision, action, error)?
+
+Logging Completeness Check:
+For EVERY module verify logging of:
+- Module start/end timestamps
+- Input parameters received
+- Decisions made (if/else branches taken)
+- Actions performed vs skipped
+- Files created/modified/deleted
+- Errors and warnings
+- Performance metrics (duration)
+- Success/failure status
+
+HTML REPORT GENERATION:
+Verify report includes:
+1. Executive summary of entire project run
+2. Individual module sections with:
+   - Module name and purpose
+   - Actions taken vs skipped
+   - Files affected
+   - Errors encountered
+   - Performance metrics
+3. System inventory summary (from Type1)
+4. Maintenance actions summary (from Type2)
+5. Timestamp and system information
+6. Color-coded status indicators
+
+Report Placement:
+- Must be copied to script.bat location (relative path)
+- Must work from any network location
+- Must handle special characters in paths
+
+Identify gaps and provide implementation plan.
+```
 
 ---
 
-## 🔑 Critical Analysis Questions
+## 🏗️ Architecture & Execution Flow
 
-### 1. OS-Specific Architecture
-**Question:** How should OS differentiation be implemented?
+### Target Execution Sequence
 
-**Options:**
-- **Option A (Recommended):** Different functions within each module
-  ```powershell
-  function Invoke-ModuleName {
-      $osContext = Get-WindowsVersionContext
-      if ($osContext.IsWindows11) {
-          Invoke-Windows11Specific
-      } else {
-          Invoke-Windows10Specific
-      }
-  }
-  ```
-- **Option B:** Separate modules per OS (e.g., `BloatwareRemoval-Win10.psm1`, `BloatwareRemoval-Win11.psm1`)
+**Copilot Prompt for Flow Verification:**
+```
+@workspace Verify and document the complete execution flow:
 
-**Critical Decision Point:** At what execution stage should OS detection occur?
-- Early (orchestrator startup) ✅
-- Per-module (each module detects independently) ❌
+STAGE 0 - INITIALIZATION:
+1. script.bat execution from network location
+2. GitHub repo download to temp location
+3. Extraction to local folder
+4. Environment detection (OS version, PowerShell version, .NET)
+5. /temp_files folder creation in extracted repo
+6. maintenance.log creation with Start-Transcript
 
-### 2. Module Consolidation
-**Question:** Which modules have overlapping goals and should be merged?
+STAGE 1 - SYSTEM INVENTORY (Type1 Modules):
+Display interactive menu:
+┌─────────────────────────────────────────┐
+│ STAGE 1: SYSTEM INVENTORY               │
+├─────────────────────────────────────────┤
+│ 0 - Run All Type1 Modules (Default)    │
+│ 1 - [Type1 Module 1 Name]               │
+│ 2 - [Type1 Module 2 Name]               │
+│ 3 - [Type1 Module 3 Name]               │
+│ ...                                     │
+├─────────────────────────────────────────┤
+│ Auto-executing option 0 in 10 seconds...│
+└─────────────────────────────────────────┘
 
-**Candidates:**
-- `SecurityEnhancement.psm1` + `SecurityEnhancementCIS.psm1` → Single unified module
-- `SystemOptimization.psm1` + `TelemetryDisable.psm1` → Telemetry as optimization component
-- Type1 counterparts must exist for all Type2 modules
+User Input Handling:
+- Wait 10 seconds for input
+- If no input: Execute option 0 (all modules)
+- If valid number: Execute specific module
+- If invalid: Show error, re-prompt
 
----
+Type1 Execution Requirements:
+- Each module runs OS-specific checks FIRST
+- Creates inventory file in /temp_files/[ModuleName]/
+- Logs all findings to maintenance.log
+- Handles errors gracefully (no crash, log and continue)
+- Reports completion status
 
-## 📊 Phase 1: Comprehensive Module Analysis
+STAGE 2 - LOG PROCESSING:
+1. LogProcessor analyzes Type1 output files
+2. Determines which Type2 modules have work to do
+3. Creates action plans for each Type2 module
+4. Logs decision rationale
 
-### 1.1 Module Classification Audit
+STAGE 3 - MAINTENANCE ACTIONS (Type2 Modules):
+For each Type2 module:
+- Check if action plan exists
+- If no actions needed: Log "No actions required" and SKIP
+- If actions needed: Execute module
+- Log all actions taken
+- Update temp files with results
+- Handle errors with rollback if possible
 
-**Type1 Modules (Audit/Inventory - Read-Only):**
-- [ ] BloatwareDetectionAudit.psm1
-- [ ] EssentialAppsAudit.psm1
-- [ ] SystemOptimizationAudit.psm1
-- [ ] SecurityAudit.psm1
-- [ ] WindowsUpdatesAudit.psm1
-- [ ] TelemetryAudit.psm1
-- [ ] AppUpgradeAudit.psm1
-- [ ] **SystemInventory** (currently in Type2 - misplaced?) ⚠️
+STAGE 4 - REPORT GENERATION:
+1. Aggregate all Type1 inventory data
+2. Aggregate all Type2 action results
+3. Process maintenance.log transcript
+4. Generate comprehensive HTML report
+5. Copy report to script.bat location
 
-**Analysis Tasks:**
-- Identify modules that collect overlapping data
-- Check for inconsistent output formats (JSON schema validation)
-- Verify all Type1 modules provide data needed by corresponding Type2 modules
-- Map data flow: Type1 output → LogProcessor → Type2 input
+STAGE 5 - CLEANUP & REBOOT:
+Display countdown:
+┌─────────────────────────────────────────┐
+│ SYSTEM REBOOT COUNTDOWN                 │
+├─────────────────────────────────────────┤
+│ All tasks completed successfully.       │
+│ HTML report saved to:                   │
+│ [script.bat location]\report.html       │
+│                                         │
+│ System will reboot in: 120 seconds      │
+│                                         │
+│ Press ANY KEY to abort reboot and       │
+│ keep temporary files for review.        │
+└─────────────────────────────────────────┘
 
-**Type2 Modules (Action - System Modification):**
-- [ ] BloatwareRemoval.psm1
-- [ ] EssentialApps.psm1
-- [ ] SystemOptimization.psm1
-- [ ] SecurityEnhancement.psm1
-- [ ] SecurityEnhancementCIS.psm1 (consolidation candidate)
-- [ ] WindowsUpdates.psm1
-- [ ] TelemetryDisable.psm1 (consolidation candidate)
-- [ ] AppUpgrade.psm1
+Countdown Handling:
+- Count down from 120 to 0
+- Update display each second
+- Monitor for ANY keypress
+- If key pressed: Abort, display "Cleanup aborted", exit
+- If countdown completes: Delete repo folder, Restart-Computer
 
-**Analysis Tasks:**
-- Identify duplicate code patterns across modules
-- Verify DryRun support in all Type2 modules
-- Check for consistent error handling and rollback mechanisms
-- Map Type2 dependencies on Type1 audit data
-
-### 1.2 Data Structure & Flow Analysis
-
-**Investigate:**
-1. **Preexisting Lists vs Diff Lists:**
-   - What are "preexisting lists"? (e.g., `bloatware-list.json`)
-   - What are "diff lists"? (before/after snapshots in Type2)
-   - Why both systems exist and how they interact
-
-2. **Logging Mechanisms:**
-   - Production: How are logs created? (Write-LogEntry, direct file writes)
-   - Storage: Where are logs stored? (`temp_files/logs/`, `temp_files/data/`)
-   - Interpretation: Who processes logs? (LogProcessor.psm1)
-   - Formats: JSON vs text vs structured objects
-   - Paths: Are all log paths using centralized discovery?
-
-3. **Inventory System:**
-   - Creation: Which modules generate inventory?
-   - Processing: How is inventory analyzed?
-   - Data structures: Consistent schemas?
-   - Efficiency: Any bottlenecks or redundant operations?
-
-### 1.3 Type1/Type2 Correspondence Requirements
-
-**Goal:** Perfect 1:1 mapping for intelligent orchestration
-
-| Type1 Audit Module | Type2 Action Module | Status |
-|--------------------|---------------------|--------|
-| BloatwareDetectionAudit | BloatwareRemoval | ✅ Exists |
-| EssentialAppsAudit | EssentialApps | ✅ Exists |
-| SystemOptimizationAudit | SystemOptimization | ✅ Exists |
-| SecurityAudit | SecurityEnhancement | ✅ Exists |
-| WindowsUpdatesAudit | WindowsUpdates | ✅ Exists |
-| TelemetryAudit | TelemetryDisable (merge into SystemOptimization) | ⚠️ Consolidate |
-| AppUpgradeAudit | AppUpgrade | ✅ Exists |
-| SystemInventory | N/A (move to Type1) | ⚠️ Misplaced |
-
-**Verification:**
-- [ ] Does every Type2 module have a corresponding Type1 audit?
-- [ ] Does every Type1 module provide sufficient data for Type2 decisions?
-- [ ] Are there orphaned modules without counterparts?
+Trace current implementation against this flow.
+Identify missing components.
+Provide implementation roadmap.
+```
 
 ---
 
-## 🏗️ Phase 2: Core Infrastructure Deep Dive
+## 📦 Module Analysis Framework
 
-### 2.1 Core Module Analysis (100% Coverage)
+### Type1 Module Analysis Template
 
-**Mandatory:** Manual inspection of every core module - no automation shortcuts.
+**Copilot Prompt:**
+```
+@workspace Analyze Type1 module: [ModuleName]
 
-#### CoreInfrastructure.psm1
-**Investigate:**
-- [ ] Path discovery: How does `Initialize-GlobalPathDiscovery` work?
-- [ ] Configuration loading: `Get-MainConfiguration`, `Get-BloatwareConfiguration`, etc.
-- [ ] OS detection: `Get-WindowsVersionContext` implementation
-- [ ] Global state management: Environment variables, module scope
-- [ ] Logging: `Write-LogEntry` implementation and structured output
-- [ ] Unused code blocks: Any deprecated functions?
-- [ ] Path validity: Are all returned paths correct for Phase 3 structure?
+MODULE IDENTIFICATION:
+- File path: 
+- Current classification (Type1/Type2):
+- Should be Type1? (Inventory/Data collection):
 
-#### TemplateEngine.psm1 (Phase 4.1 Enhancements)
-**Investigate:**
-- [ ] Template loading: Multi-tier path resolution working correctly?
-- [ ] Caching: Is template caching actually improving performance?
-- [ ] Placeholder replacement: `Invoke-PlaceholderReplacement` coverage
-- [ ] Fallback templates: Are embedded templates complete?
-- [ ] Path discovery: Integration with Phase 3 centralized schemas
-- [ ] Cache statistics: Are cache hit rates being tracked?
+FUNCTIONALITY ANALYSIS:
+1. What system information does it collect?
+2. What Windows versions does it support?
+3. What system tools/commands does it use?
+4. Are paths OS-aware (Win10 vs Win11)?
+5. Can it run independently?
+6. Does it require admin rights?
 
-#### ExecutionPlanner.psm1 (Phase C.3 - Intelligent Orchestration)
-**Investigate:**
-- [ ] Task selection: How does intelligent mode decide what to run?
-- [ ] Audit-first: Is Type1 always executed before Type2?
-- [ ] Time estimation: Accuracy of duration predictions
-- [ ] Skip logic: When and why are modules skipped?
-- [ ] Dependency validation: Module dependency graph resolution
-- [ ] Performance: Claimed -47% to -86% time savings - verified?
+DATA OUTPUT:
+1. What files does it create in /temp_files?
+2. What format (JSON, CSV, TXT, XML)?
+3. Is output structured for Type2 consumption?
+4. What information is captured?
+5. Are errors logged to maintenance.log?
 
-#### OSRecommendations.psm1 (Phase C.4 - OS-Specific Intelligence)
-**Investigate:**
-- [ ] Recommendation rules: 12+ rules - what triggers each?
-- [ ] Priority assignment: High/Medium/Low logic
-- [ ] Windows 10 vs 11: Are recommendations truly OS-specific?
-- [ ] ReportGenerator integration: Template placeholders correct?
-- [ ] Data sources: Where does recommendation data come from?
+OS-SPECIFIC IMPLEMENTATION:
+1. Does it detect OS version FIRST?
+2. Are paths dynamic or hardcoded?
+3. Does it handle missing tools gracefully?
+4. Are registry paths version-aware?
+5. Does it use WMI or CIM appropriately?
 
-#### LogAggregator.psm1
-**Investigate:**
-- [ ] Result collection: `Start-ResultCollection`, `Add-ModuleResult`, `Complete-ResultCollection`
-- [ ] Session management: GUID generation and correlation
-- [ ] Result schema: `New-ModuleResult` standardization
-- [ ] Export format: JSON structure for processed data
-- [ ] Memory management: Are results held in memory or streamed?
+ERROR HANDLING:
+1. Try-catch coverage:
+2. Logging of all errors:
+3. Graceful degradation if tools missing:
+4. User-friendly error messages:
 
-#### LogProcessor.psm1
-**Investigate:**
-- [ ] Processing pipeline: Load → Parse → Normalize → Aggregate → Export
-- [ ] Type1 data loading: `Get-Type1AuditData` - all modules covered?
-- [ ] Type2 log parsing: `Get-Type2ExecutionLog` - error handling?
-- [ ] Analytics: `Get-ComprehensiveDashboardMetricSet` calculations
-- [ ] Error aggregation: `Get-ExecutionLogErrorReport` completeness
-- [ ] Performance: Any bottlenecks in processing large logs?
+INTEGRATION POINTS:
+1. Called by orchestrator?
+2. Dependencies on other modules:
+3. Which Type2 modules consume its output:
+4. Data transformation needs:
 
-#### ReportGenerator.psm1
-**Investigate:**
-- [ ] Template loading: Using TemplateEngine correctly?
-- [ ] OS integration: `{{OS_VERSION}}`, `{{OS_RECOMMENDATIONS}}` working?
-- [ ] Report formats: HTML, Text, JSON, Summary generation
-- [ ] Processed data loading: `Get-ProcessedLogData` integration
-- [ ] Chart rendering: Chart data provider extraction (Phase 4.3)
-- [ ] Output paths: Reports saved to correct locations?
+IMPROVEMENT OPPORTUNITIES:
+1. Logic errors:
+2. Missing error handling:
+3. Performance optimization:
+4. Code duplication:
+5. Documentation gaps:
 
-#### ModuleRegistry.psm1 (Phase 1 Enhancement)
-**Investigate:**
-- [ ] Auto-discovery: How are modules found and loaded?
-- [ ] Dependency validation: Module dependency graph checking
-- [ ] Version compatibility: Module version tracking
-- [ ] Export validation: Are module exports verified?
+Provide detailed report with code examples.
+```
 
-#### CommonUtilities.psm1 (Phase 1 Enhancement)
-**Investigate:**
-- [ ] Shared helpers: What functions are provided?
-- [ ] Code duplication: Did this actually eliminate ~200 lines of duplication?
-- [ ] Usage coverage: Are utilities used across all modules?
-- [ ] Missing helpers: What common patterns could be extracted?
+### Type2 Module Analysis Template
 
-#### UserInterface.psm1
-**Investigate:**
-- [ ] Menu system: Interactive menu rendering
-- [ ] Progress tracking: Progress bars and status updates
-- [ ] Countdown timers: 10s and 120s countdown implementations
-- [ ] User input handling: Key press detection and validation
-- [ ] Non-interactive mode: Behavior when `-NonInteractive` flag used
+**Copilot Prompt:**
+```
+@workspace Analyze Type2 module: [ModuleName]
 
-### 2.2 Issue Identification Checklist
+MODULE IDENTIFICATION:
+- File path:
+- Current classification (Type1/Type2):
+- Should be Type2? (Action/Maintenance):
 
-**Look For:**
-- ❌ **Unused code blocks** - Functions/variables never called
-- ❌ **Faulty logic** - Incorrect conditional statements, logic errors
-- ❌ **Broken paths** - Hardcoded paths, incorrect path discovery usage
-- ❌ **Inconsistent naming** - Functions not following Verb-Noun convention
-- ❌ **Inconsistent data types** - Mixed string/int, object/hashtable
-- ❌ **Inconsistent formats** - JSON vs PSObject inconsistencies
-- ❌ **Overlapping functionality** - Duplicate code across modules
-- ❌ **Performance bottlenecks** - Inefficient loops, redundant operations
-- ❌ **Missing error handling** - No try-catch blocks
-- ❌ **Missing documentation** - Functions without .SYNOPSIS/.DESCRIPTION
-- ❌ **Misplaced modules** - Type1 modules in type2 folder or vice versa
+FUNCTIONALITY ANALYSIS:
+1. What maintenance actions does it perform?
+2. What Type1 data does it require?
+3. What system changes does it make?
+4. Are actions OS-specific (Win10 vs Win11)?
+5. Does it support -WhatIf (dry-run)?
+6. Does it require admin rights?
+
+DATA INPUT:
+1. Which Type1 modules provide required data?
+2. What files does it read from /temp_files?
+3. How does it parse input data?
+4. What happens if input is missing/corrupt?
+5. Does it validate data before acting?
+
+ACTION LOGIC:
+1. How does it determine what actions to take?
+2. Does it skip if no actions needed?
+3. Does it log "No actions required"?
+4. What criteria trigger each action?
+5. Are actions idempotent (safe to re-run)?
+
+OS-SPECIFIC IMPLEMENTATION:
+1. Does it detect OS version before acting?
+2. Are tool paths OS-aware?
+3. Does it handle OS differences properly?
+4. Are registry modifications version-aware?
+
+ERROR HANDLING:
+1. Try-catch coverage on system modifications:
+2. Rollback capability if actions fail:
+3. Logging of all actions and errors:
+4. Graceful failure without breaking project:
+
+
+INTEGRATION POINTS:
+1. Called by orchestrator after log processing?
+2. Action plan provided by LogProcessor?
+3. Output files created in /temp_files?
+4. Report data generated for HTML report?
+
+IMPROVEMENT OPPORTUNITIES:
+1. Logic errors or edge cases:
+2. Missing error handling or rollback:
+3. Performance optimization:
+4. Safety improvements:
+5. Documentation gaps:
+
+Provide detailed report with code examples.
+```
 
 ---
 
-## 🔄 Phase 3: Refactoring Goals & Proposals
+## 🎯 Implementation Requirements
 
-### 3.1 Intelligent Orchestration Enhancement
+### Feature 1: Enhanced HTML Reporting
 
-**Goal:** Type1 audit results drive Type2 execution decisions
+**Copilot Prompt:**
+```
+@workspace Implement comprehensive HTML report generation:
 
-**Current State Analysis:**
-- Is `ExecutionPlanner.psm1` (Phase C.3) already implementing this?
-- How does it determine which Type2 modules to skip?
-- Is the logic based on audit results or other criteria?
+REQUIREMENTS:
+Create professional HTML report with:
 
-**Proposed Enhancements:**
-1. **Audit-First Execution:**
+1. EXECUTIVE SUMMARY SECTION:
+   - Project name and version
+   - Execution timestamp (start and end)
+   - System information (hostname, OS, user)
+   - Overall status (Success/Warnings/Errors)
+   - Total duration
+   - Summary metrics:
+     * Type1 modules executed
+     * Type2 modules executed
+     * Actions performed
+     * Files modified
+     * Errors encountered
+
+2. TYPE1 INVENTORY SECTION:
+   For each Type1 module executed:
+   - Collapsible card/box with module name
+   - Module description and purpose
+   - Inventory data collected (table format)
+   - Files created
+   - Execution time
+   - Status indicator (✓ Success / ⚠ Warning / ✗ Error)
+
+3. TYPE2 MAINTENANCE SECTION:
+   For each Type2 module executed:
+   - Collapsible card/box with module name
+   - Module description and purpose
+   - Actions taken (bullet list with details)
+   - Files modified
+   - Success/skip/error counts
+   - Execution time
+   - Status indicator
+
+4. DETAILED LOG SECTION:
+   - Collapsible full transcript
+   - Syntax-highlighted PowerShell output
+   - Filterable by module, severity, keyword
+   - Timestamp for each entry
+
+5. STYLING REQUIREMENTS:
+   - Responsive design (mobile-friendly)
+   - Professional color scheme (blues/greens for success, yellows for warnings, reds for errors)
+   - Bootstrap or similar framework
+   - Printable version
+   - No external dependencies (all CSS/JS inline)
+
+6. REPORT PLACEMENT:
+   - Save to /temp_files/MaintenanceReport_[timestamp].html
+   - Copy to script.bat location using relative path
+   - Handle UNC network paths correctly
+   - Create fallback if copy fails
+
+Provide complete implementation code.
+Show integration with MaintenanceOrchestrator.ps1.
+Include example HTML output.
+```
+
+### Feature 2: Interactive Stage 1 Menu
+
+**Copilot Prompt:**
+```
+@workspace Implement interactive Type1 module selection menu:
+
+REQUIREMENTS:
+
+1. MENU DISPLAY:
+   - Clear header "STAGE 1: SYSTEM INVENTORY"
+   - Option 0: "Run All Type1 Modules (Default)"
+   - Numbered list of all Type1 modules with names
+   - Footer with 10-second countdown
+
+2. USER INPUT HANDLING:
    ```powershell
-   # Orchestrator flow
-   1. Run all Type1 modules (or user-selected subset)
-   2. Aggregate audit results via LogAggregator
-   3. Process with LogProcessor to extract actionable items
-   4. ExecutionPlanner determines Type2 modules to run
-   5. Execute only necessary Type2 modules
-   6. Generate comprehensive report
+   # Countdown from 10 to 0
+   # Display: "Auto-executing option 0 in X seconds..."
+   # Monitor for numeric input
+   # If valid number entered: Execute that module
+   # If 0 or timeout: Execute all Type1 modules
+   # If invalid: Show error, re-display menu
    ```
 
-2. **Skip Logic Examples:**
-   - If `EssentialAppsAudit` finds all apps installed → Skip `EssentialApps.psm1`
-   - If `BloatwareDetectionAudit` finds no bloatware → Skip `BloatwareRemoval.psm1`
-   - If `WindowsUpdatesAudit` shows system up-to-date → Skip `WindowsUpdates.psm1`
+3. EXECUTION LOGIC:
+   - Dynamic module discovery from /type1 folder
+   - Load each module
+   - Execute selected option(s)
+   - Log all actions
+   - Handle errors gracefully
+   - Display progress for each module
 
-3. **User Communication:**
-   ```
-   ╔═══════════════════════════════════════════════════╗
-   ║  Module: EssentialApps                           ║
-   ║  Status: ✅ SKIPPED                               ║
-   ║  Reason: All essential applications detected     ║
-   ║          No actions required                     ║
-   ╚═══════════════════════════════════════════════════╝
-   ```
+4. VISUAL FEEDBACK:
+   - Clear screen before menu
+   - Use colors (Write-Host with -ForegroundColor)
+   - Progress indicators during execution
+   - Success/failure status after each module
 
-### 3.2 OS-Specific Function Architecture
-
-**Goal:** All modules support Windows 10 and Windows 11 with dedicated functions
-
-**Proposed Pattern:**
-```powershell
-#Requires -Version 7.0
-
-# In every Type1/Type2 module
-function Invoke-ModuleName {
-    [CmdletBinding()]
-    param([switch]$DryRun)
-    
-    # Detect OS early (from CoreInfrastructure)
-    $osContext = Get-WindowsVersionContext
-    
-    Write-LogEntry -Level 'INFO' -Component 'MODULE' `
-        -Message "Detected: $($osContext.FriendlyName) (Build $($osContext.BuildNumber))"
-    
-    # Route to OS-specific implementation
-    if ($osContext.IsWindows11) {
-        Invoke-ModuleName-Windows11 -DryRun:$DryRun
-    }
-    elseif ($osContext.IsWindows10) {
-        Invoke-ModuleName-Windows10 -DryRun:$DryRun
-    }
-    else {
-        Write-LogEntry -Level 'ERROR' -Component 'MODULE' `
-            -Message "Unsupported OS: $($osContext.OSVersion)"
-        throw "Module does not support this Windows version"
-    }
-}
-
-function Invoke-ModuleName-Windows11 {
-    [CmdletBinding()]
-    param([switch]$DryRun)
-    
-    # Windows 11-specific logic
-    # - Use Windows 11 registry paths
-    # - Use Windows 11-specific commands (e.g., winget with newer features)
-    # - Handle Windows 11 exclusive features (Snap Layouts, Android apps, etc.)
-}
-
-function Invoke-ModuleName-Windows10 {
-    [CmdletBinding()]
-    param([switch]$DryRun)
-    
-    # Windows 10-specific logic
-    # - Use Windows 10 registry paths
-    # - Use Windows 10-compatible commands
-    # - Avoid Windows 11-exclusive features
-}
+Provide complete implementation code.
+Show integration point in MaintenanceOrchestrator.ps1.
 ```
 
-**Implementation Requirements:**
-- [ ] Every Type1 module: OS-specific detection functions
-- [ ] Every Type2 module: OS-specific action functions
-- [ ] CoreInfrastructure: `Get-WindowsVersionContext` provides OS context
-- [ ] Configuration files: OS-specific sections where needed
-- [ ] Documentation: Clearly mark OS-specific paths and commands
+### Feature 3: Cleanup Countdown with Abort
 
-**OS Context Object Structure:**
-```powershell
-@{
-    OSVersion = "10.0.22631"
-    BuildNumber = 22631
-    IsWindows11 = $true
-    IsWindows10 = $false
-    FriendlyName = "Windows 11 23H2"
-    FeatureAvailability = @{
-        TPM20 = $true
-        AndroidApps = $true
-        SnapLayouts = $true
-        WidgetsPanel = $true
-        DirectStorage = $true
-    }
-}
+**Copilot Prompt:**
+```
+@workspace Implement cleanup countdown with abort functionality:
+
+REQUIREMENTS:
+
+1. COUNTDOWN DISPLAY:
+   ```
+   ┌─────────────────────────────────────────┐
+   │ MAINTENANCE COMPLETE                    │
+   ├─────────────────────────────────────────┤
+   │ HTML Report: [path]                     │
+   │                                         │
+   │ System will reboot in: XXX seconds      │
+   │                                         │
+   │ Press ANY KEY to abort reboot           │
+   └─────────────────────────────────────────┘
+   ```
+
+2. COUNTDOWN LOGIC:
+   - Start at 120 seconds
+   - Update display every second
+   - Monitor for keyboard input using [Console]::KeyAvailable
+   - Countdown shows: "120... 119... 118..." with visual update
+
+3. ABORT HANDLING:
+   - If ANY key pressed during countdown:
+     * Immediately stop countdown
+     * Display "Reboot aborted by user"
+     * Display "Temporary files preserved at: [path]"
+     * Display "HTML report saved at: [path]"
+     * Exit with code 0 (no reboot)
+   
+4. TIMEOUT HANDLING:
+   - If countdown reaches 0 with no input:
+     * Display "Cleaning up temporary files..."
+     * Remove extracted repo folder
+     * Verify deletion success
+     * Display "Initiating system reboot..."
+     * Execute: Restart-Computer -Force
+     * Exit with code 0
+
+5. ERROR HANDLING:
+   - If cleanup fails: Log error, skip reboot, exit
+   - If reboot fails: Log error, exit with code 1
+   - All errors logged to maintenance.log
+
+Provide complete implementation code.
+Show integration as final stage in MaintenanceOrchestrator.ps1.
+Include testing scenarios.
 ```
 
-### 3.3 Module Consolidation Plan
+### Feature 4: Comprehensive Transcript Logging
 
-#### Security Module Consolidation
-**Proposal:** Merge `SecurityEnhancement.psm1` + `SecurityEnhancementCIS.psm1`
+**Copilot Prompt:**
+```
+@workspace Implement comprehensive transcript logging:
 
-**Rationale:**
-- Both modules handle security hardening
-- CIS baseline can be a configuration option (not separate module)
-- Reduces code duplication and maintenance burden
+REQUIREMENTS:
 
-**Implementation Plan:**
-1. Create unified `SecurityEnhancement.psm1` (or rename existing)
-2. Add configuration flag: `security-config.json` → `"useEnhancedCISBaseline": true/false`
-3. Merge functions with OS-specific branching:
+1. TRANSCRIPT INITIALIZATION:
    ```powershell
-   function Invoke-SecurityEnhancement {
-       param([switch]$UseCISBaseline)
-       
-       # Core security settings (always applied)
-       Set-CoreSecuritySettings
-       
-       # Enhanced CIS baseline (optional)
-       if ($UseCISBaseline) {
-           Set-CISEnhancedSettings
-       }
-   }
+   # At very start of MaintenanceOrchestrator.ps1
+   # Create /temp_files/logs/ directory
+   # Start-Transcript -Path "/temp_files/logs/maintenance.log"
+   # Log: Project name, version, timestamp, system info
    ```
-4. Archive `SecurityEnhancementCIS.psm1` to `archive/phase_d/`
-5. Update orchestrator to remove duplicate calls
 
-**Type1 Correspondence:**
-- `SecurityAudit.psm1` remains single module (detects both standard + CIS compliance)
+2. MODULE LOGGING REQUIREMENTS:
+   Every module must log:
+   - Module start with timestamp
+   - Input parameters or data sources
+   - Every decision point (if/else branches taken)
+   - Every action performed
+   - Every file created/modified/deleted
+   - Every error or warning
+   - Module end with duration and status
 
-#### System Optimization Consolidation
-**Proposal:** Merge `TelemetryDisable.psm1` → `SystemOptimization.psm1`
+3. LOGGING STANDARDS:
+   - Prefix format: "[TIMESTAMP] [MODULE] [LEVEL] Message"
+   - Levels: INFO, WARNING, ERROR, DEBUG
+   - Use Write-Host for console + transcript
+   - Never use Write-Output (breaks transcript)
+   - All exceptions must be logged with stack trace
 
-**Rationale:**
-- Telemetry disabling is a form of system optimization
-- Many telemetry settings overlap with privacy/performance optimizations
-- Reduces menu clutter (fewer modules to select)
+4. ORCHESTRATOR LOGGING:
+   - Stage transitions
+   - Module execution order
+   - Data flow between modules
+   - Performance metrics
+   - Overall project status
 
-**Implementation Plan:**
-1. Move telemetry functions into `SystemOptimization.psm1`:
+5. TRANSCRIPT FINALIZATION:
    ```powershell
-   function Invoke-SystemOptimization {
-       # Performance optimizations
-       Optimize-SystemPerformance
-       
-       # Privacy optimizations (includes telemetry)
-       Optimize-SystemPrivacy
-       
-       # Network optimizations
-       Optimize-NetworkSettings
-   }
-   ```
-2. Archive `TelemetryDisable.psm1` to `archive/phase_d/`
-3. Update `SystemOptimizationAudit.psm1` to include telemetry status checks
-
-**Configuration:**
-- `system-optimization-config.json` gets new section:
-  ```json
-  {
-    "privacySettings": {
-      "disableTelemetry": true,
-      "disableCortana": true,
-      "disableAdvertisingID": true
-    }
-  }
-  ```
-
-#### SystemInventory Relocation
-**Proposal:** Move `SystemInventory.psm1` from type2 to type1
-
-**Rationale:**
-- SystemInventory is read-only (collects data, doesn't modify)
-- Type1 modules are audit/inventory modules
-- Currently misplaced in Type2
-
-**Implementation Plan:**
-1. Move `modules/type2/SystemInventory.psm1` → `modules/type1/SystemInventory.psm1`
-2. Rename to `SystemInventoryAudit.psm1` for consistency
-3. Update orchestrator module loading logic
-4. Ensure it runs at Stage 1 (inventory collection)
-
-### 3.4 Configuration Organization Review
-
-**Phase 3 Structure (Current):**
-```
-config/
-├── schemas/                    # Centralized JSON schemas ✅
-├── settings/                   # Main configurations ✅
-│   ├── main-config.json
-│   ├── logging-config.json
-│   ├── security-config.json
-│   └── environments/           # Dev/Prod/Test profiles ✅
-├── lists/                      # Module-specific configs ✅
-│   ├── bloatware/
-│   ├── essential-apps/
-│   ├── system-optimization/
-│   └── app-upgrade/
-└── templates/                  # Report templates ✅
-```
-
-**Gaps to Address:**
-- [ ] OS-specific configuration sections (Win10/Win11 variants)
-- [ ] Schema validation integration in all modules
-- [ ] Environment profile usage (dev vs prod execution)
-- [ ] Missing schemas for new consolidated modules
-
----
-
-## 🔍 Phase 4: Critical Analysis & Recommendations
-
-### 4.1 Honest Assessment of Refactoring Plan
-
-**Pros:**
-- ✅ Intelligent orchestration reduces execution time (~47-86% savings per Phase C.3)
-- ✅ OS-specific functions improve compatibility and eliminate runtime errors
-- ✅ Module consolidation reduces code duplication and maintenance burden
-- ✅ Type1/Type2 correspondence creates clean data flow
-- ✅ Unattended execution aligns with enterprise deployment needs
-
-**Cons:**
-- ❌ OS-specific branching increases code complexity in each module
-- ❌ Consolidation may break existing scripts/workflows using old module names
-- ❌ Testing overhead: Must test every module on both Windows 10 and Windows 11
-- ❌ Migration effort: Existing deployments need orchestrator updates
-- ❌ Documentation sprawl: More patterns to document and maintain
-
-**Risks:**
-- ⚠️ Breaking changes: Users relying on separate SecurityEnhancementCIS.psm1
-- ⚠️ Regression potential: Merging modules may introduce bugs
-- ⚠️ Performance: OS detection overhead on every module invocation
-- ⚠️ Maintenance: OS-specific function pairs must stay synchronized
-
-**Mitigation Strategies:**
-1. **Versioning:** Bump to v4.0.0 for breaking changes
-2. **Backward compatibility layer:** Alias old module names to new consolidated ones
-3. **Comprehensive testing:** Automated tests on Win10/Win11 VMs
-4. **Phased rollout:** Release consolidations incrementally (Phase D.1, D.2, etc.)
-5. **Documentation:** Update all guides with migration instructions
-
-### 4.2 Optimization Suggestions
-
-#### Core Infrastructure Improvements
-1. **Lazy Loading:** Load modules only when needed (not all upfront)
-   ```powershell
-   # Instead of importing all Type2 modules at start
-   # Import dynamically when ExecutionPlanner decides to run
+   # Before report generation
+   # Log: Project completion summary
+   # Stop-Transcript
+   # Verify log file exists and is readable
+   # Include log in HTML report generation
    ```
 
-2. **Parallel Execution:** Run independent Type1 modules in parallel
-   ```powershell
-   # Use PowerShell jobs for Type1 modules with no dependencies
-   $jobs = @()
-   $jobs += Start-Job -ScriptBlock { Invoke-BloatwareDetectionAudit }
-   $jobs += Start-Job -ScriptBlock { Invoke-EssentialAppsAudit }
-   $results = $jobs | Wait-Job | Receive-Job
-   ```
-
-3. **Configuration Caching:** Cache loaded configs in memory (avoid repeated JSON reads)
-
-4. **Template Pre-Compilation:** Compile templates once at startup (leverage TemplateEngine cache)
-
-#### Performance Enhancements
-1. **Batch Operations:** When possible, batch registry/WMI operations
-2. **Incremental Reporting:** Stream report sections instead of building entire report in memory
-3. **Log Rotation:** Implement log size limits to prevent disk bloat
-4. **Cleanup Automation:** Periodic cleanup of old temp_files
-
-#### Architectural Recommendations
-1. **Plugin System:** Define module interface contract, allow external modules
-2. **REST API Mode:** Optional HTTP API for remote execution/monitoring
-3. **Rollback Functionality:** Snapshot system state before Type2, allow rollback
-4. **Dry-Run Preview:** Generate "What Will Happen" report before execution
-
-### 4.3 Alternative Approaches
-
-**Alternative 1: Separate Executables per OS**
-- Create `script-win10.bat` and `script-win11.bat`
-- Each loads OS-specific modules only
-- **Pro:** Simpler module code, no branching
-- **Con:** Duplicate maintenance, user confusion
-
-**Alternative 2: Configuration-Driven OS Handling**
-- Single module, OS differences in configuration files
-- Example: `bloatware-list-win10.json` vs `bloatware-list-win11.json`
-- **Pro:** Cleaner code, OS logic externalized
-- **Con:** Configuration explosion, harder to track differences
-
-**Alternative 3: Hybrid Approach (Recommended)**
-- Common logic in main function
-- OS-specific code in separate helper functions
-- Configuration files specify OS-specific paths/values
-- **Pro:** Balance of maintainability and clarity
-- **Con:** Requires discipline to follow pattern consistently
-
----
-
-## 📋 Phase 5: Detailed Findings Deliverables
-
-### 5.1 Module Overlap Matrix
-
-**Expected Output:**
-| Module A | Module B | Overlap Type | Functions/Code | Recommendation |
-|----------|----------|--------------|----------------|----------------|
-| SecurityEnhancement | SecurityEnhancementCIS | Complete (95%) | 23 shared functions | **MERGE** |
-| SystemOptimization | TelemetryDisable | Partial (40%) | Privacy settings overlap | **MERGE** |
-| BloatwareRemoval | EssentialApps | None (0%) | Independent domains | Keep separate |
-| ... | ... | ... | ... | ... |
-
-### 5.2 Unused Code Report
-
-**Expected Output:**
-```
-📊 Unused Code Analysis Report
-═══════════════════════════════════════════════
-
-Module: CoreInfrastructure.psm1
-  ❌ Function: Get-LegacyTempPath (Line 245)
-     Last Used: Never (deprecated in v3.0)
-     Recommendation: Remove
-  
-  ❌ Variable: $global:LEGACY_CONFIG_PATH (Line 89)
-     Last Used: v2.5.0
-     Recommendation: Remove
-
-Module: LogProcessor.psm1
-  ❌ Function: ConvertTo-LegacyFormat (Line 412)
-     Last Used: v2.8.0 (migration complete)
-     Recommendation: Remove
-  
-  ⚠️  Function: Get-AlternativeParser (Line 567)
-     Last Used: Fallback only (never triggered in tests)
-     Recommendation: Keep but document as fallback
-
-... (complete report for all modules)
-```
-
-### 5.3 Broken Path Report
-
-**Expected Output:**
-```
-🚨 Broken Path Analysis Report
-═══════════════════════════════════════════════
-
-Module: ReportGenerator.psm1
-  ❌ Line 156: Hardcoded path
-     Code: $templatePath = "C:\temp\report-template.html"
-     Issue: Not using template discovery
-     Fix: Use Get-Template from TemplateEngine
-  
-  ❌ Line 289: Incorrect subdirectory
-     Code: $dataPath = Join-Path $env:TEMP "maintenance\data"
-     Issue: Should use temp_files in repo root
-     Fix: Use Get-SessionPath -Category 'data'
-
-Module: BloatwareRemoval.psm1
-  ⚠️  Line 78: Potentially incorrect path
-     Code: $diffPath = "temp_files\logs\bloatware\diff.json"
-     Issue: Relative path (may fail if cwd changes)
-     Fix: Use Get-SessionPath with absolute paths
-
-... (complete report for all modules)
-```
-
-### 5.4 Naming Inconsistency Report
-
-**Expected Output:**
-```
-📝 Naming Convention Issues Report
-═══════════════════════════════════════════════
-
-PowerShell Verb Violations:
-  ❌ Module: CommonUtilities.psm1
-     Function: Fetch-ConfigData (Line 45)
-     Issue: 'Fetch' is not an approved verb
-     Fix: Rename to Get-ConfigData
-
-  ❌ Module: UserInterface.psm1
-     Function: Display-Menu (Line 123)
-     Issue: 'Display' is not approved (use 'Show')
-     Fix: Rename to Show-Menu
-
-Variable Naming Inconsistencies:
-  ⚠️  Module: LogAggregator.psm1
-     Variable: $Module_Results (Line 67)
-     Issue: Uses underscore (should be camelCase)
-     Fix: Rename to $moduleResults
-
-  ⚠️  Module: ReportGenerator.psm1
-     Variable: $HTMLContent (Line 234)
-     Issue: Inconsistent casing (should be $htmlContent)
-     Fix: Rename to $htmlContent
-
-... (complete report for all modules)
-```
-
-### 5.5 Data Type Inconsistency Report
-
-**Expected Output:**
-```
-🔢 Data Type & Format Issues Report
-═══════════════════════════════════════════════
-
-Type Confusion:
-  ❌ Module: LogProcessor.psm1
-     Function: Get-Type1AuditData
-     Issue: Returns [PSCustomObject] on success, [Hashtable] on error
-     Impact: Consumers can't reliably access properties
-     Fix: Standardize to [PSCustomObject] always
-
-  ❌ Module: BloatwareRemoval.psm1
-     Function: Get-BloatwareList
-     Issue: Returns [Array] when items found, $null when empty
-     Impact: Calling code must check type and null
-     Fix: Always return [Array] (empty array if no items)
-
-Format Inconsistencies:
-  ⚠️  Module: EssentialAppsAudit.psm1
-     Output: JSON file with DateTime as string "2026-02-07 14:30:15"
-     
-  ⚠️  Module: SystemOptimizationAudit.psm1
-     Output: JSON file with DateTime as ISO8601 "2026-02-07T14:30:15Z"
-     
-     Issue: Date format inconsistency across modules
-     Fix: Standardize to ISO8601 everywhere
-
-... (complete report for all modules)
-```
-
-### 5.6 Logic Flow Issues Report
-
-**Expected Output:**
-```
-🐛 Logic & Control Flow Issues Report
-═══════════════════════════════════════════════
-
-Critical Logic Errors:
-  🔴 Module: WindowsUpdates.psm1
-     Function: Invoke-WindowsUpdates
-     Location: Lines 234-245
-     Issue: Infinite loop possible if Windows Update fails repeatedly
-     Code:
-       while (-not $updateComplete) {
-           $result = Install-WindowsUpdate
-           # No exit condition if Install-WindowsUpdate always returns $false
-       }
-     Fix: Add retry limit and error handling
-
-Suspicious Patterns:
-  ⚠️  Module: SecurityEnhancement.psm1
-     Function: Set-RegistryValue
-     Location: Line 178
-     Issue: Swallowing all exceptions without logging
-     Code:
-       try { Set-ItemProperty ... }
-       catch { }  # Silent failure
-     Fix: Log error before suppressing
-
-  ⚠️  Module: BloatwareRemoval.psm1
-     Function: Remove-AppxPackage
-     Location: Lines 89-92
-     Issue: DryRun check missing for dangerous operation
-     Code:
-       Remove-AppxPackage -Package $pkg -ErrorAction Stop
-       # Should check $DryRun parameter first
-     Fix: Wrap in if (-not $DryRun) { ... }
-
-... (complete report for all modules)
-```
-
-### 5.7 Performance Bottleneck Report
-
-**Expected Output:**
-```
-⚡ Performance Analysis Report
-═══════════════════════════════════════════════
-
-Hot Paths (>100ms per call):
-  🔥 Module: LogProcessor.psm1
-     Function: Get-ComprehensiveLogAnalysis
-     Avg Duration: 2,340ms
-     Bottleneck: Line 456 - reading all log files in loop
-     Optimization: Batch file reads, use parallel processing
-  
-  🔥 Module: ReportGenerator.psm1
-     Function: New-MaintenanceReport
-     Avg Duration: 1,850ms
-     Bottleneck: Template rendering without caching
-     Optimization: Already addressed in Phase 4.1 (TemplateEngine)
-
-Inefficient Patterns:
-  ⚠️  Module: BloatwareDetectionAudit.psm1
-     Function: Get-InstalledApps
-     Issue: Calls Get-AppxPackage 3 times (once per user context)
-     Optimization: Call once, filter results in memory
-  
-  ⚠️  Module: CoreInfrastructure.psm1
-     Function: Get-MainConfiguration
-     Issue: Reads JSON file every call (no caching)
-     Optimization: Cache in module scope, invalidate on file change
-
-... (complete report for all modules)
+Provide implementation examples for:
+- Orchestrator initialization
+- Type1 module logging template
+- Type2 module logging template
+- Error logging best practices
 ```
 
 ---
 
-## 📅 Implementation Roadmap
+## ✅ Quality Assurance Checklist
 
-### Phase D.1: Module Consolidation (Week 1-2)
-**Goals:**
-1. Merge SecurityEnhancement + SecurityEnhancementCIS
-2. Merge SystemOptimization + TelemetryDisable
-3. Move SystemInventory to Type1
+### Pre-Deployment Validation
 
-**Tasks:**
-- [ ] Create unified `SecurityEnhancement.psm1` with CIS integration
-- [ ] Update `security-config.json` with `useEnhancedCISBaseline` flag
-- [ ] Migrate telemetry functions into `SystemOptimization.psm1`
-- [ ] Relocate and rename SystemInventory to Type1
-- [ ] Update orchestrator module loading
-- [ ] Archive deprecated modules
-- [ ] Update all documentation and copilot instructions
-- [ ] Test on Windows 10 and Windows 11
+**Copilot Prompt:**
+```
+@workspace Perform comprehensive pre-deployment validation:
 
-**Validation:**
-- All existing functionality preserved
-- No regression in test suite
-- Documentation updated
+CRITICAL CHECKS:
+[ ] All PSScriptAnalyzer Critical/Warning issues resolved
+[ ] No empty catch blocks anywhere in project
+[ ] No null reference errors possible
+[ ] All hardcoded paths replaced with dynamic discovery
+[ ] All Type1 modules create output in /temp_files
+[ ] All Type2 modules handle missing input gracefully
+[ ] MaintenanceOrchestrator.ps1 imports all modules
+[ ] Start-Transcript at project start
+[ ] Stop-Transcript before report generation
+[ ] HTML report generation tested and verified
+[ ] Report copy to script.bat location works
+[ ] Countdown abort functionality tested
+[ ] Cleanup and reboot tested (in VM)
 
-### Phase D.2: OS-Specific Architecture (Week 3-4)
-**Goals:**
-1. Implement OS-specific function pattern in all modules
-2. Enhance configuration files with OS sections
-3. Update schemas for OS-aware configs
+FUNCTIONALITY CHECKS:
+[ ] Can execute from any folder path
+[ ] Can execute from UNC network path
+[ ] Works on Windows 10 (multiple versions)
+[ ] Works on Windows 11
+[ ] Works with non-admin rights (where possible)
+[ ] Works with admin rights
+[ ] Dry-run mode works (WhatIf)
+[ ] No system modifications in WhatIf mode
 
-**Tasks:**
-- [ ] Add `Get-WindowsVersionContext` enhancements (if needed)
-- [ ] Refactor each Type1 module with `-Windows10` and `-Windows11` functions
-- [ ] Refactor each Type2 module with OS-specific implementations
-- [ ] Update configuration JSONs with OS-specific sections
-- [ ] Update JSON schemas to allow OS-specific properties
-- [ ] Create test suite for cross-OS validation
-- [ ] Document OS-specific behaviors in module headers
+INTEGRATION CHECKS:
+[ ] script.bat downloads repo successfully
+[ ] Extraction to temp folder works
+[ ] All modules discovered and loaded
+[ ] Type1 menu displays correctly
+[ ] Type1 modules execute independently
+[ ] LogProcessor analyzes Type1 output
+[ ] Type2 modules receive correct data
+[ ] Type2 modules skip if no actions needed
+[ ] Report includes all module data
+[ ] Cleanup removes only repo folder
 
-**Validation:**
-- Every module detects and routes to correct OS function
-- Configurations load OS-appropriate values
-- Tests pass on both Windows 10 and Windows 11
+ERROR HANDLING CHECKS:
+[ ] Network failure during download handled
+[ ] Extraction failure handled
+[ ] Missing module files handled
+[ ] Corrupt Type1 output handled
+[ ] Type2 execution errors don't crash project
+[ ] Report generation failure handled
+[ ] Cleanup failure handled gracefully
 
-### Phase D.3: Enhanced Intelligent Orchestration (Week 5-6)
-**Goals:**
-1. Make Stage 1 menu fully functional
-2. Implement log processing → Type2 skip logic
-3. Add "No actions required" announcements
+DOCUMENTATION CHECKS:
+[ ] README.md complete and accurate
+[ ] Each module has header comment block
+[ ] All functions have help documentation
+[ ] Installation instructions verified
+[ ] Task Scheduler setup documented
+[ ] Troubleshooting guide created
 
-**Tasks:**
-- [ ] Implement Stage 1 menu with 10s countdown
-- [ ] Allow individual Type1 module selection
-- [ ] Integrate ExecutionPlanner with audit result analysis
-- [ ] Add skip logic based on processed Type1 data
-- [ ] Implement status announcements (✅ SKIPPED, ⚙️ RUNNING, etc.)
-- [ ] Update ReportGenerator to include skipped modules
-- [ ] Test unattended flow (timeout defaults to option 0)
+PERFORMANCE CHECKS:
+[ ] Total execution time < 30 minutes
+[ ] No memory leaks detected
+[ ] No runaway processes
+[ ] Temp file cleanup complete
+[ ] Log file size reasonable (< 50MB)
 
-**Validation:**
-- Menu displays correctly with all Type1 modules
-- Countdown works with user input override
-- Type2 modules correctly skipped when no actions needed
-- Report shows all module statuses
-
-### Phase D.4: Unattended Execution & Cleanup (Week 7)
-**Goals:**
-1. Implement post-execution 120s countdown
-2. Add repository cleanup logic
-3. Integrate system restart
-
-**Tasks:**
-- [ ] Create post-execution countdown function (120s)
-- [ ] Add keypress detection (any key aborts)
-- [ ] Implement repository folder deletion logic (safe with validation)
-- [ ] Add system restart command (requires elevation)
-- [ ] Handle edge cases (user not admin, deletion fails, etc.)
-- [ ] Test full unattended flow end-to-end
-- [ ] Add safety confirmation in interactive mode
-
-**Validation:**
-- Countdown displays with clear instructions
-- Any key press aborts and preserves files
-- Timeout triggers cleanup and restart
-- Safe failure handling (doesn't restart if cleanup fails)
-
-### Phase D.5: Infrastructure Improvements (Week 8)
-**Goals:**
-1. Fix all identified issues from Phase 4 analysis
-2. Optimize performance bottlenecks
-3. Remove unused code
-
-**Tasks:**
-- [ ] Address all broken paths identified
-- [ ] Standardize data types and formats
-- [ ] Remove unused functions and variables
-- [ ] Fix logic flow issues and error handling
-- [ ] Implement lazy module loading
-- [ ] Add configuration caching
-- [ ] Optimize log processing pipeline
-- [ ] Update tests to cover all fixes
-
-**Validation:**
-- All PSScriptAnalyzer warnings resolved
-- Performance benchmarks improved
-- Test coverage at 90%+
-
-### Phase D.6: Documentation & Release (Week 9)
-**Goals:**
-1. Update all documentation
-2. Create migration guide
-3. Prepare v4.0.0 release
-
-**Tasks:**
-- [ ] Update PROJECT.md with Phase D changes
-- [ ] Update copilot-instructions.md
-- [ ] Create MIGRATION_GUIDE_v4.md
-- [ ] Update user documentation (USER_GUIDE_ORCHESTRATION.md)
-- [ ] Update developer documentation (DEVELOPER_GUIDE_ORCHESTRATION.md)
-- [ ] Create PHASE_D_COMPLETION_REPORT.md
-- [ ] Tag v4.0.0 release in git
-- [ ] Archive old versions in `archive/phase_d/`
-
-**Deliverables:**
-- Complete documentation suite
-- Migration guide for existing users
-- Release notes
-- Lessons learned document
+Generate validation report with pass/fail for each item.
+Include remediation steps for failures.
+```
 
 ---
 
-## 🎯 Success Criteria
+## 📚 Copilot Command Reference
 
-The refactoring and implementation is complete when:
+### Quick Diagnostic Commands
 
-1. ✅ **Module Analysis:**
-   - Every Type1 and Type2 module individually analyzed
-   - All core modules (CoreInfrastructure, LogAggregator, etc.) audited
-   - Overlaps, duplications, and issues documented
+#### Critical Issues Scan
+```
+@workspace Emergency scan for project-breaking issues:
+1. Find all null references without validation
+2. Find all empty catch blocks
+3. Find all hardcoded paths
+4. Find all infinite loop risks
+5. Find all missing error handlers on system modifications
+Show with file paths and line numbers, grouped by severity.
+```
 
-2. ✅ **Consolidation:**
-   - SecurityEnhancement modules merged (single module)
-   - TelemetryDisable merged into SystemOptimization
-   - SystemInventory moved to Type1
-   - Perfect Type1/Type2 correspondence achieved
+#### Module Discovery
+```
+@workspace Inventory all modules in project:
+1. List all .ps1 files in /type1
+2. List all .ps1 files in /type2
+3. List all .ps1 files in /core
+4. For each file, determine:
+   - Module type (Type1/Type2/Core)
+   - Primary function
+   - Dependencies
+   - Integration with orchestrator
+Create dependency graph.
+```
 
-3. ✅ **OS-Specific Architecture:**
-   - Every module has Windows 10 and Windows 11 functions
-   - OS detection at orchestrator startup
-   - Configurations support OS-specific sections
+#### Data Flow Trace
+```
+@workspace Trace complete data flow:
+1. Map Type1 output files → storage location → format
+2. Map LogProcessor input files → processing logic → output
+3. Map Type2 input requirements → source files → processing
+4. Identify all transformation points
+5. Find data loss or corruption risks
+Create visual flow diagram.
+```
 
-4. ✅ **Intelligent Orchestration:**
-   - Stage 1 menu functional with individual/all selection
-   - Type1 audit results drive Type2 execution
-   - Modules correctly skipped when no actions needed
-   - Status announcements clear and informative
+### Module-Specific Analysis
 
-5. ✅ **Unattended Execution:**
-   - Full unattended flow works on fresh Windows 10/11 install
-   - temp_files created in repo root
-   - maintenance.log captures complete transcript
-   - 10s Stage 1 countdown works
-   - 120s post-execution countdown works
-   - Repository cleanup and restart functional
+#### Single Module Deep Dive
+```
+@workspace Complete analysis of [ModuleName.ps1]:
+1. Function-by-function breakdown
+2. Parameter validation review
+3. Error handling audit
+4. Logic error identification
+5. Performance bottlenecks
+6. Integration verification
+7. Documentation completeness
+8. Recommended improvements
+Provide detailed report with code examples.
+```
 
-6. ✅ **Infrastructure Quality:**
-   - All broken paths fixed
-   - Naming conventions standardized
-   - Data types consistent
-   - Logic errors resolved
-   - Performance bottlenecks optimized
-   - Unused code removed
+#### Cross-Module Comparison
+```
+@workspace Compare error handling across all modules:
+1. Find inconsistent patterns
+2. Identify best practice examples
+3. Find modules missing error handling
+4. Suggest standardized template
+5. Provide refactoring plan
+Show before/after code examples.
+```
 
-7. ✅ **Testing & Validation:**
-   - Test suite passes on Windows 10 and 11
-   - Manual testing checklist complete
-   - Unattended execution tested end-to-end
-   - Regression tests pass
+### Code Quality Improvement
 
-8. ✅ **Documentation:**
-   - PROJECT.md updated with all changes
-   - Copilot instructions reflect new patterns
-   - Migration guide created
-   - Phase D completion report written
-   - Release notes prepared
+#### Duplicate Code Elimination
+```
+@workspace Find and eliminate duplicate code:
+1. Scan all modules for duplicate functions (90%+ similarity)
+2. Scan for repeated code blocks (5+ lines, 2+ occurrences)
+3. Identify candidates for utility functions
+4. Suggest placement in /core
+5. Provide refactoring steps with examples
+Show impact analysis (lines saved, modules affected).
+```
 
----
+#### Performance Optimization
+```
+@workspace Identify performance improvements:
+1. Find nested loops (O(n²) or worse)
+2. Find repeated expensive operations (WMI, registry, file I/O)
+3. Find inefficient pipelines
+4. Suggest parallel execution opportunities
+5. Identify unnecessary data collection
+Provide optimized code examples with before/after benchmarks.
+```
 
-## 📊 Analysis Methodology
+### Testing and Validation
 
-### Approach Guidelines
+#### Generate Test Cases
+```
+@workspace Create Pester test suite for [ModuleName]:
+1. Test valid inputs for all functions
+2. Test invalid inputs (null, empty, wrong type)
+3. Test edge cases (max values, special characters)
+4. Test error conditions
+5. Test integration with dependent modules
+Provide complete .Tests.ps1 file.
+```
 
-**1. Thoroughness Over Speed:**
-- Take time to understand each module deeply
-- Don't rush to conclusions
-- Verify findings with code inspection
+#### End-to-End Test Plan
+```
+@workspace Create complete test plan:
+1. Pre-test setup steps
+2. Test folder preparation
+3. script.bat execution test
+4. Module-by-module validation
+5. Report verification
+6. Cleanup verification
+7. Expected outcomes for each step
+8. Pass/fail criteria
+Provide test checklist and validation script.
+```
 
-**2. Evidence-Based Recommendations:**
-- Back every suggestion with specific examples
-- Quantify impact where possible (lines of code, performance metrics)
-- Provide code snippets to illustrate issues
+### Documentation Generation
 
-**3. Honest Assessment:**
-- Don't oversell benefits
-- Clearly state risks and trade-offs
-- Identify potential breaking changes
+#### Create README.md
+```
+@workspace Generate comprehensive README.md:
+1. Project overview and purpose
+2. System requirements
+3. Installation steps
+4. Task Scheduler configuration
+5. Module descriptions (Type1 and Type2)
+6. Execution flow diagram
+7. Troubleshooting guide
+8. FAQ section
+9. Contribution guidelines
+Use clear formatting with examples.
+```
 
-**4. Actionable Outputs:**
-- Every finding should have a clear fix
-- Prioritize by impact (Critical, High, Medium, Low)
-- Provide step-by-step remediation
-
-**5. Incremental Implementation:**
-- Break work into discrete phases
-- Create checkpoints for review
-- Allow rollback if issues arise
-
-### Task Management Protocol
-
-**1. Split Complex Work:**
-- Use manage_todo_list tool for multi-step tasks
-- Mark tasks in-progress before starting
-- Mark completed immediately after finishing
-- Don't batch completions
-
-**2. Quality Checkpoints:**
-- Review findings after each module analysis
-- Validate recommendations with code examples
-- Test proposed changes in isolated branch
-
-**3. Documentation:**
-- Create detailed finding reports (5.1-5.7 format)
-- Update PROJECT.md incrementally
-- Maintain change log
-
----
-
-## 🔗 Quick Reference
-
-| Resource | Location |
-|----------|----------|
-| Project Overview | [PROJECT.md](../PROJECT.md) |
-| Copilot Instructions | [.github/copilot-instructions.md](../.github/copilot-instructions.md) |
-| Phase C.3 Report | [docs/PHASE_C3_COMPLETION_REPORT.md](../docs/PHASE_C3_COMPLETION_REPORT.md) |
-| Phase C.4 Report | [docs/PHASE_C4_COMPLETION_REPORT.md](../docs/PHASE_C4_COMPLETION_REPORT.md) |
-| Main Orchestrator | [MaintenanceOrchestrator.ps1](../MaintenanceOrchestrator.ps1) |
-| Core Modules | `modules/core/` |
-| Type1 Modules | `modules/type1/` |
-| Type2 Modules | `modules/type2/` |
-| Configuration Root | `config/` |
-| Test Suite | `tests/` |
-
----
-
-## 💡 Context for AI Assistants
-
-**When Processing This Prompt:**
-
-1. **Understand the Big Picture:**
-   - This is an enterprise-grade Windows maintenance automation system
-   - Current version: 4.0.0 (Phase C complete - OS-specific enhancements)
-   - Goal: Refactor and enhance for v4.1.0+ (Phase D)
-
-2. **Follow Established Patterns:**
-   - 3-tier architecture: Entry → Core → Operational
-   - Type1 (audit) vs Type2 (action) separation
-   - Standardized logging with Write-LogEntry
-   - Centralized path discovery via CoreInfrastructure
-
-3. **Respect Project Constraints:**
-   - PowerShell 7.0+ required
-   - Windows 10/11 target platforms
-   - Must support unattended execution
-   - Backward compatibility where possible
-
-4. **Analysis Scope:**
-   - 100% module coverage (no shortcuts)
-   - Manual inspection required (verify patterns)
-   - Evidence-based recommendations
-   - Honest risk assessment
-
-5. **Deliverable Quality:**
-   - Detailed finding reports (use provided templates)
-   - Code snippets to illustrate issues
-   - Prioritized action items
-   - Implementation roadmap with time estimates
+#### Generate Module Documentation
+```
+@workspace Create documentation for all modules:
+For each module generate:
+1. Module purpose and description
+2. Function reference with parameters
+3. Input requirements
+4. Output format
+5. Dependencies
+6. Examples
+7. Error handling behavior
+Create individual .md files in /docs folder.
+```
 
 ---
 
-**Last Updated:** February 7, 2026  
-**Prompt Version:** 2.0.0  
-**Target Project Version:** 4.1.0+ (Phase D Implementation)
+## 🎯 Phased Implementation Plan
 
+### Phase 1: Critical Fixes (Week 1)
+
+**Copilot Prompt:**
+```
+@workspace Phase 1 implementation - Critical fixes:
+
+TASKS:
+1. Fix all null reference errors
+2. Add error handling to empty catch blocks
+3. Replace all hardcoded paths with dynamic discovery
+4. Fix incomplete if/else statements
+5. Add missing parameter validation
+6. Fix OS compatibility issues (Win10 vs Win11)
+
+For each task:
+- Identify all instances
+- Provide fixes with code
+- Test scenarios
+- Verification steps
+
+Generate implementation checklist.
+```
+
+### Phase 2: Architecture Improvements (Week 2)
+
+**Copilot Prompt:**
+```
+@workspace Phase 2 implementation - Architecture:
+
+TASKS:
+1. Implement /temp_files creation in repo folder
+2. Add Start-Transcript to orchestrator
+3. Implement Type1 module menu with countdown
+4. Implement LogProcessor for Type1 output analysis
+5. Add Type2 skip logic for no-action scenarios
+6. Add Stop-Transcript before report generation
+
+Provide:
+- Implementation code for each task
+- Integration points
+- Testing procedures
+```
+
+### Phase 3: Reporting and Cleanup (Week 3)
+
+**Copilot Prompt:**
+```
+@workspace Phase 3 implementation - Reporting:
+
+TASKS:
+1. Create HTML report generator
+2. Add module-specific report sections
+3. Implement report copy to script.bat location
+4. Create 120-second countdown with abort
+5. Implement cleanup logic (delete repo folder)
+6. Add Restart-Computer with proper error handling
+
+Provide:
+- Complete implementation code
+- HTML template
+- Testing scenarios
+- Error recovery procedures
+```
+
+### Phase 4: Testing and Documentation (Week 4)
+
+**Copilot Prompt:**
+```
+@workspace Phase 4 implementation - Testing:
+
+TASKS:
+1. Create Pester test suite
+2. Generate module documentation
+3. Create README.md
+4. Write troubleshooting guide
+5. Perform end-to-end testing
+6. Create deployment package
+
+Provide:
+- Test scripts
+- Documentation files
+- Deployment checklist
+- Known issues list
+```
+
+---
+
+## 🔧 Project Structure Reference
+
+```
+PowerShell-Maintenance-Project/
+├── script.bat                          # Entry point (network-deployed)
+├── MaintenanceOrchestrator.ps1         # Main orchestrator
+├── README.md                           # Project documentation
+├── /core/                              # Core utilities and shared functions
+│   ├── Utilities.ps1
+│   ├── LogProcessor.ps1
+│   ├── ReportGenerator.ps1
+│   └── ...
+├── /config/                            # Configuration files
+│   ├── settings.json
+│   ├── module-config.json
+│   └── ...
+├── /type1/                             # Type1 modules (inventory)
+│   ├── Type1-Module1.ps1
+│   ├── Type1-Module2.ps1
+│   └── ...
+├── /type2/                             # Type2 modules (maintenance actions)
+│   ├── Type2-Module1.ps1
+│   ├── Type2-Module2.ps1
+│   └── ...
+├── /temp_files/                        # Runtime temp files (created during execution)
+│   ├── /logs/
+│   │   └── maintenance.log
+│   ├── /type1-output/
+│   │   └── [module-specific files]
+│   ├── /type2-output/
+│   │   └── [module-specific files]
+│   └── /reports/
+│       └── MaintenanceReport_[timestamp].html
+└── /tests/                             # Pester tests
+    ├── Unit/
+    └── Integration/
+```
+
+---
+
+## 📖 Usage Instructions
+
+### For Comprehensive Project Analysis
+1. Open VSCode in your project folder
+2. Open Copilot Chat (`Ctrl+Shift+I`)
+3. Copy the entire **Phase 1: Comprehensive Module Analysis** prompt
+4. Paste into Copilot Chat
+5. Review findings and create action items
+
+### For Specific Module Analysis
+1. Navigate to the module file in VSCode
+2. Open Copilot Chat
+3. Use the **Type1 Module Analysis Template** or **Type2 Module Analysis Template**
+4. Replace `[ModuleName]` with actual module name
+5. Review detailed analysis
+
+### For Implementation Tasks
+1. Start with Phase 1 critical fixes
+2. Use corresponding Copilot prompts from **Phased Implementation Plan**
+3. Implement changes incrementally
+4. Test after each phase
+5. Document all changes
+
+### For Quality Assurance
+1. Use **Pre-Deployment Validation** checklist
+2. Run through each check systematically
+3. Address failures before proceeding
+4. Generate final validation report
+
+---
+
+## 🚨 Critical Reminders
+
+
+2. **Maintain transcript logging** - Everything must be logged
+3. **OS compatibility is mandatory** - Must work on Windows 10 and 11
+4. **Network paths must work** - Script.bat can be anywhere
+5. **Unattended operation is required** - Default behavior needs no user input
+6. **Error handling is non-negotiable** - No crashes, only graceful degradation
+7. **Cleanup must be reliable** - No orphaned files or processes
+8. **Documentation must be current** - Update as you implement changes
+
+---
+
+## 📞 Support and Feedback
+
+### When Copilot Analysis is Unclear
+```
+@workspace Clarify previous analysis for [specific topic]:
+Provide:
+1. More detailed explanation
+2. Concrete code examples
+3. Step-by-step implementation
+4. Testing scenarios
+```
+
+### When Implementation Fails
+```
+@workspace Debug implementation failure for [feature]:
+Current code: [paste code]
+Error: [paste error]
+Expected behavior: [describe]
+
+Provide:
+1. Root cause analysis
+2. Fixed code
+3. Why original approach failed
+4. Prevention for future
+```
+
+---
+
+## ✨ Final Notes
+
+This document is your comprehensive guide to overhauling the PowerShell Maintenance Project using VSCode Copilot. Use the prompts sequentially for best results, starting with critical analysis and moving through implementation phases.
+
+Remember:
+- **Be specific** with module names and file paths in prompts
+- **Include context** by using `@workspace` for project-wide analysis
+- **Iterate** - review Copilot's suggestions and refine prompts as needed
+- **Test incrementally** - validate each change before moving forward
+- **Document everything** - maintain records of changes and decisions
+
+**Success Criteria:** A fully functional, unattended maintenance system that can run monthly on any Windows 10/11 PC with comprehensive logging and reporting.
+
+---
+
+how i like this project to run and what you should implement 
+temp_files folder must be created in the extracted repo folder
+maintenance.log should be like a powershell transcript for the entire project
+when the orchestrator is running it should display a menu as fallows
+Stage 1 gadder System Inventory 
+   0 - run all Type1 modules
+   1 - Type1 no 1
+   2 - Type1 no 2
+   3 - Type1 no 3
+   ......
+   with a 10 s countdown, if no user input (1, 2, 3 ....) 
+   it should run 0 - run all Type1 modules and create inventory files for the respective module 
+   Type1 and Type2 modules must run OS specific actions paths and tools
+   These logs should be processed and determine what actions should be run by the Type2 modules
+   If there are no results from processing the logs for a certain module that module should 
+   announce that there are no actions to be taken and should be skipped
+   Do a comprehensive analysis of Type1 and Type2 modules /core and /config folders
+   Make sure the Type1 modules provide the necessary information for the Type2 modules
+   thru the end of the project execution a nice HTML report should be created
+   containing all the actions the project has taken on that run and place a copy of that report on the location where the script.bat is
+   After the report is copied it should display a 120 countdown
+      if no user interaction  it should remove the repo folder and restart the system
+      if user interaction it should abort the countdown and leave everything as is
+
+Remember this project must be able to run unattended on any Windows 10/11 computer

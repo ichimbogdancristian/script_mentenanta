@@ -52,7 +52,7 @@ else {
 # Type2 modules call package managers directly via CLI (winget.exe, choco.exe)
 
 # Validate Type1 module loaded correctly
-if (-not (Get-Command -Name 'Get-EssentialAppsAudit' -ErrorAction SilentlyContinue)) {
+if (-not (Get-Command -Name 'Get-EssentialAppsAnalysis' -ErrorAction SilentlyContinue)) {
     throw "Type 1 module functions not available - ensure EssentialAppsAudit.psm1 is properly imported"
 }
 
@@ -157,39 +157,40 @@ function Invoke-EssentialApps {
 
         # Process only missing apps found in diff comparison
         $installResults = @{ InstalledApps = @(); FailedApps = @() }
+        $processedCount = 0
 
-            foreach ($app in $diffList) {
-                try {
-                    Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Installing app: $($app.Name)" -LogPath $executionLogPath -Operation 'Install' -Target $app.Name -Metadata @{ Source = $app.RecommendedMethod; Id = if ($app.RecommendedMethod -eq 'Winget') { $app.WingetId } else { $app.ChocoId } }
+        foreach ($app in $diffList) {
+            try {
+                Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Installing app: $($app.Name)" -LogPath $executionLogPath -Operation 'Install' -Target $app.Name -Metadata @{ Source = $app.RecommendedMethod; Id = if ($app.RecommendedMethod -eq 'Winget') { $app.WingetId } else { $app.ChocoId } }
 
-                    # Transform app data for Install-SingleApplication
-                    $appHashtable = @{
-                        Name     = $app.Name
-                        Source   = $app.RecommendedMethod
-                        Id       = if ($app.RecommendedMethod -eq 'Winget') { $app.WingetId } else { $app.ChocoId }
-                        WingetId = $app.WingetId
-                        ChocoId  = $app.ChocoId
-                    }
-
-                    $result = Install-SingleApplication -AppData $appHashtable -ExecutionLogPath $executionLogPath
-                    if ($result.Success) {
-                        $installResults.InstalledApps += $app
-                        $processedCount++
-                        Write-StructuredLogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Successfully installed: $($app.Name)" -LogPath $executionLogPath -Operation 'Install' -Target $app.Name -Result 'Success' -Metadata @{ Source = $app.RecommendedMethod }
-                    }
-                    else {
-                        $installResults.FailedApps += $app
-                        Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Failed to install: $($app.Name) - $($result.ErrorMessage)" -LogPath $executionLogPath -Operation 'Install' -Target $app.Name -Result 'Failed' -Metadata @{ Error = $result.ErrorMessage }
-                    }
+                # Transform app data for Install-SingleApplication
+                $appHashtable = @{
+                    Name     = $app.Name
+                    Source   = $app.RecommendedMethod
+                    Id       = if ($app.RecommendedMethod -eq 'Winget') { $app.WingetId } else { $app.ChocoId }
+                    WingetId = $app.WingetId
+                    ChocoId  = $app.ChocoId
                 }
-                catch {
+
+                $result = Install-SingleApplication -AppData $appHashtable -ExecutionLogPath $executionLogPath
+                if ($result.Success) {
+                    $installResults.InstalledApps += $app
+                    $processedCount++
+                    Write-StructuredLogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Successfully installed: $($app.Name)" -LogPath $executionLogPath -Operation 'Install' -Target $app.Name -Result 'Success' -Metadata @{ Source = $app.RecommendedMethod }
+                }
+                else {
                     $installResults.FailedApps += $app
-                    Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Error installing $($app.Name): $($_.Exception.Message)" -LogPath $executionLogPath -Operation 'Install' -Target $app.Name -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
+                    Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Failed to install: $($app.Name) - $($result.ErrorMessage)" -LogPath $executionLogPath -Operation 'Install' -Target $app.Name -Result 'Failed' -Metadata @{ Error = $result.ErrorMessage }
                 }
             }
+            catch {
+                $installResults.FailedApps += $app
+                Write-StructuredLogEntry -Level 'ERROR' -Component 'ESSENTIAL-APPS' -Message "Error installing $($app.Name): $($_.Exception.Message)" -LogPath $executionLogPath -Operation 'Install' -Target $app.Name -Result 'Error' -Metadata @{ Error = $_.Exception.Message }
+            }
+        }
 
-            $processedCount = $installResults.InstalledApps.Count
-            Write-StructuredLogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Installed $processedCount essential apps" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ InstalledCount = $processedCount; FailedCount = $installResults.FailedApps.Count }
+        $processedCount = $installResults.InstalledApps.Count
+        Write-StructuredLogEntry -Level 'SUCCESS' -Component 'ESSENTIAL-APPS' -Message "Installed $processedCount essential apps" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{ InstalledCount = $processedCount; FailedCount = $installResults.FailedApps.Count }
 
         if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null }
 
