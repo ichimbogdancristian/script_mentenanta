@@ -96,35 +96,33 @@ IF "%SCRIPT_PATH:~0,2%"=="\\" (
     CALL :LOG_MESSAGE "Running from local location: %SCRIPT_PATH%" "INFO" "LAUNCHER"
 )
 
-REM FIX: Create temp_files\logs directory BEFORE any logging
-IF NOT EXIST "%WORKING_DIR%temp_files" MKDIR "%WORKING_DIR%temp_files" >nul 2>&1
-IF NOT EXIST "%WORKING_DIR%temp_files\logs" MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1
+REM ============================================================================
+REM CRITICAL FIX: Use bootstrap log in TEMP until repository is extracted
+REM This ensures all logs end up in ONE location: extracted_repo\temp_files\logs
+REM ============================================================================
+SET "BOOTSTRAP_LOG=%TEMP%\maintenance_bootstrap_%RANDOM%.log"
+SET "LOG_FILE=%BOOTSTRAP_LOG%"
 
-REM Setup logging - Point directly to temp_files\logs\maintenance.log (no bootstrap at root)
-SET "LOG_FILE=%WORKING_DIR%temp_files\logs\maintenance.log"
-
-REM FIX #1: Initialize the log file immediately on startup (don't wait for first LOG_MESSAGE call)
-REM Get current date/time for banner using more reliable methods (ALWAYS, not just on first run)
+REM Initialize bootstrap log with banner BEFORE any LOG_MESSAGE calls
 FOR /F "tokens=1-4 delims=/ " %%A IN ('DATE /T') DO SET "BANNER_DATE=%%A %%B %%C %%D"
 FOR /F "tokens=1-2 delims=/:" %%A IN ('TIME /T') DO SET "BANNER_TIME=%%A:%%B"
 
-IF NOT EXIST "%LOG_FILE%" (
-    (
-        ECHO ================================================
-        ECHO  Windows Maintenance Automation Launcher v2.0
-        ECHO ================================================
-        ECHO.
-        ECHO  Computer: %COMPUTERNAME%
-        ECHO  User: %USERNAME%
-        ECHO  Date: %BANNER_DATE%
-        ECHO  Time: %BANNER_TIME%
-        ECHO.
-        ECHO ================================================
-        ECHO.
-    ) > "%LOG_FILE%"
-)
+(
+    ECHO ================================================
+    ECHO  Windows Maintenance Automation Launcher v2.0
+    ECHO ================================================
+    ECHO.
+    ECHO  Computer: %COMPUTERNAME%
+    ECHO  User: %USERNAME%
+    ECHO  Date: %BANNER_DATE%
+    ECHO  Time: %BANNER_TIME%
+    ECHO  Bootstrap Phase: Using temporary log until repository extraction
+    ECHO.
+    ECHO ================================================
+    ECHO.
+) > "%LOG_FILE%"
 
-CALL :LOG_MESSAGE "Maintenance log file initialized at repository root: %LOG_FILE%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "Bootstrap log initialized: %BOOTSTRAP_LOG% (will be consolidated after extraction)" "DEBUG" "LAUNCHER"
 
 REM Environment variables for PowerShell orchestrator
 SET "WORKING_DIRECTORY=%WORKING_DIR%"
@@ -430,26 +428,45 @@ IF EXIST "%EXTRACTED_PATH%" (
     )
     
     REM Update working directory to extracted folder for proper module loading
-    SET "OLD_WORKING_DIR=%WORKING_DIR%"
     SET "WORKING_DIR=%EXTRACTED_PATH%\"
     SET "WORKING_DIRECTORY=%WORKING_DIR%"
     CALL :LOG_MESSAGE "Updated working directory to: %WORKING_DIR%" "INFO" "LAUNCHER"
     
-    REM FIX: Recreate temp_files in new extracted location and update LOG_FILE
+    REM ============================================================================
+    REM CRITICAL: Create temp_files structure in extracted repository (ONLY LOCATION)
+    REM ============================================================================
     IF NOT EXIST "%WORKING_DIR%temp_files" MKDIR "%WORKING_DIR%temp_files" >nul 2>&1
-    IF NOT EXIST "%WORKING_DIR%temp_files\logs" MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1    
-    SET "LOG_FILE=%WORKING_DIR%temp_files\logs\maintenance.log"
-    CALL :LOG_MESSAGE "Log file relocated to extracted folder: %LOG_FILE%" "INFO" "LAUNCHER"
+    IF NOT EXIST "%WORKING_DIR%temp_files\logs" MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1
     
-    REM Clean up old temp_files from original location if it exists
-    IF EXIST "%OLD_WORKING_DIR%temp_files" (
-        RMDIR /S /Q "%OLD_WORKING_DIR%temp_files" >nul 2>&1
-        IF EXIST "%OLD_WORKING_DIR%temp_files" (
-            CALL :LOG_MESSAGE "Could not remove old temp_files (non-critical)" "DEBUG" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "Removed temp_files from original location" "DEBUG" "LAUNCHER"
-        )
+    REM Move bootstrap log to final location (consolidate all logs to ONE place)
+    SET "FINAL_LOG=%WORKING_DIR%temp_files\logs\maintenance.log"
+    
+    IF EXIST "%BOOTSTRAP_LOG%" (
+        CALL :LOG_MESSAGE "Consolidating bootstrap log to final location: %FINAL_LOG%" "INFO" "LAUNCHER"
+        TYPE "%BOOTSTRAP_LOG%" > "%FINAL_LOG%" 2>nul
+        DEL "%BOOTSTRAP_LOG%" >nul 2>&1
+    ) ELSE (
+        REM Initialize new log file with header
+        (
+            ECHO ================================================
+            ECHO  Windows Maintenance Automation Launcher v2.0
+            ECHO ================================================
+            ECHO.
+            ECHO  Computer: %COMPUTERNAME%
+            ECHO  User: %USERNAME%
+            ECHO  Repository: %EXTRACTED_PATH%
+            ECHO.
+            ECHO ================================================
+            ECHO.
+        ) > "%FINAL_LOG%"
     )
+    
+    SET "LOG_FILE=%FINAL_LOG%"
+    CALL :LOG_MESSAGE "All logs now writing to: %LOG_FILE%" "SUCCESS" "LAUNCHER"
+    
+    REM Update environment variable for PowerShell orchestrator
+    SET "SCRIPT_LOG_FILE=%LOG_FILE%"
+    CALL :LOG_MESSAGE "SCRIPT_LOG_FILE environment variable updated" "DEBUG" "LAUNCHER"
     
     REM Set orchestrator path within the extracted folder
     IF EXIST "%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1" (
@@ -469,15 +486,8 @@ IF EXIST "%EXTRACTED_PATH%" (
     EXIT /B 3
 )
 
-REM Clean up
+REM Clean up ZIP file
 DEL /Q "%ZIP_FILE%" >nul 2>&1
-
-REM Set environment variables so PowerShell can access bootstrap paths
-SET "ORIGINAL_LOG_FILE=%LOG_FILE%"
-CALL :LOG_MESSAGE "Original log file path (if exists): %ORIGINAL_LOG_FILE%" "DEBUG" "LAUNCHER"
-
-REM Continue with orchestrator invocation
-REM LogProcessor will organize logs when it runs
 
 REM -----------------------------------------------------------------------------
 REM Project Structure Discovery and Validation (Moved after extraction)
@@ -1491,8 +1501,7 @@ REM Post-Execution Cleanup and Reporting
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "PowerShell orchestrator final execution completed with exit code: %FINAL_EXIT_CODE%" "INFO" "LAUNCHER"
 
-REM FIX: No need to organize bootstrap log - it's already in temp_files\logs\maintenance.log
-CALL :LOG_MESSAGE "All logs written to %WORKING_DIR%temp_files\logs\maintenance.log" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "All logs consolidated in single location: %WORKING_DIR%temp_files\logs\maintenance.log" "SUCCESS" "LAUNCHER"
 
 IF %FINAL_EXIT_CODE% EQU 0 (
     CALL :LOG_MESSAGE "Maintenance execution completed successfully" "SUCCESS" "LAUNCHER"
