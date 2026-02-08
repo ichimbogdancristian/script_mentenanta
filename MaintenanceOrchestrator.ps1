@@ -490,12 +490,15 @@ catch {
 #region Initialize Global Path Discovery System
 Write-Information "`n Initializing global path discovery..." -InformationAction Continue
 try {
-    Initialize-GlobalPathDiscovery -HintPath $ScriptRoot -Force
+    # CRITICAL FIX: Pass $ProjectRoot (not $ScriptRoot) to ensure temp_files uses correct location
+    # Initialize-GlobalPathDiscovery will use this to set TempRoot = ProjectRoot\temp_files
+    Initialize-GlobalPathDiscovery -HintPath $ProjectRoot -Force
 
     # Populate $script:ProjectPaths for use throughout the script
     $script:ProjectPaths = Get-MaintenancePaths
 
     Write-Information "   Global path discovery initialized successfully" -InformationAction Continue
+    Write-Information "   TempRoot verified: $($script:ProjectPaths.TempRoot)" -InformationAction Continue
 }
 catch {
     Write-Error "Failed to initialize global path discovery: $($_.Exception.Message)"
@@ -701,11 +704,24 @@ try {
         Write-Information "   Creating system restore point before maintenance..." -InformationAction Continue
 
         $restoreDescription = "Before Windows Maintenance - $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
-        if (Get-Command -Name 'New-SystemRestorePoint' -ErrorAction SilentlyContinue) {
-            $restoreResult = New-SystemRestorePoint -Description $restoreDescription
+        
+        # FIX: Try New-SystemRestorePoint first (Windows 10+)
+        $restoreResult = $null
+        try {
+            if (Get-Command -Name 'New-SystemRestorePoint' -ErrorAction SilentlyContinue) {
+                $restoreResult = New-SystemRestorePoint -Description $restoreDescription -ErrorAction Stop
+            }
         }
-        elseif (Get-Command -Name 'Checkpoint-Computer' -ErrorAction SilentlyContinue) {
+        catch {
+            Write-Verbose "New-SystemRestorePoint failed: $_"
+            $restoreResult = $null
+        }
+        
+        # FIX: If New-SystemRestorePoint failed, try Checkpoint-Computer (may not exist in PS7)
+        if (-not $restoreResult) {
             try {
+                # This cmdlet doesn't exist in PowerShell 7, so this will throw
+                $checkpointCmd = Get-Command -Name 'Checkpoint-Computer' -ErrorAction Stop
                 Checkpoint-Computer -Description $restoreDescription -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
                 $restoreResult = @{
                     Success     = $true
@@ -713,11 +729,13 @@ try {
                 }
             }
             catch {
-                Write-Warning "Checkpoint-Computer failed: $($_.Exception.Message)"
-                throw
+                Write-Verbose "Checkpoint-Computer not available or failed: $_"
+                $restoreResult = $null
             }
         }
-        else {
+        
+        # FIX: If both methods failed, fall back to Windows PowerShell
+        if (-not $restoreResult) {
             # PowerShell 7 doesn't include Checkpoint-Computer natively
             # Fall back to Windows PowerShell for restore point creation
             $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'

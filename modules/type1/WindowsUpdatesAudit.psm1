@@ -704,22 +704,42 @@ function Get-UpdateHealthScore {
 
     # Update issues with increased severity weights
     foreach ($issue in $AuditResults.UpdateIssues) {
+        # FIX: Create new object with Add-Member instead of PSObject.Copy()
         $weightedIssue = $issue.PSObject.Copy()
         switch ($issue.Impact) {
-            'High' { $weightedIssue.Impact = 'High'; $weightedIssue.Weight = 25 }
-            'Medium' { $weightedIssue.Impact = 'Medium'; $weightedIssue.Weight = 15 }
-            'Low' { $weightedIssue.Impact = 'Low'; $weightedIssue.Weight = 5 }
+            'High' { 
+                $weightedIssue | Add-Member -NotePropertyName 'Weight' -NotePropertyValue 25 -Force
+                $weightedIssue.Impact = 'High'
+            }
+            'Medium' { 
+                $weightedIssue | Add-Member -NotePropertyName 'Weight' -NotePropertyValue 15 -Force
+                $weightedIssue.Impact = 'Medium'
+            }
+            'Low' { 
+                $weightedIssue | Add-Member -NotePropertyName 'Weight' -NotePropertyValue 5 -Force
+                $weightedIssue.Impact = 'Low'
+            }
         }
         $allIssues += $weightedIssue
     }
 
     # Security findings with higher severity
     foreach ($finding in $AuditResults.SecurityFindings) {
+        # FIX: Create new object with Add-Member instead of direct property assignment
         $weightedFinding = $finding.PSObject.Copy()
         switch ($finding.Impact) {
-            'High' { $weightedFinding.Impact = 'High'; $weightedFinding.Weight = 30 }
-            'Medium' { $weightedFinding.Impact = 'Medium'; $weightedFinding.Weight = 20 }
-            'Low' { $weightedFinding.Impact = 'Low'; $weightedFinding.Weight = 10 }
+            'High' { 
+                $weightedFinding | Add-Member -NotePropertyName 'Weight' -NotePropertyValue 30 -Force
+                $weightedFinding.Impact = 'High'
+            }
+            'Medium' { 
+                $weightedFinding | Add-Member -NotePropertyName 'Weight' -NotePropertyValue 20 -Force
+                $weightedFinding.Impact = 'Medium'
+            }
+            'Low' { 
+                $weightedFinding | Add-Member -NotePropertyName 'Weight' -NotePropertyValue 10 -Force
+                $weightedFinding.Impact = 'Low'
+            }
         }
         $allIssues += $weightedFinding
     }
