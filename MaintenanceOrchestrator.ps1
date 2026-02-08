@@ -100,10 +100,34 @@ function Resolve-ProjectRoot {
 
 $ProjectRoot = Resolve-ProjectRoot -PrimaryPath $WorkingDirectory -FallbackPath $ScriptRoot
 
-# CRITICAL: Ensure temp_files is ALWAYS created inside the repo folder
+# ============================================================================
+# CRITICAL: Create temp_files structure IMMEDIATELY in repo folder
+# ============================================================================
 $TempFilesPath = Join-Path $ProjectRoot 'temp_files'
+
+# Create main temp_files directory
 if (-not (Test-Path $TempFilesPath)) {
+    Write-Information "[CREATING] temp_files folder: $TempFilesPath" -InformationAction Continue
     New-Item -Path $TempFilesPath -ItemType Directory -Force | Out-Null
+}
+
+# Create ALL required subdirectories immediately
+$requiredSubdirs = @('data', 'logs', 'reports', 'processed', 'inventory', 'temp')
+foreach ($subdir in $requiredSubdirs) {
+    $subdirPath = Join-Path $TempFilesPath $subdir
+    if (-not (Test-Path $subdirPath)) {
+        Write-Information "[CREATING] temp_files\$subdir" -InformationAction Continue
+        New-Item -Path $subdirPath -ItemType Directory -Force | Out-Null
+    }
+}
+
+# Verify temp_files structure was created
+if (Test-Path $TempFilesPath) {
+    Write-Information "[OK] temp_files structure created at: $TempFilesPath" -InformationAction Continue
+}
+else {
+    Write-Error "FAILED to create temp_files at: $TempFilesPath"
+    exit 1
 }
 
 Write-Information "Windows Maintenance Automation - Central Orchestrator v3.1.0" -InformationAction Continue
@@ -378,10 +402,10 @@ foreach ($moduleName in $Type2Modules) {
 #region Phase 1: Module Discovery & Validation
 Write-Information "`nDiscovering available modules..." -InformationAction Continue
 try {
-    # Use ModuleRegistry to discover Type2 modules automatically
+    # Use ModuleRegistry to discover all modules for dependency validation
     if (Get-Command -Name 'Get-RegisteredModules' -ErrorAction SilentlyContinue) {
-        $discoveredModules = Get-RegisteredModules -ModuleType 'Type2' -IncludeMetadata
-        $Type2Modules = $discoveredModules.Keys | Sort-Object
+        $discoveredModules = Get-RegisteredModules -ModuleType 'All' -IncludeMetadata
+        $Type2Modules = $discoveredModules.Keys | Where-Object { $discoveredModules[$_].Type -eq 'Type2' } | Sort-Object
 
         Write-Information "   Discovered $($Type2Modules.Count) Type2 modules via ModuleRegistry" -InformationAction Continue
         foreach ($moduleName in $Type2Modules) {
@@ -681,15 +705,21 @@ try {
             $restoreResult = New-SystemRestorePoint -Description $restoreDescription
         }
         elseif (Get-Command -Name 'Checkpoint-Computer' -ErrorAction SilentlyContinue) {
-            Checkpoint-Computer -Description $restoreDescription -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
-            $restoreResult = @{
-                Success     = $true
-                Description = $restoreDescription
+            try {
+                Checkpoint-Computer -Description $restoreDescription -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
+                $restoreResult = @{
+                    Success     = $true
+                    Description = $restoreDescription
+                }
+            }
+            catch {
+                Write-Warning "Checkpoint-Computer failed: $($_.Exception.Message)"
+                throw
             }
         }
         else {
-            # PowerShell 7 on Windows includes Checkpoint-Computer via compatibility layer
-            # If not available, system restore point creation requires Windows PowerShell
+            # PowerShell 7 doesn't include Checkpoint-Computer natively
+            # Fall back to Windows PowerShell for restore point creation
             $psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
             if (Test-Path $psExe) {
                 $psArgs = @(
@@ -1594,8 +1624,15 @@ try {
                 $functionName = $candidateFunctions | Where-Object { Get-Command -Name $_ -ErrorAction SilentlyContinue } | Select-Object -First 1
                 
                 if ($functionName) {
-                    # Execute audit function
-                    $auditResult = & $functionName
+                    # Execute audit function with proper parameters
+                    # Try with -Config parameter first (required by some Type1 modules)
+                    try {
+                        $auditResult = & $functionName -Config $MainConfig -ErrorAction Stop
+                    }
+                    catch {
+                        # Fallback: try without parameters for modules that don't require Config
+                        $auditResult = & $functionName
+                    }
                     $AuditResults[$rootName] = $auditResult
                     Write-Host " [OK]" -ForegroundColor Green
                     
@@ -1845,7 +1882,14 @@ try {
 
                     $functionName = $candidateFunctions | Where-Object { Get-Command -Name $_ -ErrorAction SilentlyContinue } | Select-Object -First 1
                     if ($functionName) {
-                        & $functionName | Out-Null
+                        # Execute with proper parameters
+                        try {
+                            & $functionName -Config $MainConfig -ErrorAction Stop | Out-Null
+                        }
+                        catch {
+                            # Fallback for modules that don't require Config
+                            & $functionName | Out-Null
+                        }
                         Write-Information "    [OK] $($file.BaseName)" -InformationAction Continue
                     }
                     else {
@@ -1891,7 +1935,14 @@ try {
 
                     $functionName = $candidateFunctions | Where-Object { Get-Command -Name $_ -ErrorAction SilentlyContinue } | Select-Object -First 1
                     if ($functionName) {
-                        & $functionName | Out-Null
+                        # Execute with proper parameters
+                        try {
+                            & $functionName -Config $MainConfig -ErrorAction Stop | Out-Null
+                        }
+                        catch {
+                            # Fallback for modules that don't require Config
+                            & $functionName | Out-Null
+                        }
                     }
                 }
                 catch {
