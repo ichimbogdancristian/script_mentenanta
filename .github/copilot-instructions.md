@@ -1,5 +1,101 @@
 # GitHub Copilot Instructions for Windows Maintenance Automation System
 
+## ✅ Diagnostics and Analyzer Policy (Mandatory)
+
+When editing or adding PowerShell code:
+
+1. Run PSScriptAnalyzer on all modules and the orchestrator after each change set.
+2. Review VS Code diagnostics and resolve all new errors/warnings before completion.
+3. Do not introduce unapproved verbs, missing ShouldProcess, unused parameters, or inconsistent whitespace.
+4. Keep OutputType attributes accurate for all public functions.
+
+Required commands:
+
+```
+pwsh -NoProfile -ExecutionPolicy Bypass -Command "Invoke-ScriptAnalyzer -Path .\modules -Recurse -Settings .\PSScriptAnalyzerSettings.psd1; Invoke-ScriptAnalyzer -Path .\MaintenanceOrchestrator.ps1 -Settings .\PSScriptAnalyzerSettings.psd1"
+```
+
+Diagnostics workflow:
+- Check VS Code diagnostics after edits.
+- Fix all issues introduced by the current change set.
+- If a warning must remain, document the rationale in the code.
+
+Common errors to avoid:
+- Unapproved verbs (use Get/Set/New/Invoke/Test/Start/Stop/Initialize).
+- Missing SupportsShouldProcess on state-changing functions.
+- Unused parameters.
+- Incorrect or missing OutputType attributes.
+- Inconsistent whitespace around operators.
+
+---
+
+## 🚨 Critical Rules & Gotchas
+
+### MUST DO
+
+1. ✅ **Always import CoreInfrastructure first** in any new module
+2. ✅ **Use Write-LogEntry** for all logging (structured, traceable)
+3. ✅ **Support -DryRun parameter** in Type2 modules
+4. ✅ **Return standardized result objects** from modules
+5. ✅ **Use Get-AuditResultsPath** for Type1 output paths
+6. ✅ **Use Get-SessionPath** for Type2 output paths
+7. ✅ **Export functions explicitly** with Export-ModuleMember
+8. ✅ **Add comprehensive .SYNOPSIS/.DESCRIPTION** headers
+9. ✅ **Use [CmdletBinding()]** for advanced function features
+10. ✅ **Validate configuration** before using (Test-ConfigurationSchema)
+
+### NEVER DO
+
+1. ❌ **Don't hardcode paths** - always use path discovery functions
+2. ❌ **Don't use Write-Host** for operation logging (use Write-LogEntry)
+3. ❌ **Don't skip error handling** - wrap risky operations in try-catch
+4. ❌ **Don't modify system without DryRun check**
+5. ❌ **Don't create custom path structures** - use standardized locations
+6. ❌ **Don't skip module exports** - explicitly export all public functions
+7. ❌ **Don't use Get-WmiObject** - use Get-CimInstance (PowerShell 7 best practice)
+8. ❌ **Don't assume modules are loaded** - import CoreInfrastructure explicitly
+9. ❌ **Don't write logs to random locations** - use Get-SessionPath
+10. ❌ **Don't break backward compatibility** without version increment
+
+### Common Pitfalls
+
+**Pitfall 1: Path discovery not initialized**
+```powershell
+# ❌ Wrong
+$configPath = Join-Path $PSScriptRoot '..\config'
+
+# ✅ Correct
+Initialize-GlobalPathDiscovery
+$configPath = Get-MaintenancePath 'ConfigRoot'
+```
+
+**Pitfall 2: Missing null checks**
+```powershell
+# ❌ Wrong
+$value = $config.execution.countdownSeconds
+
+# ✅ Correct
+$value = if ($config -and $config.execution) { 
+    $config.execution.countdownSeconds ?? 20 
+} else { 20 }
+```
+
+**Pitfall 3: Incorrect module result structure**
+```powershell
+# ❌ Wrong
+return "Success"
+
+# ✅ Correct
+return @{
+    Status = 'Success'
+    TotalOperations = 10
+    SuccessfulOperations = 9
+    DurationSeconds = 5.2
+}
+```
+
+---
+
 ## 🎯 Project Context
 
 This is a **PowerShell 7+ enterprise-grade Windows maintenance automation system** with a modular, 3-tier architecture. The system automates bloatware removal, essential software installation, system optimization, privacy controls, and Windows updates.
@@ -571,73 +667,6 @@ function Process-DataWithFallback {
 
 ---
 
-## 🚨 Critical Rules & Gotchas
-
-### MUST DO
-
-1. ✅ **Always import CoreInfrastructure first** in any new module
-2. ✅ **Use Write-LogEntry** for all logging (structured, traceable)
-3. ✅ **Support -DryRun parameter** in Type2 modules
-4. ✅ **Return standardized result objects** from modules
-5. ✅ **Use Get-AuditResultsPath** for Type1 output paths
-6. ✅ **Use Get-SessionPath** for Type2 output paths
-7. ✅ **Export functions explicitly** with Export-ModuleMember
-8. ✅ **Add comprehensive .SYNOPSIS/.DESCRIPTION** headers
-9. ✅ **Use [CmdletBinding()]** for advanced function features
-10. ✅ **Validate configuration** before using (Test-ConfigurationSchema)
-
-### NEVER DO
-
-1. ❌ **Don't hardcode paths** - always use path discovery functions
-2. ❌ **Don't use Write-Host** for operation logging (use Write-LogEntry)
-3. ❌ **Don't skip error handling** - wrap risky operations in try-catch
-4. ❌ **Don't modify system without DryRun check**
-5. ❌ **Don't create custom path structures** - use standardized locations
-6. ❌ **Don't skip module exports** - explicitly export all public functions
-7. ❌ **Don't use Get-WmiObject** - use Get-CimInstance (PowerShell 7 best practice)
-8. ❌ **Don't assume modules are loaded** - import CoreInfrastructure explicitly
-9. ❌ **Don't write logs to random locations** - use Get-SessionPath
-10. ❌ **Don't break backward compatibility** without version increment
-
-### Common Pitfalls
-
-**Pitfall 1: Path discovery not initialized**
-```powershell
-# ❌ Wrong
-$configPath = Join-Path $PSScriptRoot '..\config'
-
-# ✅ Correct
-Initialize-GlobalPathDiscovery
-$configPath = Get-MaintenancePath 'ConfigRoot'
-```
-
-**Pitfall 2: Missing null checks**
-```powershell
-# ❌ Wrong
-$value = $config.execution.countdownSeconds
-
-# ✅ Correct
-$value = if ($config -and $config.execution) { 
-    $config.execution.countdownSeconds ?? 20 
-} else { 20 }
-```
-
-**Pitfall 3: Incorrect module result structure**
-```powershell
-# ❌ Wrong
-return "Success"
-
-# ✅ Correct
-return @{
-    Status = 'Success'
-    TotalOperations = 10
-    SuccessfulOperations = 9
-    DurationSeconds = 5.2
-}
-```
-
----
-
 ## 🔍 Architecture-Specific Guidance
 
 ### When Working with CoreInfrastructure.psm1
@@ -996,33 +1025,6 @@ ReportGenerator.psm1 (Generate reports with OS integration)
 ```
 
 ---
-
-## ✅ Diagnostics and Analyzer Policy (Mandatory)
-
-When editing or adding PowerShell code:
-
-1. Run PSScriptAnalyzer on all modules and the orchestrator after each change set.
-2. Review VS Code diagnostics and resolve all new errors/warnings before completion.
-3. Do not introduce unapproved verbs, missing ShouldProcess, unused parameters, or inconsistent whitespace.
-4. Keep OutputType attributes accurate for all public functions.
-
-Required commands:
-
-```
-pwsh -NoProfile -ExecutionPolicy Bypass -Command "Invoke-ScriptAnalyzer -Path .\modules -Recurse -Settings .\PSScriptAnalyzerSettings.psd1; Invoke-ScriptAnalyzer -Path .\MaintenanceOrchestrator.ps1 -Settings .\PSScriptAnalyzerSettings.psd1"
-```
-
-Diagnostics workflow:
-- Check VS Code diagnostics after edits.
-- Fix all issues introduced by the current change set.
-- If a warning must remain, document the rationale in the code.
-
-Common errors to avoid:
-- Unapproved verbs (use Get/Set/New/Invoke/Test/Start/Stop/Initialize).
-- Missing SupportsShouldProcess on state-changing functions.
-- Unused parameters.
-- Incorrect or missing OutputType attributes.
-- Inconsistent whitespace around operators.
 
 ## 🎯 Final Checklist for AI Assistance
 

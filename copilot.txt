@@ -136,11 +136,16 @@ DUPLICATE CODE ANALYSIS:
 
 REFACTORING OPPORTUNITIES:
 For each duplicate:
+- Verify /core /config /modules module overlapping and consider consolidation opportunities
+- Identify Dry-Run code and remove it
+- Make sure Orchestrator coordinates everything 
+- Use logic and identify unused blocks of code or unnecessary blocks of code and mark it for removal
 - Show all locations where code appears
 - Propose unified function signature
 - Suggest module placement (/core/utilities.ps1?)
 - Provide before/after refactoring example
-- List all modules that would benefit
+- List all modules that would 
+- Take a good amount of time to discover faulty logic unnecessary actions, unnecessary complexity
 
 CODE QUALITY ISSUES:
 1. Functions without help documentation
@@ -221,7 +226,7 @@ STAGE 0 - INITIALIZATION:
 2. GitHub repo download to temp location
 3. Extraction to local folder
 4. Environment detection (OS version, PowerShell version, .NET)
-5. /temp_files folder creation in extracted repo
+5. /temp_files folder creation in extracted repo folder
 6. maintenance.log creation with Start-Transcript
 
 STAGE 1 - SYSTEM INVENTORY (Type1 Modules):
