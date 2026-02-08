@@ -2127,7 +2127,7 @@ try {
                 }
             }
             else {
-                Write-Host "  ✓ $moduleName: " -NoNewline -ForegroundColor DarkGray
+                Write-Host "  ✓ ${moduleName}: " -NoNewline -ForegroundColor DarkGray
                 Write-Host "No action needed" -ForegroundColor Gray
             }
         }
