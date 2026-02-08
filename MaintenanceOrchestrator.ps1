@@ -2805,9 +2805,10 @@ if (Get-Command -Name 'Start-MaintenanceCountdown' -ErrorAction SilentlyContinue
     try {
         # Load shutdown configuration
         $shutdownConfig = @{
-            CountdownSeconds = $MainConfig.execution.shutdown.countdownSeconds ?? 120
-            CleanupOnTimeout = $MainConfig.execution.shutdown.cleanupOnTimeout ?? $true
-            RebootOnTimeout  = $MainConfig.execution.shutdown.rebootOnTimeout ?? $false
+            CountdownSeconds             = $MainConfig.execution.shutdown.countdownSeconds ?? 120
+            CleanupOnTimeout             = $MainConfig.execution.shutdown.cleanupOnTimeout ?? $true
+            RebootOnTimeout              = $MainConfig.execution.shutdown.rebootOnTimeout ?? $false
+            RebootOnlyForWindowsUpdates  = $MainConfig.execution.shutdown.rebootOnlyForWindowsUpdates ?? $true
         }
 
         Write-Information "╔═══════════════════════════════════════════════════════════════╗" -ForegroundColor Yellow -InformationAction Continue
@@ -2827,7 +2828,8 @@ if (Get-Command -Name 'Start-MaintenanceCountdown' -ErrorAction SilentlyContinue
             -WorkingDirectory $ProjectRoot `
             -TempRoot $script:ProjectPaths.TempRoot `
             -CleanupOnTimeout:$shutdownConfig.CleanupOnTimeout `
-            -RebootOnTimeout:$shutdownConfig.RebootOnTimeout
+            -RebootOnTimeout:$shutdownConfig.RebootOnTimeout `
+            -RebootOnlyForWindowsUpdates:$shutdownConfig.RebootOnlyForWindowsUpdates
 
         Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Stage 5: Shutdown sequence completed" -Data $shutdownResult
         Write-Information "" -InformationAction Continue

@@ -4,16 +4,28 @@
   "title": "Windows Maintenance Automation - Main Configuration",
   "description": "Main configuration schema for Windows Maintenance Automation System v3.1",
   "type": "object",
-  "required": ["execution", "modules", "system", "reporting"],
+  "required": [
+    "execution",
+    "modules",
+    "system",
+    "reporting"
+  ],
   "properties": {
     "execution": {
       "type": "object",
       "description": "Execution behavior and UI settings",
-      "required": ["defaultMode", "countdownSeconds", "enableDryRun"],
+      "required": [
+        "defaultMode",
+        "countdownSeconds",
+        "enableDryRun"
+      ],
       "properties": {
         "defaultMode": {
           "type": "string",
-          "enum": ["interactive", "unattended"],
+          "enum": [
+            "interactive",
+            "unattended"
+          ],
           "description": "Default execution mode (interactive with menus or unattended automation)"
         },
         "countdownSeconds": {
@@ -51,6 +63,11 @@
             "rebootOnTimeout": {
               "type": "boolean",
               "description": "Reboot system when countdown expires"
+            },
+            "rebootOnlyForWindowsUpdates": {
+              "type": "boolean",
+              "description": "Only reboot if Windows Update specifically requires it (ignores other pending reboot signals)",
+              "default": true
             }
           }
         }
@@ -157,7 +174,9 @@
     "system": {
       "type": "object",
       "description": "System-level settings",
-      "required": ["createSystemRestorePoint"],
+      "required": [
+        "createSystemRestorePoint"
+      ],
       "properties": {
         "createSystemRestorePoint": {
           "type": "boolean",
@@ -196,7 +215,9 @@
     "reporting": {
       "type": "object",
       "description": "Report generation settings",
-      "required": ["enableHtmlReport"],
+      "required": [
+        "enableHtmlReport"
+      ],
       "properties": {
         "enableHtmlReport": {
           "type": "boolean",

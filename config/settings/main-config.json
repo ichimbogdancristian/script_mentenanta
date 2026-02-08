@@ -8,7 +8,8 @@
     "shutdown": {
       "countdownSeconds": 120,
       "cleanupOnTimeout": true,
-      "rebootOnTimeout": true
+      "rebootOnTimeout": true,
+      "rebootOnlyForWindowsUpdates": true
     }
   },
   "modules": {

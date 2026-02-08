@@ -292,6 +292,114 @@ function Test-PendingReboot {
 
 <#
 .SYNOPSIS
+    Tests if Windows Update specifically requires a system reboot
+
+.DESCRIPTION
+    Checks ONLY Windows Update registry keys to determine if updates require a reboot.
+    Unlike Test-PendingReboot, this function ignores:
+    - Component Based Servicing (triggered by Windows Features)
+    - PendingFileRenameOperations (triggered by application installs)
+    - Computer rename operations
+    - SCCM/Configuration Manager reboots
+    
+    This ensures the system only reboots for actual Windows Updates.
+
+.OUTPUTS
+    [hashtable] Object containing:
+    - RebootRequired: Boolean indicating if Windows Update needs a reboot
+    - RebootReason: String explaining why reboot is needed
+    - DetectedKeys: Array of registry keys that indicated reboot requirement
+
+.EXAMPLE
+    $wuReboot = Test-WindowsUpdatePendingReboot
+    if ($wuReboot.RebootRequired) {
+        Write-Host "Windows Update requires reboot: $($wuReboot.RebootReason)"
+    }
+
+.NOTES
+    Windows Update-specific registry keys checked:
+    1. HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired
+    2. HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Services\Pending (for Windows 11)
+#>
+function Test-WindowsUpdatePendingReboot {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param()
+
+    $result = @{
+        RebootRequired = $false
+        RebootReason   = 'No Windows Update reboot required'
+        DetectedKeys   = @()
+    }
+
+    try {
+        Write-Verbose "Checking Windows Update-specific reboot requirements..."
+
+        # Primary check: Windows Update Auto Update RebootRequired key
+        # This is the definitive indicator that Windows Update needs a reboot
+        $wuRebootKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired"
+        if (Test-Path $wuRebootKey) {
+            $result.RebootRequired = $true
+            $result.DetectedKeys += $wuRebootKey
+            $result.RebootReason = 'Windows Update installed updates requiring system reboot'
+            Write-Verbose "Detected: $wuRebootKey"
+        }
+
+        # Secondary check: Windows Update Services Pending (Windows 11 / modern updates)
+        $wuServicesPending = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Services\Pending"
+        if (Test-Path $wuServicesPending) {
+            $pendingItems = Get-ChildItem $wuServicesPending -ErrorAction SilentlyContinue
+            if ($pendingItems -and $pendingItems.Count -gt 0) {
+                $result.RebootRequired = $true
+                $result.DetectedKeys += $wuServicesPending
+                if ($result.RebootReason -notlike '*Windows Update*') {
+                    $result.RebootReason = 'Windows Update services have pending operations requiring reboot'
+                }
+                Write-Verbose "Detected: $wuServicesPending ($($pendingItems.Count) pending items)"
+            }
+        }
+
+        # Check for UpdateExeVolatile (indicates pending Windows Update operations)
+        $updateExeVolatile = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Updates" -Name "UpdateExeVolatile" -ErrorAction SilentlyContinue
+        if ($updateExeVolatile -and $updateExeVolatile.UpdateExeVolatile -ne 0) {
+            $result.RebootRequired = $true
+            $result.DetectedKeys += 'HKLM:\SOFTWARE\Microsoft\Updates\UpdateExeVolatile'
+            if ($result.RebootReason -notlike '*Windows Update*') {
+                $result.RebootReason = 'Windows Update execution requires system reboot'
+            }
+            Write-Verbose "Detected: UpdateExeVolatile = $($updateExeVolatile.UpdateExeVolatile)"
+        }
+
+        # Log detection result
+        if ($result.RebootRequired) {
+            Write-LogEntry -Level 'WARNING' -Component 'WINDOWS-UPDATES-AUDIT' `
+                -Message "Windows Update pending reboot detected" `
+                -Data @{
+                Reason       = $result.RebootReason
+                DetectedKeys = $result.DetectedKeys -join '; '
+            }
+        }
+        else {
+            Write-Verbose "No Windows Update pending reboot detected"
+        }
+
+        return $result
+    }
+    catch {
+        Write-LogEntry -Level 'ERROR' -Component 'WINDOWS-UPDATES-AUDIT' `
+            -Message "Failed to check Windows Update reboot status: $($_.Exception.Message)"
+        
+        # Return safe default (no reboot required)
+        return @{
+            RebootRequired = $false
+            RebootReason   = "Error checking reboot status: $($_.Exception.Message)"
+            DetectedKeys   = @()
+        }
+    }
+}
+
+<#
+.SYNOPSIS
     Audits pending Windows Updates
 #>
 function Get-PendingUpdatesAudit {
@@ -826,7 +934,9 @@ New-Alias -Name 'Get-WindowsUpdatesAudit' -Value 'Get-WindowsUpdatesAnalysis'
 
 # Export public functions
 Export-ModuleMember -Function @(
-    'Get-WindowsUpdatesAnalysis'  #  v3.0 PRIMARY function
+    'Get-WindowsUpdatesAnalysis',  #  v3.0 PRIMARY function
+    'Test-PendingReboot',          #  Legacy generic reboot check
+    'Test-WindowsUpdatePendingReboot'  #  v4.0 Windows Update-specific reboot check
 ) -Alias @('Get-WindowsUpdatesAudit')  # Backward compatibility
 
 

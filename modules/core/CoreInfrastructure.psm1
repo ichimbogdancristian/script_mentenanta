@@ -4209,7 +4209,8 @@ function Start-MaintenanceCountdown {
         [Parameter(Mandatory = $true)]
         [string]$TempRoot,
         [switch]$CleanupOnTimeout,
-        [switch]$RebootOnTimeout
+        [switch]$RebootOnTimeout,
+        [switch]$RebootOnlyForWindowsUpdates
     )
 
     if ($PSCmdlet.ShouldProcess("System", "Execute maintenance shutdown sequence")) {
@@ -4277,11 +4278,51 @@ function Start-MaintenanceCountdown {
         }
 
         if ($RebootOnTimeout) {
-            Write-Host "  • Preparing system reboot in 10 seconds..." -ForegroundColor Cyan
-            & shutdown.exe /r /t 10 /c "Windows Maintenance completed. System restarting..."
-            $timeoutResult.Action = "RebootInitiated"
-            $timeoutResult.RebootRequired = $true
-            $timeoutResult.RebootDelay = 10
+            # Check if we should only reboot for Windows Updates
+            if ($RebootOnlyForWindowsUpdates) {
+                Write-Host "  • Checking if Windows Update requires reboot..." -ForegroundColor Cyan
+                
+                # Import WindowsUpdatesAudit module to access Test-WindowsUpdatePendingReboot
+                $wuAuditPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'type1\WindowsUpdatesAudit.psm1'
+                if (Test-Path $wuAuditPath) {
+                    Import-Module $wuAuditPath -Force -ErrorAction SilentlyContinue
+                }
+                
+                # Check Windows Update-specific reboot requirement
+                $wuRebootCheck = Test-WindowsUpdatePendingReboot
+                
+                if ($wuRebootCheck.RebootRequired) {
+                    Write-Host "  ✓ Windows Update requires reboot: $($wuRebootCheck.RebootReason)" -ForegroundColor Yellow
+                    Write-Host "  • Preparing system reboot in 10 seconds..." -ForegroundColor Cyan
+                    
+                    Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' `
+                        -Message "Windows Update reboot required - initiating restart" `
+                        -Data @{
+                            Reason       = $wuRebootCheck.RebootReason
+                            DetectedKeys = $wuRebootCheck.DetectedKeys -join '; '
+                        }
+                    
+                    & shutdown.exe /r /t 10 /c "Windows Update completed. System restarting to complete update installation..."
+                    $timeoutResult.Action = "RebootInitiatedForWindowsUpdate"
+                    $timeoutResult.RebootRequired = $true
+                    $timeoutResult.RebootDelay = 10
+                    $timeoutResult.RebootReason = $wuRebootCheck.RebootReason
+                } else {
+                    Write-Host "  ✓ No Windows Update reboot required - skipping restart" -ForegroundColor Green
+                    Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' `
+                        -Message "No Windows Update reboot required - system restart skipped"
+                    
+                    $timeoutResult.Action = "RebootSkipped-NoWindowsUpdatePending"
+                    $timeoutResult.RebootRequired = $false
+                }
+            } else {
+                # Legacy behavior: reboot regardless of Windows Update status
+                Write-Host "  • Preparing system reboot in 10 seconds..." -ForegroundColor Cyan
+                & shutdown.exe /r /t 10 /c "Windows Maintenance completed. System restarting..."
+                $timeoutResult.Action = "RebootInitiated"
+                $timeoutResult.RebootRequired = $true
+                $timeoutResult.RebootDelay = 10
+            }
         }
 
         return $timeoutResult
