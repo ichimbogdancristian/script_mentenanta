@@ -65,6 +65,19 @@ function Resolve-ProjectRoot {
         }
     }
 
+    $fallbackValid = $false
+    if ($FallbackPath -and (Test-Path $FallbackPath)) {
+        $fallbackConfig = Join-Path $FallbackPath 'config'
+        $fallbackModules = Join-Path $FallbackPath 'modules'
+        if ((Test-Path $fallbackConfig) -and (Test-Path $fallbackModules)) {
+            $fallbackValid = $true
+        }
+    }
+
+    if ($fallbackValid) {
+        return $FallbackPath
+    }
+
     return if ($PrimaryPath -and (Test-Path $PrimaryPath)) { $PrimaryPath } else { $FallbackPath }
 }
 
@@ -106,8 +119,11 @@ Write-Information "      TEMP_ROOT: $env:MAINTENANCE_TEMP_ROOT" -InformationActi
 Write-Information "      REPORTS_ROOT: $env:MAINTENANCE_REPORTS_ROOT" -InformationAction Continue
 # Detect configuration path (always relative to script location)
 if (-not $ConfigPath) {
-    $ConfigPath = Join-Path $ProjectRoot 'config'
-    if (-not (Test-Path $ConfigPath)) {
+    $primaryConfigPath = Join-Path $ProjectRoot 'config'
+    if (Test-Path $primaryConfigPath) {
+        $ConfigPath = $primaryConfigPath
+    }
+    else {
         # Fallback to working directory if set by batch script
         $fallbackConfigPath = Join-Path $WorkingDirectory 'config'
         if (Test-Path $fallbackConfigPath) {
