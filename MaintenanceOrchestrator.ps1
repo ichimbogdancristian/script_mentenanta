@@ -99,9 +99,18 @@ function Resolve-ProjectRoot {
 }
 
 $ProjectRoot = Resolve-ProjectRoot -PrimaryPath $WorkingDirectory -FallbackPath $ScriptRoot
+
+# CRITICAL: Ensure temp_files is ALWAYS created inside the repo folder
+$TempFilesPath = Join-Path $ProjectRoot 'temp_files'
+if (-not (Test-Path $TempFilesPath)) {
+    New-Item -Path $TempFilesPath -ItemType Directory -Force | Out-Null
+}
+
 Write-Information "Windows Maintenance Automation - Central Orchestrator v3.1.0" -InformationAction Continue
 Write-Information "Working Directory: $WorkingDirectory" -InformationAction Continue
 Write-Information "Script Root: $ScriptRoot" -InformationAction Continue
+Write-Information "Project Root: $ProjectRoot" -InformationAction Continue
+Write-Information "Temp Files Path: $TempFilesPath" -InformationAction Continue
 #  Administrator Privilege Verification (Critical for service operations)
 Write-Information "[INFO] Verifying administrator privileges..." -InformationAction Continue
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -126,7 +135,7 @@ Write-Information "[INFO] Initializing global path discovery..." -InformationAct
 $env:MAINTENANCE_PROJECT_ROOT = $ProjectRoot
 $env:MAINTENANCE_CONFIG_ROOT = Join-Path $ProjectRoot 'config'
 $env:MAINTENANCE_MODULES_ROOT = Join-Path $ProjectRoot 'modules'
-$env:MAINTENANCE_TEMP_ROOT = Join-Path $ProjectRoot 'temp_files'
+$env:MAINTENANCE_TEMP_ROOT = $TempFilesPath  # Use the explicitly created temp_files path
 $env:MAINTENANCE_REPORTS_ROOT = $ProjectRoot
 Write-Information "   Global environment variables set:" -InformationAction Continue
 Write-Information "      PROJECT_ROOT: $env:MAINTENANCE_PROJECT_ROOT" -InformationAction Continue
