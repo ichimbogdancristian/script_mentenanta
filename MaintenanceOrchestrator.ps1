@@ -49,6 +49,7 @@ if (-not $ScriptRoot) {
     $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 }
 $WorkingDirectory = if ($env:WORKING_DIRECTORY) { $env:WORKING_DIRECTORY } else { $ScriptRoot }
+$ProjectRoot = if ($WorkingDirectory -and (Test-Path $WorkingDirectory)) { $WorkingDirectory } else { $ScriptRoot }
 Write-Information "Windows Maintenance Automation - Central Orchestrator v3.1.0" -InformationAction Continue
 Write-Information "Working Directory: $WorkingDirectory" -InformationAction Continue
 Write-Information "Script Root: $ScriptRoot" -InformationAction Continue
@@ -73,11 +74,11 @@ Please run this script as Administrator:
 Write-Information "  [OK] Administrator privileges confirmed" -InformationAction Continue
 # Initialize Global Path Discovery System
 Write-Information "[INFO] Initializing global path discovery..." -InformationAction Continue
-$env:MAINTENANCE_PROJECT_ROOT = $ScriptRoot
-$env:MAINTENANCE_CONFIG_ROOT = Join-Path $ScriptRoot 'config'
-$env:MAINTENANCE_MODULES_ROOT = Join-Path $ScriptRoot 'modules'
-$env:MAINTENANCE_TEMP_ROOT = Join-Path $ScriptRoot 'temp_files'
-$env:MAINTENANCE_REPORTS_ROOT = $ScriptRoot
+$env:MAINTENANCE_PROJECT_ROOT = $ProjectRoot
+$env:MAINTENANCE_CONFIG_ROOT = Join-Path $ProjectRoot 'config'
+$env:MAINTENANCE_MODULES_ROOT = Join-Path $ProjectRoot 'modules'
+$env:MAINTENANCE_TEMP_ROOT = Join-Path $ProjectRoot 'temp_files'
+$env:MAINTENANCE_REPORTS_ROOT = $ProjectRoot
 Write-Information "   Global environment variables set:" -InformationAction Continue
 Write-Information "      PROJECT_ROOT: $env:MAINTENANCE_PROJECT_ROOT" -InformationAction Continue
 Write-Information "       CONFIG_ROOT: $env:MAINTENANCE_CONFIG_ROOT" -InformationAction Continue
@@ -86,7 +87,7 @@ Write-Information "      TEMP_ROOT: $env:MAINTENANCE_TEMP_ROOT" -InformationActi
 Write-Information "      REPORTS_ROOT: $env:MAINTENANCE_REPORTS_ROOT" -InformationAction Continue
 # Detect configuration path (always relative to script location)
 if (-not $ConfigPath) {
-    $ConfigPath = Join-Path $ScriptRoot 'config'
+    $ConfigPath = Join-Path $ProjectRoot 'config'
     if (-not (Test-Path $ConfigPath)) {
         # Fallback to working directory if set by batch script
         $fallbackConfigPath = Join-Path $WorkingDirectory 'config'
@@ -144,8 +145,8 @@ catch {
 
 #region Module Loading
 Write-Information "`nLoading modules..." -InformationAction Continue
-# Import core modules (always relative to script location)
-$script:ModulesPath = Join-Path $ScriptRoot 'modules'
+# Import core modules (always relative to project root)
+$script:ModulesPath = Join-Path $ProjectRoot 'modules'
 if (-not (Test-Path $script:ModulesPath)) {
     # Fallback to working directory if set by batch script
     $fallbackModulesPath = Join-Path $WorkingDirectory 'modules'
@@ -1772,64 +1773,8 @@ try {
     # v4.0: Show execution mode menu if interactive
     if (-not $NonInteractive -and -not $TaskNumbers) {
         Write-Information "`nStarting interactive mode..." -InformationAction Continue
-        
-        # Show execution mode selector (Intelligent/Manual/AuditOnly)
-        $selectedExecutionMode = Show-ExecutionModeMenu
-        
-        # Handle each execution mode
-        switch ($selectedExecutionMode) {
-            'Intelligent' {
-                # Intelligent Mode: Audit first, then run only required modules
-                Write-Information "Executing in Intelligent Mode" -InformationAction Continue
-                
-                $intelligentResults = Start-IntelligentExecution `
-                    -AvailableTasks $AvailableTasks `
-                    -MainConfig $MainConfig `
-                    -NonInteractive:$false
-                
-                if ($null -eq $intelligentResults) {
-                    # Fallback to manual mode if intelligent mode fails
-                    Write-Warning "Intelligent mode failed, falling back to manual task selection"
-                    $selectedExecutionMode = 'Manual'
-                }
-                else {
-                    # Intelligent mode completed - skip to report generation
-                    $TaskResults = $intelligentResults
-                    $ExecutionParams.Mode = 'IntelligentComplete'
-                }
-            }
-            
-            'AuditOnly' {
-                # Audit-Only Mode: Scan without modifications
-                Write-Information "Executing in Audit-Only Mode" -InformationAction Continue
-                
-                $auditResults = Start-AuditOnlyMode
-                
-                # Skip Type2 execution, jump straight to reporting
-                $ExecutionParams.Mode = 'AuditOnlyComplete'
-                $TaskResults = @()
-            }
-            
-            'Manual' {
-                # Manual Mode: Traditional task selection menu
-                Write-Information "Executing in Manual Mode" -InformationAction Continue
-                # Fall through to existing manual task selection logic below
-            }
-        }
-    }
-    
-    # Manual mode or fallback: Use existing hierarchical menu system
-    if ($selectedExecutionMode -eq 'Manual' -and -not $NonInteractive -and -not $TaskNumbers) {
-        # v4.0: Optional Type1 audit module selection before Type2 tasks
-        Write-Host "`n" -NoNewline
-        Write-Host "╔════════════════════════════════════════════════════════════╗" -ForegroundColor Yellow
-        Write-Host "║          PRE-EXECUTION AUDIT MODULES (TYPE1)               ║" -ForegroundColor Yellow
-        Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "Type1 modules perform read-only analysis (no system changes)" -ForegroundColor Gray
-        Write-Host ""
 
-        # Discover available Type1 modules
+        # === Stage 1: System Inventory (Type1 Modules) ===
         $type1Path = Join-Path $script:ModulesPath 'type1'
         $type1ModulesAvailable = @()
 
@@ -1844,10 +1789,8 @@ try {
         }
 
         if ($type1ModulesAvailable.Count -gt 0) {
-            # Show Type1 module selection menu (auto-default to all after countdown)
             $selectedIndices = Show-Type1ModuleMenu -CountdownSeconds 10 -AvailableModules $type1ModulesAvailable
 
-            # Resolve selection to module list
             $selectedModules = @()
             if ($selectedIndices -contains 0) {
                 $selectedModules = $type1ModulesAvailable
@@ -1900,13 +1843,60 @@ try {
                 Write-Host "`nType1 audit execution complete.`n" -ForegroundColor Green
             }
             else {
-                Write-Host "`nNo Type1 modules selected. Continuing to task selection...`n" -ForegroundColor Yellow
+                Write-Host "`nNo Type1 modules selected. Continuing...`n" -ForegroundColor Yellow
             }
         }
         else {
             Write-Host "`nNo Type1 modules found in: $type1Path`n" -ForegroundColor Yellow
         }
+
+        # Show execution mode selector (Intelligent/Manual/AuditOnly)
+        $selectedExecutionMode = Show-ExecutionModeMenu
         
+        # Handle each execution mode
+        switch ($selectedExecutionMode) {
+            'Intelligent' {
+                # Intelligent Mode: Audit first, then run only required modules
+                Write-Information "Executing in Intelligent Mode" -InformationAction Continue
+                
+                $intelligentResults = Start-IntelligentExecution `
+                    -AvailableTasks $AvailableTasks `
+                    -MainConfig $MainConfig `
+                    -NonInteractive:$false
+                
+                if ($null -eq $intelligentResults) {
+                    # Fallback to manual mode if intelligent mode fails
+                    Write-Warning "Intelligent mode failed, falling back to manual task selection"
+                    $selectedExecutionMode = 'Manual'
+                }
+                else {
+                    # Intelligent mode completed - skip to report generation
+                    $TaskResults = $intelligentResults
+                    $ExecutionParams.Mode = 'IntelligentComplete'
+                }
+            }
+            
+            'AuditOnly' {
+                # Audit-Only Mode: Scan without modifications
+                Write-Information "Executing in Audit-Only Mode" -InformationAction Continue
+                
+                $auditResults = Start-AuditOnlyMode
+                
+                # Skip Type2 execution, jump straight to reporting
+                $ExecutionParams.Mode = 'AuditOnlyComplete'
+                $TaskResults = @()
+            }
+            
+            'Manual' {
+                # Manual Mode: Traditional task selection menu
+                Write-Information "Executing in Manual Mode" -InformationAction Continue
+                # Fall through to existing manual task selection logic below
+            }
+        }
+    }
+    
+    # Manual mode or fallback: Use existing hierarchical menu system
+    if ($selectedExecutionMode -eq 'Manual' -and -not $NonInteractive -and -not $TaskNumbers) {
         # Show hierarchical menu with integrated task selection
         $menuResult = Show-MainMenu -CountdownSeconds $MainConfig.execution.countdownSeconds -AvailableTasks $AvailableTasks
         
@@ -2791,7 +2781,7 @@ if (Get-Command -Name 'Start-MaintenanceCountdown' -ErrorAction SilentlyContinue
 
         $shutdownResult = Start-MaintenanceCountdown `
             -CountdownSeconds $shutdownConfig.CountdownSeconds `
-            -WorkingDirectory $ScriptRoot `
+            -WorkingDirectory $ProjectRoot `
             -TempRoot $script:ProjectPaths.TempRoot `
             -CleanupOnTimeout:$shutdownConfig.CleanupOnTimeout `
             -RebootOnTimeout:$shutdownConfig.RebootOnTimeout
