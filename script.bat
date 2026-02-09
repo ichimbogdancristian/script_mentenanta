@@ -193,30 +193,19 @@ SET "RESTART_SIGNALS_WU="
 
 REM FIX: Reboot guard functionality removed per user request
 
-REM Prefer PSWindowsUpdate if available, but always evaluate registry signals too
-powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; $updates = Get-WindowsUpdate -MicrosoftUpdate -AcceptAll -IgnoreReboot; $needs = $updates | Where-Object { $_.RebootRequired -eq $true }; if ($needs) { Write-Host 'RESTART_REQUIRED_UPDATES'; exit 1 } else { Write-Host 'NO_RESTART_REQUIRED_UPDATES'; exit 0 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 2 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 3 }" >nul 2>&1
+REM Prefer Windows Update reboot status when PSWindowsUpdate is available
+powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; if (Get-Command Get-WURebootStatus -ErrorAction SilentlyContinue) { $status = Get-WURebootStatus -Silent -ErrorAction SilentlyContinue; if ($status -and $status.RebootRequired) { Write-Host 'WU_REBOOT_REQUIRED'; exit 1 } else { Write-Host 'WU_REBOOT_NOT_REQUIRED'; exit 0 } } else { Write-Host 'WU_REBOOT_CMD_MISSING'; exit 2 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 3 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 4 }" >nul 2>&1
 IF !ERRORLEVEL! EQU 1 (
     SET "RESTART_NEEDED=YES"
     IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=PSWindowsUpdate-RebootRequired") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,PSWindowsUpdate-RebootRequired")
     SET "RESTART_NEEDED_WU=YES"
     IF NOT DEFINED RESTART_SIGNALS_WU (SET "RESTART_SIGNALS_WU=PSWindowsUpdate-RebootRequired") ELSE (SET "RESTART_SIGNALS_WU=!RESTART_SIGNALS_WU!,PSWindowsUpdate-RebootRequired")
 )
-IF !ERRORLEVEL! EQU 2 CALL :LOG_MESSAGE "PSWindowsUpdate not available. Continuing with registry reboot signals." "INFO" "LAUNCHER"
-IF !ERRORLEVEL! EQU 3 CALL :LOG_MESSAGE "PSWindowsUpdate check failed. Continuing with registry reboot signals." "WARN" "LAUNCHER"
+IF !ERRORLEVEL! EQU 2 CALL :LOG_MESSAGE "PSWindowsUpdate Get-WURebootStatus not available. Continuing with registry reboot signals." "INFO" "LAUNCHER"
+IF !ERRORLEVEL! EQU 3 CALL :LOG_MESSAGE "PSWindowsUpdate not available. Continuing with registry reboot signals." "INFO" "LAUNCHER"
+IF !ERRORLEVEL! EQU 4 CALL :LOG_MESSAGE "PSWindowsUpdate reboot check failed. Continuing with registry reboot signals." "WARN" "LAUNCHER"
 
-REM CoreInfrastructure-aligned registry checks
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "RESTART_NEEDED=YES"
-    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=CBS-RebootPending") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,CBS-RebootPending")
-)
-
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootInProgress" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "RESTART_NEEDED=YES"
-    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=CBS-RebootInProgress") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,CBS-RebootInProgress")
-)
-
+REM Windows Update-specific registry checks only
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     SET "RESTART_NEEDED=YES"
@@ -225,16 +214,12 @@ IF !ERRORLEVEL! EQU 0 (
     IF NOT DEFINED RESTART_SIGNALS_WU (SET "RESTART_SIGNALS_WU=WU-RebootRequired") ELSE (SET "RESTART_SIGNALS_WU=!RESTART_SIGNALS_WU!,WU-RebootRequired")
 )
 
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\PostRebootReporting" >nul 2>&1
+REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Services\Pending" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     SET "RESTART_NEEDED=YES"
-    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=WU-PostRebootReporting") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,WU-PostRebootReporting")
-)
-
-REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager" /v PendingFileRenameOperations >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    SET "RESTART_NEEDED=YES"
-    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=PendingFileRenameOperations") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,PendingFileRenameOperations")
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=WU-Services-Pending") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,WU-Services-Pending")
+    SET "RESTART_NEEDED_WU=YES"
+    IF NOT DEFINED RESTART_SIGNALS_WU (SET "RESTART_SIGNALS_WU=WU-Services-Pending") ELSE (SET "RESTART_SIGNALS_WU=!RESTART_SIGNALS_WU!,WU-Services-Pending")
 )
 
 REM UpdateExeVolatile indicates a pending reboot after updates (non-zero value)
@@ -247,15 +232,8 @@ IF /I NOT "!UPDATE_EXE_VOLATILE!"=="0x0" (
     IF NOT DEFINED RESTART_SIGNALS_WU (SET "RESTART_SIGNALS_WU=UpdateExeVolatile") ELSE (SET "RESTART_SIGNALS_WU=!RESTART_SIGNALS_WU!,UpdateExeVolatile")
 )
 
-REM Pending computer rename (ActiveComputerName != ComputerName)
-SET "ACTIVE_COMPUTERNAME="
-SET "PENDING_COMPUTERNAME="
-FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName" /v ComputerName 2^>nul ^| find /I "ComputerName"') DO SET "ACTIVE_COMPUTERNAME=%%B"
-FOR /F "tokens=2*" %%A IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName" /v ComputerName 2^>nul ^| find /I "ComputerName"') DO SET "PENDING_COMPUTERNAME=%%B"
-IF DEFINED ACTIVE_COMPUTERNAME IF DEFINED PENDING_COMPUTERNAME IF /I NOT "!ACTIVE_COMPUTERNAME!"=="!PENDING_COMPUTERNAME!" (
-    SET "RESTART_NEEDED=YES"
-    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=PendingComputerRename") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,PendingComputerRename")
-)
+REM NOTE: Non-Windows Update reboot signals (CBS, PendingFileRenameOperations, pending rename)
+REM are intentionally ignored to prevent restart loops unrelated to updates.
 
 IF /I "%RESTART_NEEDED_WU%"=="YES" (
     IF NOT DEFINED RESTART_SIGNALS_WU SET "RESTART_SIGNALS_WU=Unknown"
