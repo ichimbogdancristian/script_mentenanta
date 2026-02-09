@@ -2499,32 +2499,114 @@ try {
         }
 
         try {
+            # DEBUG: Check temp_files structure before processing
+            Write-Information "" -InformationAction Continue
+            Write-Information "DEBUG: Pre-processing directory structure check:" -InformationAction Continue
+            $tempRoot = $script:ProjectPaths.TempRoot
+            Write-Information "  Temp Root: $tempRoot" -InformationAction Continue
+            if (Test-Path $tempRoot) {
+                $tempDirs = Get-ChildItem -Path $tempRoot -Directory -ErrorAction SilentlyContinue
+                Write-Information "  Subdirectories found: $($tempDirs.Name -join ', ')" -InformationAction Continue
+                
+                # Check for data and logs directories
+                $dataDir = Join-Path $tempRoot 'data'
+                $logsDir = Join-Path $tempRoot 'logs'
+                Write-Information "  Data directory exists: $(Test-Path $dataDir)" -InformationAction Continue
+                Write-Information "  Logs directory exists: $(Test-Path $logsDir)" -InformationAction Continue
+                
+                if (Test-Path $dataDir) {
+                    $dataFiles = Get-ChildItem -Path $dataDir -File -ErrorAction SilentlyContinue
+                    Write-Information "  Data files: $($dataFiles.Count)" -InformationAction Continue
+                }
+                if (Test-Path $logsDir) {
+                    $logsDirCount = (Get-ChildItem -Path $logsDir -Directory -ErrorAction SilentlyContinue).Count
+                    Write-Information "  Log subdirectories: $logsDirCount" -InformationAction Continue
+                }
+            } else {
+                Write-Warning "  ERROR: Temp root does not exist!"
+            }
+            Write-Information "" -InformationAction Continue
+
             # Step 1: Process logs using LogProcessor module
-            if (Get-Command -Name 'Invoke-LogProcessing' -ErrorAction SilentlyContinue) {
+            Write-Information "DEBUG: Checking for Invoke-LogProcessing command..." -InformationAction Continue
+            $logProcessingCmd = Get-Command -Name 'Invoke-LogProcessing' -ErrorAction SilentlyContinue
+            if ($logProcessingCmd) {
+                Write-Information "  ✓ Found Invoke-LogProcessing in module: $($logProcessingCmd.ModuleName)" -InformationAction Continue
                 Write-Information "  Step 1: Processing logs with LogProcessor..." -InformationAction Continue
                 # LogProcessor reads directly from temp_files/data and temp_files/logs
                 # It does not accept TaskResults, SystemInventory, or Configuration parameters
-                Invoke-LogProcessing
+                Write-Information "DEBUG: Calling Invoke-LogProcessing..." -InformationAction Continue
+                $logProcessingResult = Invoke-LogProcessing
+                Write-Information "DEBUG: Invoke-LogProcessing completed" -InformationAction Continue
+                Write-Information "  Result type: $($logProcessingResult.GetType().Name)" -InformationAction Continue
+                Write-Information "  Result.Success: $($logProcessingResult.Success)" -InformationAction Continue
+                
+                if ($logProcessingResult.ProcessedDataPath) {
+                    Write-Information "  Result.ProcessedDataPath: $($logProcessingResult.ProcessedDataPath)" -InformationAction Continue
+                    
+                    # DEBUG: Check what files were created in processed directory
+                    Write-Information "DEBUG: Checking processed data output..." -InformationAction Continue
+                    if (Test-Path $logProcessingResult.ProcessedDataPath) {
+                        $processedFiles = Get-ChildItem -Path $logProcessingResult.ProcessedDataPath -Filter *.json -ErrorAction SilentlyContinue
+                        Write-Information "  JSON files in processed dir: $($processedFiles.Count)" -InformationAction Continue
+                        foreach ($file in $processedFiles) {
+                            Write-Information "    • $($file.Name) - $([math]::Round($file.Length/1KB, 1)) KB" -InformationAction Continue
+                        }
+                    } else {
+                        Write-Warning "  ERROR: Processed data path does not exist: $($logProcessingResult.ProcessedDataPath)"
+                    }
+                } else {
+                    Write-Warning "  WARNING: ProcessedDataPath not in result"
+                }
+                
                 Write-Information "  Log processing completed successfully" -InformationAction Continue
             }
             else {
+                Write-Warning "DEBUG: Invoke-LogProcessing command not found!"
+                Write-Information "DEBUG: Loaded modules:" -InformationAction Continue
+                Get-Module | ForEach-Object { Write-Information "  • $($_.Name)" -InformationAction Continue }
                 throw "LogProcessor module (Invoke-LogProcessing) not available"
             }
             # Step 2: Generate reports using ReportGenerator module
-            if (Get-Command -Name 'New-MaintenanceReport' -ErrorAction SilentlyContinue) {
+            Write-Information "" -InformationAction Continue
+            Write-Information "DEBUG: Checking for New-MaintenanceReport command..." -InformationAction Continue
+            $reportGenCmd = Get-Command -Name 'New-MaintenanceReport' -ErrorAction SilentlyContinue
+            if ($reportGenCmd) {
+                Write-Information "  ✓ Found New-MaintenanceReport in module: $($reportGenCmd.ModuleName)" -InformationAction Continue
                 Write-Information "  Step 2: Generating reports with ReportGenerator..." -InformationAction Continue
                 # Create reports directory
                 $reportsDir = Join-Path $script:ProjectPaths.TempFiles "reports"
+                Write-Information "DEBUG: Ensuring reports directory exists: $reportsDir" -InformationAction Continue
                 New-Item -Path $reportsDir -ItemType Directory -Force | Out-Null
+                Write-Information "  Reports directory ready: $(Test-Path $reportsDir)" -InformationAction Continue
+                
                 $reportBasePath = Join-Path $reportsDir "MaintenanceReport_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
+                Write-Information "DEBUG: Report will be saved to: $reportBasePath" -InformationAction Continue
+                
                 # Generate report using processed data (with fallback capability)
+                Write-Information "DEBUG: Calling New-MaintenanceReport with -EnableFallback..." -InformationAction Continue
                 $reportResult = New-MaintenanceReport -OutputPath $reportBasePath -EnableFallback
+                Write-Information "DEBUG: New-MaintenanceReport completed" -InformationAction Continue
+                Write-Information "  Result type: $($reportResult.GetType().Name)" -InformationAction Continue
+                Write-Information "  Result.Success: $($reportResult.Success)" -InformationAction Continue
+                
                 if ($reportResult -and $reportResult.Success) {
                     Write-Information "   Reports generated successfully using split architecture" -InformationAction Continue
+                    Write-Information "  Report Type: $($reportResult.ReportType)" -InformationAction Continue
+                    Write-Information "  Duration: $([math]::Round($reportResult.Duration, 2)) seconds" -InformationAction Continue
+                    
                     if ($reportResult.ReportPaths) {
+                        Write-Information "DEBUG: Verifying generated report files..." -InformationAction Continue
                         foreach ($reportPath in $reportResult.ReportPaths) {
-                            Write-Information "    - $reportPath" -InformationAction Continue
+                            $exists = Test-Path $reportPath
+                            $size = if ($exists) { " - $([math]::Round((Get-Item $reportPath).Length/1KB, 1)) KB" } else { " - FILE NOT FOUND!" }
+                            Write-Information "    - $reportPath$size" -InformationAction Continue
+                            Write-Information "      Exists: $exists" -InformationAction Continue
                         }
+                    }
+                    else {
+                        Write-Warning "  WARNING: No ReportPaths in result!"
+                        Write-Information "DEBUG: Full result keys: $($reportResult.Keys -join ', ')" -InformationAction Continue
                     }
 
                     # Track generated report artifacts for downstream copy/summary
@@ -2567,15 +2649,32 @@ try {
                     }
                 }
                 else {
+                    Write-Warning "  ERROR: Report generation failed!"
+                    Write-Information "DEBUG: Report result details:" -InformationAction Continue
+                    Write-Information "  Result.Success: $($reportResult.Success)" -InformationAction Continue
+                    Write-Information "  Result.Error: $($reportResult.Error)" -InformationAction Continue
+                    if ($reportResult.Stack) {
+                        Write-Information "  Result.Stack: $($reportResult.Stack)" -InformationAction Continue
+                    }
+                    Write-Information "  Full result: $($reportResult | ConvertTo-Json -Depth 2)" -InformationAction Continue
                     throw "ReportGenerator failed: $(if ($reportResult.Error) { $reportResult.Error } else { 'Unknown error' })"
                 }
             }
             else {
+                Write-Warning "DEBUG: New-MaintenanceReport command not found!"
+                Write-Information "DEBUG: Available  modules:" -InformationAction Continue
+                Get-Module | ForEach-Object { Write-Information "  • $($_.Name)" -InformationAction Continue }
                 throw "ReportGenerator module (New-MaintenanceReport) not available"
             }
         }
         catch {
-            Write-Warning "   Split architecture report generation failed: $($_.Exception.Message)"
+            Write-Warning "   Report generation error caught: $($_.Exception.Message)"
+            Write-Information "DEBUG: Exception details:" -InformationAction Continue
+            Write-Information "  Type: $($_.Exception.GetType().FullName)" -InformationAction Continue
+            Write-Information "  Message: $($_.Exception.Message)" -InformationAction Continue
+            if ($_.ScriptStackTrace) {
+                Write-Information "  Stack trace: $($_.ScriptStackTrace)" -InformationAction Continue
+            }
             Write-Information "   Attempting fallback report generation..." -InformationAction Continue
             # Fallback: Try to generate basic report with available data
             if (Get-Command -Name 'New-MaintenanceReport' -ErrorAction SilentlyContinue) {
