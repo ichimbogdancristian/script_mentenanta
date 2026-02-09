@@ -94,6 +94,50 @@ return @{
 }
 ```
 
+**Pitfall 4: Invalid Write-Information parameters**
+```powershell
+# ❌ Wrong (Write-Information has no -ForegroundColor)
+Write-Information "All done" -ForegroundColor Green -InformationAction Continue
+
+# ✅ Correct
+Write-Host "All done" -ForegroundColor Green
+# or
+Write-Information "All done" -InformationAction Continue
+```
+
+**Pitfall 5: OutputType mismatch**
+```powershell
+# ❌ Wrong
+[OutputType([hashtable])]
+function Get-MaintenancePath { return "C:\\temp_files" }
+
+# ✅ Correct
+[OutputType([string])]
+function Get-MaintenancePath { return "C:\\temp_files" }
+```
+
+**Pitfall 6: Comment swallowing a command**
+```powershell
+# ❌ Wrong (command is commented out)
+# ===== MAIN MENU ===== Write-Host "Menu" -ForegroundColor Cyan
+
+# ✅ Correct
+# ===== MAIN MENU =====
+Write-Host "Menu" -ForegroundColor Cyan
+```
+
+**Pitfall 7: Type2 modules missing -DryRun**
+```powershell
+# ❌ Wrong
+function Invoke-MyType2Module { param([hashtable]$Config) }
+
+# ✅ Correct
+function Invoke-MyType2Module {
+    param([hashtable]$Config, [switch]$DryRun)
+    if ($DryRun) { Write-LogEntry -Level 'INFO' -Component 'MODULE' -Message 'DRY-RUN: No changes applied'; return }
+}
+```
+
 ---
 
 ## 🎯 Project Context
