@@ -1,4 +1,4 @@
-﻿# Note: PowerShell 7+ verification is handled by the launcher (script.bat).
+# Note: PowerShell 7+ verification is handled by the launcher (script.bat).
 # The launcher ensures a compatible pwsh.exe is available before invoking this orchestrator.
 using namespace System.Collections.Generic
 <#
@@ -245,6 +245,7 @@ $CoreModules = @(
     'CoreInfrastructure',  # Foundation (now includes ShutdownManager functions)
     'ModuleRegistry',      # Phase 1: Auto-discovery system
     'CommonUtilities',     # Phase 1: Shared helper functions
+    'DiffEngine',           # v4.1: Diff list generation
     'LogAggregator',       # v3.1: Result collection
     'UserInterface',       # UI & menus
     'LogProcessor',        # Data processing pipeline
@@ -527,7 +528,7 @@ try {
         Write-Warning "OS detection returned null - using safe defaults"
         # Create minimal context for failsafe operation
         $script:OSContext = [PSCustomObject]@{
-            Version     = 'Unknown'
+            Version = 'Unknown'
             IsWindows11 = $false
             IsWindows10 = $false
             DisplayText = 'Unknown Windows Version'
@@ -540,7 +541,7 @@ catch {
 
     # Create minimal context for failsafe operation
     $script:OSContext = [PSCustomObject]@{
-        Version     = 'Unknown'
+        Version = 'Unknown'
         IsWindows11 = $false
         IsWindows10 = $false
         DisplayText = 'Unknown Windows Version'
@@ -622,9 +623,10 @@ function Set-SystemRestorePointSpace {
 
         # Ensure System Protection is enabled (attempt best-effort enablement)
         try {
-            if (Get-Command -Name 'Enable-ComputerRestore' -ErrorAction SilentlyContinue) {
+            $enableRestoreCommand = Get-Command -Name 'Enable-ComputerRestore' -ErrorAction SilentlyContinue
+            if ($enableRestoreCommand) {
                 if ($PSCmdlet.ShouldProcess($systemDrive, 'Enable System Protection')) {
-                    Enable-ComputerRestore -Drive $systemDrive -ErrorAction SilentlyContinue | Out-Null
+                    & $enableRestoreCommand -Drive $systemDrive -ErrorAction SilentlyContinue | Out-Null
                 }
             }
         }
@@ -721,10 +723,10 @@ try {
         if (-not $restoreResult) {
             try {
                 # This cmdlet doesn't exist in PowerShell 7, so this will throw
-                $checkpointCmd = Get-Command -Name 'Checkpoint-Computer' -ErrorAction Stop
-                Checkpoint-Computer -Description $restoreDescription -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
+                $checkpointCommand = Get-Command -Name 'Checkpoint-Computer' -ErrorAction Stop
+                & $checkpointCommand -Description $restoreDescription -RestorePointType 'MODIFY_SETTINGS' -ErrorAction Stop
                 $restoreResult = @{
-                    Success     = $true
+                    Success = $true
                     Description = $restoreDescription
                 }
             }
@@ -748,7 +750,7 @@ try {
                 $proc = Start-Process -FilePath $psExe -ArgumentList $psArgs -Wait -PassThru -WindowStyle Hidden
                 if ($proc.ExitCode -eq 0) {
                     $restoreResult = @{
-                        Success     = $true
+                        Success = $true
                         Description = $restoreDescription
                     }
                 }
@@ -1224,10 +1226,10 @@ try {
         Write-Information "   Collecting comprehensive log data..." -InformationAction Continue
         try {
             $logCollection = @{
-                Type1AuditData      = @{}
-                Type2ExecutionLogs  = @{}
+                Type1AuditData = @{}
+                Type2ExecutionLogs = @{}
                 CollectionTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-                SessionId           = $script:MaintenanceSessionId
+                SessionId = $script:MaintenanceSessionId
             }
             # Collect Type1 audit results from temp_files/data/
             $dataPath = Join-Path $env:MAINTENANCE_TEMP_ROOT "data"
@@ -1269,17 +1271,17 @@ try {
             Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Comprehensive log collection completed" -Data @{
                 Type1ModulesCollected = $auditDataCount
                 Type2ModulesCollected = $executionLogsCount
-                CollectionTimestamp   = $logCollection.CollectionTimestamp
+                CollectionTimestamp = $logCollection.CollectionTimestamp
             }
             return $logCollection
         }
         catch {
             Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Failed to collect comprehensive logs: $($_.Exception.Message)"
             return @{
-                Type1AuditData      = @{}
-                Type2ExecutionLogs  = @{}
+                Type1AuditData = @{}
+                Type2ExecutionLogs = @{}
                 CollectionTimestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-                Error               = $_.Exception.Message
+                Error = $_.Exception.Message
             }
         }
     }
@@ -1348,37 +1350,37 @@ try {
             }
             # Build session manifest
             $sessionManifest = @{
-                sessionId            = $SessionId
-                sessionTimestamp     = $ExecutionStartTime.ToString('o')  # ISO 8601 format
-                sessionEndTime       = $executionEndTime.ToString('o')
-                executionMode        = $ExecutionMode
-                executionStartTime   = $ExecutionStartTime.ToString('yyyy-MM-dd HH:mm:ss')
-                executionEndTime     = $executionEndTime.ToString('yyyy-MM-dd HH:mm:ss')
+                sessionId = $SessionId
+                sessionTimestamp = $ExecutionStartTime.ToString('o')  # ISO 8601 format
+                sessionEndTime = $executionEndTime.ToString('o')
+                executionMode = $ExecutionMode
+                executionStartTime = $ExecutionStartTime.ToString('yyyy-MM-dd HH:mm:ss')
+                executionEndTime = $executionEndTime.ToString('yyyy-MM-dd HH:mm:ss')
                 totalDurationSeconds = $totalDuration
-                moduleResults        = @($ModuleResults | ForEach-Object {
+                moduleResults = @($ModuleResults | ForEach-Object {
                         @{
-                            moduleName     = $_.TaskName
-                            success        = $_.Success
-                            itemsDetected  = $_.ItemsDetected
+                            moduleName = $_.TaskName
+                            success = $_.Success
+                            itemsDetected = $_.ItemsDetected
                             itemsProcessed = $_.ItemsProcessed
-                            duration       = $_.Duration
-                            startTime      = $_.StartTime
-                            endTime        = $_.EndTime
-                            executionMode  = 'Live'
+                            duration = $_.Duration
+                            startTime = $_.StartTime
+                            endTime = $_.EndTime
+                            executionMode = 'Live'
                         }
                     })
-                executionStatus      = $executionStatus
-                systemInfo           = @{
-                    computerName      = $env:COMPUTERNAME
-                    userName          = $env:USERNAME
-                    osVersion         = [System.Environment]::OSVersion.VersionString
+                executionStatus = $executionStatus
+                systemInfo = @{
+                    computerName = $env:COMPUTERNAME
+                    userName = $env:USERNAME
+                    osVersion = [System.Environment]::OSVersion.VersionString
                     powershellVersion = $PSVersionTable.PSVersion.ToString()
                 }
-                summaryMetrics       = @{
-                    totalModules      = $ModuleResults.Count
+                summaryMetrics = @{
+                    totalModules = $ModuleResults.Count
                     successfulModules = $successfulModules
-                    failedModules     = $failedModules
-                    successRate       = if ($ModuleResults.Count -gt 0) {
+                    failedModules = $failedModules
+                    successRate = if ($ModuleResults.Count -gt 0) {
                         [math]::Round(($successfulModules / $ModuleResults.Count) * 100, 2)
                     }
                     else { 0 }
@@ -1395,12 +1397,12 @@ try {
             $sessionManifest | ConvertTo-Json -Depth 20 | Set-Content -Path $manifestPath -Encoding UTF8 -Force
             Write-Information "   Session manifest created: $manifestPath" -InformationAction Continue
             Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Session manifest created: session-$sessionDateFormat.json" -Data @{
-                SessionId         = $SessionId
-                ExecutionMode     = $ExecutionMode
-                TotalDuration     = $totalDuration
+                SessionId = $SessionId
+                ExecutionMode = $ExecutionMode
+                TotalDuration = $totalDuration
                 SuccessfulModules = $successfulModules
-                FailedModules     = $failedModules
-                ExecutionStatus   = $executionStatus
+                FailedModules = $failedModules
+                ExecutionStatus = $executionStatus
             }
             return $manifestPath
         }
@@ -1424,67 +1426,67 @@ try {
     # Note: SystemInventory is Type1 and handled separately before Type2 modules (see line 1339)
     $MaintenanceTasks = @(
         @{
-            Name        = 'BloatwareRemoval'
+            Name = 'BloatwareRemoval'
             Description = 'Detect and remove bloatware applications (Type2->Type1 flow)'
-            ModuleName  = 'BloatwareRemoval'
-            Function    = 'Invoke-BloatwareRemoval'
-            Type        = 'Type2'
-            Category    = 'Cleanup'
-            Enabled     = (-not $MainConfig.modules.skipBloatwareRemoval)
+            ModuleName = 'BloatwareRemoval'
+            Function = 'Invoke-BloatwareRemoval'
+            Type = 'Type2'
+            Category = 'Cleanup'
+            Enabled = (-not $MainConfig.modules.skipBloatwareRemoval)
         },
         @{
-            Name        = 'EssentialApps'
+            Name = 'EssentialApps'
             Description = 'Analyze and install essential applications (Type2->Type1 flow)'
-            ModuleName  = 'EssentialApps'
-            Function    = 'Invoke-EssentialApps'
-            Type        = 'Type2'
-            Category    = 'Installation'
-            Enabled     = (-not $MainConfig.modules.skipEssentialApps)
+            ModuleName = 'EssentialApps'
+            Function = 'Invoke-EssentialApps'
+            Type = 'Type2'
+            Category = 'Installation'
+            Enabled = (-not $MainConfig.modules.skipEssentialApps)
         },
         @{
-            Name        = 'SystemOptimization'
+            Name = 'SystemOptimization'
             Description = 'Analyze and optimize system performance (Type2->Type1 flow)'
-            ModuleName  = 'SystemOptimization'
-            Function    = 'Invoke-SystemOptimization'
-            Type        = 'Type2'
-            Category    = 'Optimization'
-            Enabled     = (-not $MainConfig.modules.skipSystemOptimization)
+            ModuleName = 'SystemOptimization'
+            Function = 'Invoke-SystemOptimization'
+            Type = 'Type2'
+            Category = 'Optimization'
+            Enabled = (-not $MainConfig.modules.skipSystemOptimization)
         },
         @{
-            Name        = 'TelemetryDisable'
+            Name = 'TelemetryDisable'
             Description = 'Analyze and disable Windows telemetry (Type2->Type1 flow)'
-            ModuleName  = 'TelemetryDisable'
-            Function    = 'Invoke-TelemetryDisable'
-            Type        = 'Type2'
-            Category    = 'Privacy'
-            Enabled     = (-not $MainConfig.modules.skipTelemetryDisable)
+            ModuleName = 'TelemetryDisable'
+            Function = 'Invoke-TelemetryDisable'
+            Type = 'Type2'
+            Category = 'Privacy'
+            Enabled = (-not $MainConfig.modules.skipTelemetryDisable)
         },
         @{
-            Name        = 'WindowsUpdates'
+            Name = 'WindowsUpdates'
             Description = 'Analyze and install Windows updates (Type2->Type1 flow)'
-            ModuleName  = 'WindowsUpdates'
-            Function    = 'Invoke-WindowsUpdate'
-            Type        = 'Type2'
-            Category    = 'Updates'
-            Enabled     = (-not $MainConfig.modules.skipWindowsUpdates)
+            ModuleName = 'WindowsUpdates'
+            Function = 'Invoke-WindowsUpdate'
+            Type = 'Type2'
+            Category = 'Updates'
+            Enabled = (-not $MainConfig.modules.skipWindowsUpdates)
         },
         @{
-            Name        = 'AppUpgrade'
+            Name = 'AppUpgrade'
             Description = 'Analyze and upgrade applications via Winget/Chocolatey (Type2->Type1 flow)'
-            ModuleName  = 'AppUpgrade'
-            Function    = 'Invoke-AppUpgrade'
-            Type        = 'Type2'
-            Category    = 'Updates'
-            Enabled     = (-not $MainConfig.modules.skipAppUpgrade)
+            ModuleName = 'AppUpgrade'
+            Function = 'Invoke-AppUpgrade'
+            Type = 'Type2'
+            Category = 'Updates'
+            Enabled = (-not $MainConfig.modules.skipAppUpgrade)
         },
         @{
-            Name        = 'SecurityEnhancement'
+            Name = 'SecurityEnhancement'
             Description = 'Analyze and enhance system security posture (Type2->Type1 flow)'
-            ModuleName  = 'SecurityEnhancement'
-            Function    = 'Invoke-SecurityEnhancement'
-            Type        = 'Type2'
-            Category    = 'Security'
-            Enabled     = (-not $MainConfig.modules.skipSecurityEnhancement)
+            ModuleName = 'SecurityEnhancement'
+            Function = 'Invoke-SecurityEnhancement'
+            Type = 'Type2'
+            Category = 'Security'
+            Enabled = (-not $MainConfig.modules.skipSecurityEnhancement)
         }
     )
     # v3.0: Filter enabled tasks and verify functions are available
@@ -1515,7 +1517,7 @@ try {
     # STAGE 5: Report Generation & Cleanup
 
     $ExecutionParams = @{
-        Mode          = 'StagedExecution'
+        Mode = 'StagedExecution'
         SelectedTasks = @()
     }
 
@@ -1559,8 +1561,8 @@ try {
                 }
 
                 $type1ModulesAvailable += @{
-                    Name        = $moduleName
-                    Path        = $file.FullName
+                    Name = $moduleName
+                    Path = $file.FullName
                     Description = $description
                 }
             }
@@ -1573,7 +1575,7 @@ try {
         }
 
         # Show Type1 module selection menu
-        $countdownSeconds = $MainConfig.execution.countdownSeconds ?? 10
+        $countdownSeconds = 10
         $selectedType1Indices = Show-Type1ModuleMenu -CountdownSeconds $countdownSeconds -AvailableModules $type1ModulesAvailable
 
         # Determine which Type1 modules to execute
@@ -1656,6 +1658,17 @@ try {
         Write-Host "      Audit results saved to: temp_files/data/" -ForegroundColor DarkGray
         Write-Host ""
 
+        # Build diff lists from audit results
+        $diffResultSet = $null
+        if (Get-Command -Name 'New-DiffListSet' -ErrorAction SilentlyContinue) {
+            $diffResultSet = New-DiffListSet -MainConfig $MainConfig -AuditResults $AuditResults -OSContext $script:OSContext
+            $script:DiffLists = if ($diffResultSet.DiffLists) { $diffResultSet.DiffLists } else { @{} }
+            Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR-STAGE1' -Message 'Diff lists generated from Type1 audit results'
+        }
+        else {
+            Write-Warning "DiffEngine not available - Type2 selection may be inaccurate"
+        }
+
         # ============================================================
         # STAGE 2: ANALYZE AUDIT RESULTS
         # ============================================================
@@ -1666,68 +1679,31 @@ try {
         Write-Host "  Processing audit data to determine required maintenance tasks..." -ForegroundColor Cyan
         Write-Host ""
 
-        # Analyze audit results to determine which Type2 modules have work to do
+        # Analyze diff lists to determine which Type2 modules have work to do
         $type2Recommendations = @()
+        $diffLists = if ($diffResultSet -and $diffResultSet.DiffLists) { $diffResultSet.DiffLists } else { @{} }
 
         foreach ($task in $AvailableTasks) {
-            $moduleName = $task.Name
+            $moduleName = if ($task.ModuleName) { $task.ModuleName } else { $task.Name }
             $shouldRun = $false
-            $reason = 'No issues detected'
+            $reason = 'No actionable items in diff list'
             $detectedCount = 0
 
-            # Map Type2 module name to audit result key
-            $auditKey = switch ($moduleName) {
-                'BloatwareRemoval' { 'BloatwareDetection' }
-                'EssentialApps' { 'EssentialApps' }
-                'SystemOptimization' { 'SystemOptimization' }
-                'TelemetryDisable' { 'Telemetry' }
-                'SecurityEnhancement' { 'SecurityAudit' }
-                'WindowsUpdates' { 'WindowsUpdates' }
-                'AppUpgrade' { 'AppUpgrade' }
-                default { $moduleName }
-            }
-
-            # Check if audit found issues for this module
-            if ($AuditResults.ContainsKey($auditKey)) {
-                $auditData = $AuditResults[$auditKey]
-
-                # Determine if module should run based on audit data
-                if ($auditData.DetectedItems) {
-                    $detectedCount = $auditData.DetectedItems.Count
-                    if ($detectedCount -gt 0) {
-                        $shouldRun = $true
-                        $reason = "$detectedCount issue(s) detected"
-                    }
-                }
-                elseif ($auditData.MissingApps) {
-                    $detectedCount = $auditData.MissingApps.Count
-                    if ($detectedCount -gt 0) {
-                        $shouldRun = $true
-                        $reason = "$detectedCount missing app(s) detected"
-                    }
-                }
-                elseif ($auditData.OptimizationOpportunities) {
-                    $detectedCount = $auditData.OptimizationOpportunities.Count
-                    if ($detectedCount -gt 0) {
-                        $shouldRun = $true
-                        $reason = "$detectedCount optimization(s) available"
-                    }
-                }
-                elseif ($auditData.PendingUpdates) {
-                    $detectedCount = $auditData.PendingUpdates.Count
-                    if ($detectedCount -gt 0) {
-                        $shouldRun = $true
-                        $reason = "$detectedCount pending update(s)"
-                    }
+            if ($diffLists.ContainsKey($moduleName)) {
+                $diffEntry = $diffLists[$moduleName]
+                $detectedCount = if ($diffEntry.DiffCount) { $diffEntry.DiffCount } else { 0 }
+                if ($detectedCount -gt 0) {
+                    $shouldRun = $true
+                    $reason = $diffEntry.Reason
                 }
             }
 
             # Add to recommendations if work is needed
             if ($shouldRun) {
                 $type2Recommendations += @{
-                    Task     = $task
-                    Reason   = $reason
-                    Count    = $detectedCount
+                    Task = $task
+                    Reason = $reason
+                    Count = $detectedCount
                     Priority = switch ($moduleName) {
                         'SecurityEnhancement' { 'HIGH' }
                         'BloatwareRemoval' { 'HIGH' }
@@ -1742,7 +1718,7 @@ try {
             }
             else {
                 Write-Host "  ✓ ${moduleName}: " -NoNewline -ForegroundColor DarkGray
-                Write-Host "No action needed" -ForegroundColor Gray
+                Write-Host "No actions to be taken (diff list empty)" -ForegroundColor Gray
             }
         }
 
@@ -1883,11 +1859,14 @@ try {
                     if ($functionName) {
                         # Execute with proper parameters
                         try {
-                            & $functionName -Config $MainConfig -ErrorAction Stop | Out-Null
+                            $auditResult = & $functionName -Config $MainConfig -ErrorAction Stop
                         }
                         catch {
                             # Fallback for modules that don't require Config
-                            & $functionName | Out-Null
+                            $auditResult = & $functionName
+                        }
+                        if ($null -ne $auditResult) {
+                            $AuditResults[$rootName] = $auditResult
                         }
                         Write-Information "    [OK] $($file.BaseName)" -InformationAction Continue
                     }
@@ -1904,9 +1883,26 @@ try {
             Write-Warning "Type1 modules directory not found: $type1Path"
         }
 
-        # Auto-select all Type2 tasks for execution in non-interactive mode
-        Write-Information "Auto-selecting all available Type2 tasks (non-interactive)..." -InformationAction Continue
-        $ExecutionParams.SelectedTasks = $AvailableTasks
+        # Build diff lists and select actionable Type2 tasks
+        $diffResultSet = $null
+        if (Get-Command -Name 'New-DiffListSet' -ErrorAction SilentlyContinue) {
+            $diffResultSet = New-DiffListSet -MainConfig $MainConfig -AuditResults $AuditResults -OSContext $script:OSContext
+        }
+
+        $diffLists = if ($diffResultSet -and $diffResultSet.DiffLists) { $diffResultSet.DiffLists } else { @{} }
+        $script:DiffLists = $diffLists
+        $ExecutionParams.SelectedTasks = @()
+
+        foreach ($task in $AvailableTasks) {
+            $moduleName = if ($task.ModuleName) { $task.ModuleName } else { $task.Name }
+            if ($diffLists.ContainsKey($moduleName) -and $diffLists[$moduleName].DiffCount -gt 0) {
+                $ExecutionParams.SelectedTasks += $task
+            }
+            else {
+                Write-Information "  [SKIP] $moduleName - no actions to be taken" -InformationAction Continue
+            }
+        }
+
         Write-Information "  Selected $($ExecutionParams.SelectedTasks.Count) tasks for execution" -InformationAction Continue
     }
 
@@ -1936,11 +1932,14 @@ try {
                     if ($functionName) {
                         # Execute with proper parameters
                         try {
-                            & $functionName -Config $MainConfig -ErrorAction Stop | Out-Null
+                            $auditResult = & $functionName -Config $MainConfig -ErrorAction Stop
                         }
                         catch {
                             # Fallback for modules that don't require Config
-                            & $functionName | Out-Null
+                            $auditResult = & $functionName
+                        }
+                        if ($null -ne $auditResult) {
+                            $AuditResults[$rootName] = $auditResult
                         }
                     }
                 }
@@ -1950,12 +1949,28 @@ try {
             }
         }
 
+        $diffResultSet = $null
+        if (Get-Command -Name 'New-DiffListSet' -ErrorAction SilentlyContinue) {
+            $diffResultSet = New-DiffListSet -MainConfig $MainConfig -AuditResults $AuditResults -OSContext $script:OSContext
+        }
+        if ($diffResultSet -and $diffResultSet.DiffLists) {
+            $script:DiffLists = $diffResultSet.DiffLists
+        }
+
         try {
             $taskNumbersArray = $TaskNumbers -split ',' | ForEach-Object { [int]$_.Trim() }
             $ExecutionParams.SelectedTasks = @()
+            $diffLists = if ($diffResultSet -and $diffResultSet.DiffLists) { $diffResultSet.DiffLists } else { @{} }
             foreach ($taskNum in $taskNumbersArray) {
                 if ($taskNum -ge 1 -and $taskNum -le $AvailableTasks.Count) {
-                    $ExecutionParams.SelectedTasks += $AvailableTasks[$taskNum - 1]
+                    $candidateTask = $AvailableTasks[$taskNum - 1]
+                    $moduleName = if ($candidateTask.ModuleName) { $candidateTask.ModuleName } else { $candidateTask.Name }
+                    if ($diffLists.ContainsKey($moduleName) -and $diffLists[$moduleName].DiffCount -gt 0) {
+                        $ExecutionParams.SelectedTasks += $candidateTask
+                    }
+                    else {
+                        Write-Information "  [SKIP] $moduleName - no actions to be taken" -InformationAction Continue
+                    }
                 }
                 else {
                     Write-Warning "Invalid task number: $taskNum (valid range: 1-$($AvailableTasks.Count))"
@@ -2177,16 +2192,16 @@ try {
                 }
 
                 $preExecutionSkipped += [PSCustomObject]@{
-                    TaskName    = $task.Name
+                    TaskName = $task.Name
                     Description = $task.Description
-                    Type        = $task.Type
-                    Category    = $task.Category
-                    StartTime   = Get-Date
-                    Success     = $true
-                    Output      = 'Skipped'
-                    Error       = $null
-                    Duration    = 0
-                    Skipped     = $true
+                    Type = $task.Type
+                    Category = $task.Category
+                    StartTime = Get-Date
+                    Success = $true
+                    Output = 'Skipped'
+                    Error = $null
+                    Duration = 0
+                    Skipped = $true
                 }
             }
         }
@@ -2198,21 +2213,21 @@ try {
         #region Stage 4: EXECUTING MAINTENANCE ACTIONS
         Write-Information "" -InformationAction Continue
         Write-Information "" -InformationAction Continue
-        Write-Information "╔═══════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan -InformationAction Continue
-        Write-Information "║                                                               ║" -ForegroundColor Cyan -InformationAction Continue
-        Write-Information "║           STAGE 4: EXECUTING MAINTENANCE ACTIONS              ║" -ForegroundColor Yellow -InformationAction Continue
-        Write-Information "║                                                               ║" -ForegroundColor Cyan -InformationAction Continue
-        Write-Information "╚═══════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan -InformationAction Continue
+        Write-Host "╔═══════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
+        Write-Host "║                                                               ║" -ForegroundColor Cyan
+        Write-Host "║           STAGE 4: EXECUTING MAINTENANCE ACTIONS              ║" -ForegroundColor Yellow
+        Write-Host "║                                                               ║" -ForegroundColor Cyan
+        Write-Host "╚═══════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
         Write-Information "" -InformationAction Continue
-        Write-Information "  Executing $($ExecutionParams.SelectedTasks.Count) selected task(s)..." -ForegroundColor Green -InformationAction Continue
+        Write-Host "  Executing $($ExecutionParams.SelectedTasks.Count) selected task(s)..." -ForegroundColor Green
         Write-Information "" -InformationAction Continue
         #endregion
 
         # Log execution start
         Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Stage 4: Starting maintenance execution" -Data @{
-            ExecutionMode      = $executionMode
+            ExecutionMode = $executionMode
             SelectedTasksCount = $ExecutionParams.SelectedTasks.Count
-            TotalTasksCount    = $AvailableTasks.Count
+            TotalTasksCount = $AvailableTasks.Count
         }
         if ($ExecutionParams.SelectedTasks.Count -eq 0) {
             Write-Warning "No tasks selected for execution"
@@ -2246,24 +2261,24 @@ try {
             Write-Information "Type: $($task.Type) | Category: $($task.Category)" -InformationAction Continue
             $taskStartTime = Get-Date
             $taskResult = @{
-                TaskName    = $task.Name
+                TaskName = $task.Name
                 Description = $task.Description
-                Type        = $task.Type
-                Category    = $task.Category
-                StartTime   = $taskStartTime
-                Success     = $false
-                Output      = ''
-                Error       = $null
-                Duration    = $null
+                Type = $task.Type
+                Category = $task.Category
+                StartTime = $taskStartTime
+                Success = $false
+                Output = ''
+                Error = $null
+                Duration = $null
             }
             try {
                 # v3.0 Architecture: Simplified execution using standardized Invoke-[ModuleName] functions
                 # Type2 modules are already loaded and self-contained with their Type1 dependencies
                 # Log task start
                 Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR' -Message "Starting task: $($task.Name)" -Data @{
-                    TaskType     = $task.Type
+                    TaskType = $task.Type
                     TaskCategory = $task.Category
-                    Function     = $task.Function
+                    Function = $task.Function
                     Architecture = 'v3.1'
                 }
                 # Verify function is available (already checked during module loading)
@@ -2274,7 +2289,16 @@ try {
                 $result = $null
                 try {
                     Write-Information "   Executing: $($task.Function)" -InformationAction Continue
-                    $result = & $task.Function -Config $MainConfig
+                    $command = Get-Command -Name $task.Function -ErrorAction Stop
+                    $moduleKey = if ($task.ModuleName) { $task.ModuleName } else { $task.Name }
+                    $diffList = if ($script:DiffLists -and $script:DiffLists.ContainsKey($moduleKey)) { $script:DiffLists[$moduleKey].DiffList } else { $null }
+
+                    $invokeParams = @{ Config = $MainConfig }
+                    if ($diffList -and $command.Parameters.ContainsKey('DiffList')) {
+                        $invokeParams.DiffList = $diffList
+                    }
+
+                    $result = & $task.Function @invokeParams
                     # Validate standardized return structure (support both hashtable and PSCustomObject)
                     $hasValidStructure = $false
                     if ($result) {
@@ -2365,11 +2389,11 @@ try {
                 catch {
                     # Capture detailed error information for debugging
                     $errorDetails = @{
-                        Message    = $_.Exception.Message
-                        Type       = $_.Exception.GetType().Name
+                        Message = $_.Exception.Message
+                        Type = $_.Exception.GetType().Name
                         StackTrace = $_.ScriptStackTrace
-                        Function   = $task.Function
-                        Line       = $_.InvocationInfo.ScriptLineNumber
+                        Function = $task.Function
+                        Line = $_.InvocationInfo.ScriptLineNumber
                     }
                     # Log detailed error information with structured logging
                     Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task execution failed: $($task.Name)" -Data $errorDetails
@@ -2384,7 +2408,7 @@ try {
                 Write-Information "   Completed successfully" -InformationAction Continue
                 # Log task success with detailed metrics
                 Write-LogEntry -Level 'SUCCESS' -Component 'ORCHESTRATOR' -Message "Task completed successfully: $($task.Name)" -Data @{
-                    Duration   = ((Get-Date) - $taskStartTime).TotalSeconds
+                    Duration = ((Get-Date) - $taskStartTime).TotalSeconds
                     OutputType = if ($null -ne $result) { $result.GetType().Name } else { 'null' }
                     ResultSize = if ($null -ne $result -and $result -is [string]) { $result.Length } elseif ($null -ne $result -and $result -is [array]) { $result.Count } else { 0 }
                 }
@@ -2402,7 +2426,7 @@ try {
                 $taskResult.Error = "Task timed out: $($_.Exception.Message)"
                 Write-Information "  [TIMEOUT] $($_.Exception.Message)" -InformationAction Continue
                 Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task timeout: $($task.Name)" -Data @{
-                    Error    = $_.Exception.Message
+                    Error = $_.Exception.Message
                     Duration = ((Get-Date) - $taskStartTime).TotalSeconds
                 }
             }
@@ -2411,7 +2435,7 @@ try {
                 $taskResult.Error = "Out of memory error during task execution"
                 Write-Information "   Memory Error: Insufficient memory to complete task" -InformationAction Continue
                 Write-LogEntry -Level 'CRITICAL' -Component 'ORCHESTRATOR' -Message "Out of memory error: $($task.Name)" -Data @{
-                    Duration    = ((Get-Date) - $taskStartTime).TotalSeconds
+                    Duration = ((Get-Date) - $taskStartTime).TotalSeconds
                     MemoryUsage = [System.GC]::GetTotalMemory($false)
                 }
                 # Force garbage collection
@@ -2424,14 +2448,14 @@ try {
                 Write-Information "   Failed: $($_.Exception.Message)" -InformationAction Continue
                 # Enhanced error logging with full context
                 $errorContext = @{
-                    Error        = $_.Exception.Message
-                    ErrorType    = $_.Exception.GetType().Name
-                    Duration     = ((Get-Date) - $taskStartTime).TotalSeconds
-                    StackTrace   = $_.ScriptStackTrace
+                    Error = $_.Exception.Message
+                    ErrorType = $_.Exception.GetType().Name
+                    Duration = ((Get-Date) - $taskStartTime).TotalSeconds
+                    StackTrace = $_.ScriptStackTrace
                     TaskFunction = $task.Function
-                    ModulePath   = $task.ModulePath
-                    ScriptLine   = $_.InvocationInfo.ScriptLineNumber
-                    Command      = $_.InvocationInfo.MyCommand.Name
+                    ModulePath = $task.ModulePath
+                    ScriptLine = $_.InvocationInfo.ScriptLineNumber
+                    Command = $_.InvocationInfo.MyCommand.Name
                 }
                 Write-LogEntry -Level 'ERROR' -Component 'ORCHESTRATOR' -Message "Task failed: $($task.Name)" -Data $errorContext
                 # Additional troubleshooting information
@@ -2739,17 +2763,17 @@ try {
     }
     # Save execution results
     $executionSummary = @{
-        ExecutionMode          = $executionMode
-        SessionStartTime       = $SessionStartTime
+        ExecutionMode = $executionMode
+        SessionStartTime = $SessionStartTime
         TaskExecutionStartTime = $StartTime
-        EndTime                = Get-Date
-        TotalDuration          = $totalDuration
-        SessionDuration        = ((Get-Date) - $SessionStartTime).TotalSeconds
-        TasksExecuted          = $TaskResults.Count
-        SuccessfulTasks        = $successfulTasks
-        FailedTasks            = $failedTasks
-        TaskResults            = $TaskResults
-        Configuration          = $MainConfig
+        EndTime = Get-Date
+        TotalDuration = $totalDuration
+        SessionDuration = ((Get-Date) - $SessionStartTime).TotalSeconds
+        TasksExecuted = $TaskResults.Count
+        SuccessfulTasks = $successfulTasks
+        FailedTasks = $failedTasks
+        TaskResults = $TaskResults
+        Configuration = $MainConfig
     }
     $reportsDir = Join-Path $script:ProjectPaths.TempRoot "reports"
     $summaryPath = Join-Path $reportsDir "execution-summary-$script:MaintenanceSessionTimestamp.json"
@@ -2844,17 +2868,17 @@ catch {
 if ($finalReports.Count -gt 0) {
     Write-Information "" -InformationAction Continue
     Write-Information " =======================================================" -InformationAction Continue
-    Write-Information " Final Reports Available (Safe Location):" -ForegroundColor Green -InformationAction Continue
+    Write-Host " Final Reports Available (Safe Location):" -ForegroundColor Green
     Write-Information " =======================================================" -InformationAction Continue
-    Write-Information "   Location: $reportCopyTarget" -ForegroundColor Cyan -InformationAction Continue
+    Write-Host "   Location: $reportCopyTarget" -ForegroundColor Cyan
     foreach ($report in $finalReports) {
         $fileName = Split-Path $report -Leaf
-        Write-Information "    [OK] $fileName" -ForegroundColor Green -InformationAction Continue
+        Write-Host "    [OK] $fileName" -ForegroundColor Green
     }
     Write-Information " =======================================================" -InformationAction Continue
     Write-Information "" -InformationAction Continue
-    Write-Information "   These reports have been copied to the script.bat directory" -ForegroundColor Yellow -InformationAction Continue
-    Write-Information "   They will remain even if temporary files are cleaned up" -ForegroundColor Yellow -InformationAction Continue
+    Write-Host "   These reports have been copied to the script.bat directory" -ForegroundColor Yellow
+    Write-Host "   They will remain even if temporary files are cleaned up" -ForegroundColor Yellow
     Write-Information "" -InformationAction Continue
 }
 else {
@@ -2894,18 +2918,18 @@ if (Get-Command -Name 'Start-MaintenanceCountdown' -ErrorAction SilentlyContinue
     try {
         # Load shutdown configuration
         $shutdownConfig = @{
-            CountdownSeconds            = $MainConfig.execution.shutdown.countdownSeconds ?? 120
-            CleanupOnTimeout            = $MainConfig.execution.shutdown.cleanupOnTimeout ?? $true
-            RebootOnTimeout             = $MainConfig.execution.shutdown.rebootOnTimeout ?? $false
-            RebootOnlyForWindowsUpdates = $MainConfig.execution.shutdown.rebootOnlyForWindowsUpdates ?? $true
+            CountdownSeconds = 120
+            CleanupOnTimeout = $true
+            RebootOnTimeout = $true
+            RebootOnlyForWindowsUpdates = $false
         }
 
         Write-Information "╔═══════════════════════════════════════════════════════════════╗" -ForegroundColor Yellow -InformationAction Continue
         Write-Information "║                                                               ║" -ForegroundColor Yellow -InformationAction Continue
         Write-Information "║                 CLEANUP COUNTDOWN STARTING                    ║" -ForegroundColor Red -InformationAction Continue
         Write-Information "║                                                               ║" -ForegroundColor Yellow -InformationAction Continue
-        Write-Information "║  Press ANY KEY to abort cleanup and keep temporary files     ║" -ForegroundColor Yellow -InformationAction Continue
-        Write-Information "║  Or wait $($shutdownConfig.CountdownSeconds) seconds to automatically clean and restart    ║" -ForegroundColor Yellow -InformationAction Continue
+        Write-Information "║  Press ANY KEY to abort and leave everything as-is          ║" -ForegroundColor Yellow -InformationAction Continue
+        Write-Information "║  Or wait $($shutdownConfig.CountdownSeconds) seconds to clean and restart automatically   ║" -ForegroundColor Yellow -InformationAction Continue
         Write-Information "║                                                               ║" -ForegroundColor Yellow -InformationAction Continue
         Write-Information "╚═══════════════════════════════════════════════════════════════╝" -ForegroundColor Yellow -InformationAction Continue
         Write-Information "" -InformationAction Continue
@@ -2946,5 +2970,6 @@ else {
     exit 0
 }
 #endregion
+
 
 

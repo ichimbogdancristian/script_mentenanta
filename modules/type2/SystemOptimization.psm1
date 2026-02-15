@@ -63,7 +63,10 @@ function Invoke-SystemOptimization {
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
-        [hashtable]$Config
+        [hashtable]$Config,
+
+        [Parameter()]
+        [array]$DiffList
     )
 
     $perfContext = $null
@@ -94,7 +97,24 @@ function Invoke-SystemOptimization {
         Initialize-ModuleExecution -ModuleName 'SystemOptimization'
 
         Write-LogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message 'Starting system optimization analysis'
-        $analysisResults = Get-SystemOptimizationAnalysis
+
+        $diffListProvided = $PSBoundParameters.ContainsKey('DiffList')
+        $diffListFromDisk = if (-not $diffListProvided) { Get-DiffResults -ModuleName 'SystemOptimization' } else { @() }
+        $effectiveDiffList = if ($diffListProvided) { $DiffList } elseif ($diffListFromDisk.Count -gt 0) { $diffListFromDisk } else { $null }
+
+        if ($effectiveDiffList -and $effectiveDiffList.Count -eq 0) {
+            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null }
+            $executionTime = (Get-Date) - $executionStartTime
+            return New-ModuleExecutionResult `
+                -Success $true `
+                -ItemsDetected 0 `
+                -ItemsProcessed 0 `
+                -DurationMilliseconds $executionTime.TotalMilliseconds `
+                -LogPath "" `
+                -ModuleName 'SystemOptimization'
+        }
+
+        $analysisResults = if ($effectiveDiffList) { @{ OptimizationOpportunities = $effectiveDiffList } } else { Get-SystemOptimizationAnalysis }
 
         $optimizationCount = if ($analysisResults -and $analysisResults.OptimizationOpportunities) { $analysisResults.OptimizationOpportunities.Count } else { 0 }
 
@@ -567,12 +587,10 @@ function Clear-TemporaryFile {
             if (Test-Path (Split-Path $target.Path -Parent)) {
                 $items = Get-ChildItem -Path $target.Path -Force -ErrorAction SilentlyContinue
                 if ($target.Recurse) {
-                    $beforeSize = ($items | Get-ChildItem -Recurse -Force -ErrorAction SilentlyContinue |
-                        Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
+                    $beforeSize = ($items | Get-ChildItem -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
                 }
                 else {
-                    $beforeSize = ($items | Where-Object { -not $_.PSIsContainer } |
-                        Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
+                    $beforeSize = ($items | Where-Object { -not $_.PSIsContainer } | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
                 }
             }
 
@@ -591,12 +609,10 @@ function Clear-TemporaryFile {
             if (Test-Path (Split-Path $target.Path -Parent)) {
                 $items = Get-ChildItem -Path $target.Path -Force -ErrorAction SilentlyContinue
                 if ($target.Recurse) {
-                    $afterSize = ($items | Get-ChildItem -Recurse -Force -ErrorAction SilentlyContinue |
-                        Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
+                    $afterSize = ($items | Get-ChildItem -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
                 }
                 else {
-                    $afterSize = ($items | Where-Object { -not $_.PSIsContainer } |
-                        Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
+                    $afterSize = ($items | Where-Object { -not $_.PSIsContainer } | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
                 }
             }
 
@@ -907,6 +923,7 @@ function Optimize-UserInterface {
 # Use Invoke-SystemOptimization which calls Invoke-EnhancedRegistryOptimization internally
 function Optimize-WindowsRegistry {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     [Obsolete("This function is deprecated. Use Invoke-SystemOptimization instead. Will be removed in v4.0.", false)]
     param()
 
@@ -981,6 +998,7 @@ function Optimize-WindowsRegistry {
 # Use Invoke-SystemOptimization which calls Invoke-EnhancedDiskOptimization internally
 function Optimize-DiskPerformance {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     [Obsolete("This function is deprecated. Use Invoke-SystemOptimization instead. Will be removed in v4.0.", false)]
     param()
 
@@ -1052,6 +1070,7 @@ function Optimize-DiskPerformance {
 # Use Invoke-SystemOptimization which calls Invoke-EnhancedNetworkOptimization internally
 function Optimize-NetworkSetting {
     [CmdletBinding()]
+    [OutputType([hashtable])]
     [Obsolete("This function is deprecated. Use Invoke-SystemOptimization instead. Will be removed in v4.0.", false)]
     param()
 
@@ -1161,20 +1180,19 @@ function Get-TemporaryFileSize {
 
     try {
         $tempPaths = @($env:TEMP, "$env:LOCALAPPDATA\Temp", "C:\Windows\Temp")
-        $totalSize = 0
+        $totalSize = [long]0
 
         foreach ($path in $tempPaths) {
             if (Test-Path $path) {
-                $size = (Get-ChildItem -Path $path -Recurse -Force -ErrorAction SilentlyContinue |
-                    Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
-                $totalSize += $size ?? 0
+                $size = (Get-ChildItem -Path $path -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum -ErrorAction SilentlyContinue).Sum
+                $totalSize += [long]($size ?? 0)
             }
         }
 
-        return $totalSize
+        return [long]$totalSize
     }
     catch {
-        return 0
+        return [long]0
     }
 }
 
@@ -1184,7 +1202,7 @@ function Get-RegistrySize {
     param()
 
     # This is a placeholder - actual registry size calculation is complex
-    return 0
+    return [long]0
 }
 
 function Get-MemoryUsagePercent {
@@ -1194,10 +1212,10 @@ function Get-MemoryUsagePercent {
 
     try {
         $memory = Get-CimInstance -ClassName Win32_OperatingSystem
-        return [math]::Round((($memory.TotalVisibleMemorySize - $memory.FreePhysicalMemory) / $memory.TotalVisibleMemorySize) * 100, 1)
+        return [double]([math]::Round((($memory.TotalVisibleMemorySize - $memory.FreePhysicalMemory) / $memory.TotalVisibleMemorySize) * 100, 1))
     }
     catch {
-        return 0
+        return [double]0
     }
 }
 
@@ -1341,7 +1359,7 @@ function Get-EnhancedOptimizationConfig {
     }
 
     # Return minimal default configuration if file not found
-    return @{
+    return [PSCustomObject]@{
         systemOptimizations = @{
             startup = @{ enabled = $true; aggressiveMode = $false }
             ui = @{ enabled = $true; profileBased = $true }
@@ -1383,7 +1401,7 @@ function Get-SystemPerformanceProfile {
             $performanceProfile = 'highEnd'
         }
 
-        return @{
+        return [PSCustomObject]@{
             RAM = $ramGB
             CPUCores = $cpuCores
             WindowsVersion = $osVersion.Major
@@ -1395,7 +1413,7 @@ function Get-SystemPerformanceProfile {
     }
     catch {
         Write-Warning "Failed to determine system profile: $($_.Exception.Message)"
-        return @{
+        return [PSCustomObject]@{
             RAM = 8
             CPUCores = 4
             WindowsVersion = 10
@@ -1657,7 +1675,7 @@ function Invoke-EnhancedDiskOptimization {
                 }
 
                 # Check if cleanup is needed based on thresholds
-                $minSizeBytes = ConvertTo-Bytes -SizeString $cleanupTarget.minSize
+                $minSizeBytes = ConvertTo-Byte -SizeString $cleanupTarget.minSize
                 $shouldClean = ($beforeSize -gt $minSizeBytes)
 
                 if ($shouldClean) {
@@ -1747,8 +1765,9 @@ function Invoke-EnhancedRegistryOptimization {
 
     $results = @{ Applied = 0; Failed = 0; Skipped = 0 }
     $registryConfig = $Config.systemOptimizations.registry
+    $opportunitiesCount = if ($Opportunities) { $Opportunities.Count } else { 0 }
 
-    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Starting enhanced registry optimization" -LogPath $LogPath -Metadata @{ SafeOptimizationsCount = $registryConfig.safeOptimizations.Count }
+    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Starting enhanced registry optimization" -LogPath $LogPath -Metadata @{ SafeOptimizationsCount = $registryConfig.safeOptimizations.Count; OpportunitiesCount = $opportunitiesCount }
 
     # Only perform safe optimizations from configuration
     foreach ($optimization in $registryConfig.safeOptimizations) {
@@ -1809,8 +1828,9 @@ function Invoke-EnhancedNetworkOptimization {
 
     $results = @{ Applied = 0; Failed = 0; Skipped = 0 }
     $networkConfig = $Config.systemOptimizations.network
+    $opportunitiesCount = if ($Opportunities) { $Opportunities.Count } else { 0 }
 
-    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Starting enhanced network optimization" -LogPath $LogPath
+    Write-StructuredLogEntry -Level 'INFO' -Component 'SYSTEM-OPTIMIZATION' -Message "Starting enhanced network optimization" -LogPath $LogPath -Metadata @{ OpportunitiesCount = $opportunitiesCount }
 
     # Apply TCP optimizations if enabled
     if ($networkConfig.tcpOptimizations.enabled) {
@@ -1936,9 +1956,10 @@ function Invoke-ModernWindowsOptimization {
 .SYNOPSIS
     Helper function to convert size strings to bytes
 #>
-function ConvertTo-Bytes {
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'Public API name maintained for compatibility.')]
+function ConvertTo-Byte {
     [CmdletBinding()]
-    [OutputType([hashtable])]
+    [OutputType([long])]
     param([string]$SizeString)
 
     if ($SizeString -match '(\d+)(MB|GB|KB)') {
@@ -1946,13 +1967,13 @@ function ConvertTo-Bytes {
         $unit = $matches[2]
 
         switch ($unit) {
-            'KB' { return $size * 1KB }
-            'MB' { return $size * 1MB }
-            'GB' { return $size * 1GB }
+            'KB' { return [long]($size * 1KB) }
+            'MB' { return [long]($size * 1MB) }
+            'GB' { return [long]($size * 1GB) }
         }
     }
 
-    return 0
+    return [long]0
 }
 
 <#
@@ -1983,7 +2004,7 @@ function ConvertTo-TimeSpan {
 #>
 function Disable-StartupApplication {
     [CmdletBinding()]
-    [OutputType([hashtable])]
+    [OutputType([bool])]
     param(
         [string]$AppName,
         [string]$Reason,
@@ -2031,6 +2052,7 @@ function Disable-StartupApplication {
 # Used internally by enhanced optimization functions
 function Optimize-WindowsService {
     [CmdletBinding()]
+    [OutputType([bool])]
     [Obsolete("This function is deprecated and may be removed in v4.0.", false)]
     param(
         [string]$ServiceName,
@@ -2071,6 +2093,7 @@ Export-ModuleMember -Function @(
     'Optimize-SystemPerformance',
     'Get-SystemPerformanceMetric'
 )
+
 
 
 

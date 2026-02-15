@@ -2789,12 +2789,7 @@ function Save-DiffResults {
         # Get base temp directory path for diff storage
         $tempDir = Get-SessionDirectoryPath -Type 'temp'
 
-        # Standardize module name format: convert to lowercase with hyphens
-        $normalizedName = ($ModuleName -replace 'Type2|Module|Removal|Disable|Optimization', '' -replace '(?<=[a-z])(?=[A-Z])', '-').ToLower()
-
-        # Build standardized path: temp_files/temp/[module-name]-diff.json
-        $diffFileName = "$normalizedName-diff.json"
-        $diffPath = Join-Path $tempDir $diffFileName
+        $diffPath = Get-DiffResultsPath -ModuleName $ModuleName
 
         # Ensure temp directory exists
         if (-not (Test-Path $tempDir)) {
@@ -2812,6 +2807,54 @@ function Save-DiffResults {
     catch {
         Write-Error "Failed to save diff results for module '$ModuleName': $($_.Exception.Message)"
         return $null
+    }
+}
+
+#endregion
+
+#region v4.1 Diff Results Retrieval
+
+function Get-DiffResultsPath {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ModuleName
+    )
+
+    $tempDir = Get-SessionDirectoryPath -Type 'temp'
+    $normalizedName = ($ModuleName -replace 'Type2|Module|Removal|Disable|Optimization', '' -replace '(?<=[a-z])(?=[A-Z])', '-').ToLower()
+    $diffFileName = "$normalizedName-diff.json"
+    return Join-Path $tempDir $diffFileName
+}
+
+function Get-DiffResults {
+    [CmdletBinding()]
+    [OutputType([array])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ModuleName
+    )
+
+    try {
+        $diffPath = Get-DiffResultsPath -ModuleName $ModuleName
+        if (-not (Test-Path $diffPath)) {
+            return @()
+        }
+
+        $content = Get-Content -Path $diffPath -Raw -ErrorAction Stop
+        if ([string]::IsNullOrWhiteSpace($content)) {
+            return @()
+        }
+
+        $data = $content | ConvertFrom-Json -ErrorAction Stop
+        return @($data)
+    }
+    catch {
+        Write-LogEntry -Level 'WARNING' -Component 'CORE' -Message "Failed to load diff results for $ModuleName: $($_.Exception.Message)"
+        return @()
     }
 }
 
@@ -4249,13 +4292,9 @@ function Start-MaintenanceCountdown {
                 if ($keyPressSupported -and $Host.UI.RawUI.KeyAvailable) {
                     [void]$Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
                     Write-Host "`n`n⏸ Countdown aborted by user." -ForegroundColor Yellow
-                    Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' -Message "Countdown aborted by user - prompting for cleanup/reboot choice"
+                    Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' -Message "Countdown aborted by user - no cleanup or reboot performed"
 
-                    $choice = Show-ShutdownAbortMenu
-                    $choiceResult = Invoke-MaintenanceShutdownChoice -Choice $choice -WorkingDirectory $WorkingDirectory -TempRoot $TempRoot
-                    Write-LogEntry -Level 'INFO' -Component 'SHUTDOWN-MANAGER' -Message "Abort choice executed" -Data $choiceResult
-
-                    return $choiceResult
+                    return @{ Action = 'AbortedByUser'; RebootRequired = $false; CleanupPerformed = $false }
                 }
             }
             catch {
@@ -4597,7 +4636,7 @@ Export-ModuleMember -Function @(
     'Initialize-SessionFileOrganization', 'Test-TempFilesStructure', 'Get-SessionFilePath', 'Get-SessionPath', 'Save-SessionData', 'Get-SessionData', 'Get-SessionDirectoryPath',
     'Clear-SessionTemporaryFiles', 'Get-SessionStatistics',
     'Initialize-MaintenanceInfrastructure', 'Get-InfrastructureStatus',
-    'Get-AuditResultsPath', 'Save-DiffResults',
+    'Get-AuditResultsPath', 'Save-DiffResults', 'Get-DiffResultsPath', 'Get-DiffResults',
     'New-ModuleExecutionResult', 'Write-StructuredLogEntry', 'Compare-DetectedVsConfig',
     'New-StandardLogEntry',
     'Test-SystemRequirements', 'Test-SystemReadiness', 'Enable-SystemProtection', 'Set-SystemRestoreStorage', 'New-SystemRestorePoint',

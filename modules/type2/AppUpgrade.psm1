@@ -78,7 +78,10 @@ function Invoke-AppUpgrade {
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
-        [hashtable]$Config
+        [hashtable]$Config,
+
+        [Parameter()]
+        [array]$DiffList
     )
 
     Write-Information " Starting Application Upgrade Module..." -InformationAction Continue
@@ -93,11 +96,27 @@ function Invoke-AppUpgrade {
         # Initialize module execution environment
         Initialize-ModuleExecution -ModuleName 'AppUpgrade'
 
-        # STEP 1: Run Type1 detection
+        # STEP 1: Load diff list when available, otherwise run Type1 detection
         Write-Information "   Running upgrade detection..." -InformationAction Continue
+        $diffListProvided = $PSBoundParameters.ContainsKey('DiffList')
+        $diffListFromDisk = if (-not $diffListProvided) { Get-DiffResults -ModuleName 'AppUpgrade' } else { @() }
+        $effectiveDiffList = if ($diffListProvided) { $DiffList } elseif ($diffListFromDisk.Count -gt 0) { $diffListFromDisk } else { $null }
+
+        if ($effectiveDiffList -and $effectiveDiffList.Count -eq 0) {
+            Write-Information "  INFO  Diff list empty - no upgrades to process" -InformationAction Continue
+            $duration = (Get-Date) - $startTime
+            return New-ModuleExecutionResult `
+                -Success $true `
+                -ItemsDetected 0 `
+                -ItemsProcessed 0 `
+                -DurationMilliseconds $duration.TotalMilliseconds `
+                -LogPath "" `
+                -ModuleName 'AppUpgrade'
+        }
+
         # Explicit assignment to prevent pipeline contamination
         $detectionResults = $null
-        $detectionResults = Get-AppUpgradeAnalysis -Config $Config
+        $detectionResults = if ($effectiveDiffList) { $effectiveDiffList } else { Get-AppUpgradeAnalysis -Config $Config }
 
         # Display module banner
         Write-Host "`n" -NoNewline
@@ -141,7 +160,7 @@ function Invoke-AppUpgrade {
 
         # STEP 3: Filter detection results (create diff list)
         Write-Information "   Filtering upgrades against exclude patterns..." -InformationAction Continue
-        $diffList = Get-FilteredUpgradeList -DetectionResults $detectionResults -ModuleConfig $moduleConfig
+        $diffList = if ($effectiveDiffList) { $effectiveDiffList } else { Get-FilteredUpgradeList -DetectionResults $detectionResults -ModuleConfig $moduleConfig }
 
         # Save diff list
         $diffPath = Save-DiffResults -ModuleName 'AppUpgrade' -DiffData $diffList -Component 'APP-UPGRADE'

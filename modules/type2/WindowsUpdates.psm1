@@ -70,7 +70,10 @@ function Invoke-WindowsUpdate {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $true)]
-        [hashtable]$Config
+        [hashtable]$Config,
+
+        [Parameter()]
+        [array]$DiffList
     )
 
     $perfContext = Start-PerformanceTrackingSafe -OperationName 'WindowsUpdates' -Component 'WINDOWS-UPDATES'
@@ -86,7 +89,28 @@ function Invoke-WindowsUpdate {
         Write-LogEntry -Level 'DEBUG' -Component 'WINDOWS-UPDATES' -Message 'Loaded module configuration' -Data @{
             ConfigKeys = $Config.PSObject.Properties.Name
         }
-        $analysisResults = Get-WindowsUpdatesAnalysis
+        $diffListProvided = $PSBoundParameters.ContainsKey('DiffList')
+        $diffListFromDisk = if (-not $diffListProvided) { Get-DiffResults -ModuleName 'WindowsUpdates' } else { @() }
+        $effectiveDiffList = if ($diffListProvided) { $DiffList } elseif ($diffListFromDisk.Count -gt 0) { $diffListFromDisk } else { $null }
+
+        if ($effectiveDiffList -and $effectiveDiffList.Count -eq 0) {
+            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' }
+            $executionTime = (Get-Date) - $executionStartTime
+            return New-ModuleExecutionResult `
+                -Success $true `
+                -ItemsDetected 0 `
+                -ItemsProcessed 0 `
+                -DurationMilliseconds $executionTime.TotalMilliseconds `
+                -LogPath "" `
+                -ModuleName 'WindowsUpdates'
+        }
+
+        $analysisResults = if ($effectiveDiffList) {
+            [PSCustomObject]@{ PendingAudit = @{ PendingCount = $effectiveDiffList.Count; PendingUpdates = $effectiveDiffList }; PendingUpdatesCount = $effectiveDiffList.Count }
+        }
+        else {
+            Get-WindowsUpdatesAnalysis
+        }
 
         $updatesCount = 0
         if ($analysisResults) {

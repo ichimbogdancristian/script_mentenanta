@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 # Module Dependencies:
 #   - CoreInfrastructure.psm1 (configuration, logging, path management)
 #   - EssentialAppsAudit.psm1 (Type1 - detection/analysis)
@@ -80,7 +80,10 @@ function Invoke-EssentialApps {
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
-        [hashtable]$Config
+        [hashtable]$Config,
+
+        [Parameter()]
+        [array]$DiffList
     )
 
     # Performance tracking
@@ -112,13 +115,30 @@ function Invoke-EssentialApps {
         # Initialize module execution environment
         Initialize-ModuleExecution -ModuleName 'EssentialApps'
 
-        # STEP 1: Always run Type1 detection first and save to temp_files/data/
+        # STEP 1: Load diff list when available, otherwise run Type1 detection
         $executionLogPath = Get-SessionPath -Category 'logs' -SubCategory 'essential-apps' -FileName 'execution.log'
 
         Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting essential apps analysis' -LogPath $executionLogPath -Operation 'Detect'
+        $diffListProvided = $PSBoundParameters.ContainsKey('DiffList')
+        $diffListFromDisk = if (-not $diffListProvided) { Get-DiffResults -ModuleName 'EssentialApps' } else { @() }
+        $effectiveDiffList = if ($diffListProvided) { $DiffList } elseif ($diffListFromDisk.Count -gt 0) { $diffListFromDisk } else { $null }
+
+        if ($effectiveDiffList -and $effectiveDiffList.Count -eq 0) {
+            Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Diff list empty - skipping essential apps installation' -LogPath $executionLogPath -Operation 'Complete' -Result 'NoItemsFound'
+            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null }
+            $executionTime = (Get-Date) - $executionStartTime
+            return New-ModuleExecutionResult `
+                -Success $true `
+                -ItemsDetected 0 `
+                -ItemsProcessed 0 `
+                -DurationMilliseconds $executionTime.TotalMilliseconds `
+                -LogPath $executionLogPath `
+                -ModuleName 'EssentialApps'
+        }
+
         # Explicit assignment to prevent pipeline contamination
         $detectionResults = $null
-        $detectionResults = Get-EssentialAppsAnalysis -Config $Config
+        $detectionResults = if ($effectiveDiffList) { @{ MissingApps = $effectiveDiffList; Summary = @{ TotalScanned = $effectiveDiffList.Count } } } else { Get-EssentialAppsAnalysis -Config $Config }
 
         # STEP 2: Compare detection with config to create diff list
         # FIX #7: Use configuration manager instead of direct path (now in config/lists/)
@@ -136,7 +156,7 @@ function Invoke-EssentialApps {
         }
 
         # Create diff: Missing apps that need to be installed (already computed by Type1 audit)
-        $diffList = if ($detectionResults.MissingApps) { $detectionResults.MissingApps } else { @() }
+        $diffList = if ($effectiveDiffList) { $effectiveDiffList } elseif ($detectionResults.MissingApps) { $detectionResults.MissingApps } else { @() }
         $diffPath = Save-DiffResults -ModuleName 'EssentialApps' -DiffData $diffList -Component 'ESSENTIAL-APPS'
 
         # STEP 3: Process ONLY items in diff list and log to dedicated directory
@@ -164,12 +184,8 @@ function Invoke-EssentialApps {
                 Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message "Installing app: $($app.Name)" -LogPath $executionLogPath -Operation 'Install' -Target $app.Name -Metadata @{ Source = $app.RecommendedMethod; Id = if ($app.RecommendedMethod -eq 'Winget') { $app.WingetId } else { $app.ChocoId } }
 
                 # Transform app data for Install-SingleApplication
-                $appHashtable = @{
-                    Name = $app.Name
-                    Source = $app.RecommendedMethod
-                    Id = if ($app.RecommendedMethod -eq 'Winget') { $app.WingetId } else { $app.ChocoId }
-                    WingetId = $app.WingetId
-                    ChocoId = $app.ChocoId
+                $appHashtable = @{ =  $app.Name =  $app.RecommendedMethod =  if ($app.RecommendedMethod -eq 'Winget') { $app.WingetId } else { $app.ChocoId }
+                    WingetId = $app.WingetId =  $app.ChocoId
                 }
 
                 $result = Install-SingleApplication -AppData $appHashtable -ExecutionLogPath $executionLogPath
@@ -197,31 +213,18 @@ function Invoke-EssentialApps {
         # Create execution summary JSON
         $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $executionStartTime
-        $executionSummary = @{
-            ModuleName = 'EssentialApps'
-            ExecutionTime = @{
-                Start = $executionStartTime.ToString('o')
-                End = (Get-Date).ToString('o')
+        $executionSummary = @{ =  'EssentialApps'
+            ExecutionTime = @{ =  $executionStartTime.ToString('o') =  (Get-Date).ToString('o')
                 DurationMs = $executionTime.TotalMilliseconds
+            } =  @{ =  $true =  if ($detectionResults.Summary) { $detectionResults.Summary.TotalScanned } else { 0 }
+                ItemsProcessed = $processedCount =  if ($installResults) { $installResults.FailedApps.Count } else { 0 } =  ($diffList.Count - $processedCount)
             }
-            Results = @{
-                Success = $true
-                ItemsDetected = if ($detectionResults.Summary) { $detectionResults.Summary.TotalScanned } else { 0 }
-                ItemsProcessed = $processedCount
-                ItemsFailed = if ($installResults) { $installResults.FailedApps.Count } else { 0 }
-                ItemsSkipped = ($diffList.Count - $processedCount)
-            }
-            ExecutionMode = 'Live'
-            LogFiles = @{
+            ExecutionMode = 'Live' =  @{
                 TextLog = $executionLogPath
                 JsonLog = $executionLogPath -replace '\.log$', '-data.json'
                 Summary = $summaryPath
-            }
-            SessionInfo = @{
-                SessionId = $env:MAINTENANCE_SESSION_ID
-                ComputerName = $env:COMPUTERNAME
-                UserName = $env:USERNAME
-                PSVersion = $PSVersionTable.PSVersion.ToString()
+            } =  @{ =  $env:MAINTENANCE_SESSION_ID
+                ComputerName = $env:COMPUTERNAME =  $env:USERNAME =  $PSVersionTable.PSVersion.ToString()
             }
         }
 
@@ -324,10 +327,7 @@ function Install-EssentialApplication {
 
     # Initialize structured logging and performance tracking
     try {
-        Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting essential applications installation' -Data @{
-            Categories = $Categories
-            CustomAppsCount = $CustomApps.Count
-            SkipDuplicates = $SkipDuplicates.IsPresent
+        Write-StructuredLogEntry -Level 'INFO' -Component 'ESSENTIAL-APPS' -Message 'Starting essential applications installation' -Data @{ =  $Categories =  $CustomApps.Count =  $SkipDuplicates.IsPresent
             ParallelInstalls = $ParallelInstalls
         }
         $perfContext = Start-PerformanceTracking -OperationName 'EssentialAppsInstallation' -Component 'ESSENTIAL-APPS'
@@ -356,11 +356,7 @@ function Install-EssentialApplication {
         # Add custom apps if specified
         if ($CustomApps.Count -gt 0) {
             $customAppObjects = $CustomApps | ForEach-Object {
-                @{
-                    Name = $_
-                    Category = 'Custom'
-                    Winget = $_
-                    Chocolatey = $_
+                @{ =  $_ =  'Custom' =  $_ =  $_
                     Description = "Custom app: $_"
                 }
             }
@@ -371,9 +367,7 @@ function Install-EssentialApplication {
             Write-Warning "No essential apps found in configuration"
             return @{
                 TotalApps = 0
-                Installed = 0
-                Skipped = 0
-                Failed = 0
+                Installed = 0 =  0 =  0
             }
         }
 
@@ -389,11 +383,7 @@ function Install-EssentialApplication {
 
         if ($appsToInstall.Count -eq 0) {
             Write-Information "   All essential apps are already installed" -InformationAction Continue
-            return @{
-                TotalApps = $essentialApps.Count
-                Installed = 0
-                Skipped = $essentialApps.Count
-                Failed = 0
+            return @{ =  $essentialApps.Count =  0 =  $essentialApps.Count =  0
                 AlreadyInstalled = $true
             }
         }
@@ -401,13 +391,7 @@ function Install-EssentialApplication {
         Write-Information "   Installing $($appsToInstall.Count) applications (skipped $($essentialApps.Count - $appsToInstall.Count) duplicates)" -InformationAction Continue
 
         # Initialize results tracking
-        $results = @{
-            TotalApps = $essentialApps.Count
-            Installed = 0
-            Skipped = $essentialApps.Count - $appsToInstall.Count
-            Failed = 0
-            Details = [List[PSCustomObject]]::new()
-            ByCategory = @{}
+        $results = @{ =  $essentialApps.Count =  0 =  $essentialApps.Count - $appsToInstall.Count =  0 =  [List[PSCustomObject]]::new() =  @{}
             ByPackageManager = @{}
         }
 
@@ -433,12 +417,8 @@ function Install-EssentialApplication {
             Write-Information "    $($manualApps.Count) apps require manual installation (no package manager available)" -InformationAction Continue
             foreach ($app in $manualApps) {
                 Write-Information "     Manual installation needed: $($app.Name) - $($app.Description)" -InformationAction Continue
-                $results.Details.Add([PSCustomObject]@{
-                        Name = $app.Name
-                        Category = $app.Category
-                        Status = 'Manual Required'
-                        PackageManager = 'None'
-                        Error = 'No supported package manager available'
+                $results.Details.Add([PSCustomObject]@{ =  $app.Name =  $app.Category =  'Manual Required'
+                        PackageManager = 'None' =  'No supported package manager available'
                     })
             }
             $results.Failed += $manualApps.Count
@@ -455,16 +435,8 @@ function Install-EssentialApplication {
 
         # Complete performance tracking and structured logging
         try {
-            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $success -ResultData @{
-                TotalApps = $results.TotalApps
-                Installed = $results.Installed
-                Skipped = $results.Skipped
-                Failed = $results.Failed
-                Duration = $duration
-                Categories = $Categories
-                WingetApps = ($wingetApps | Measure-Object).Count
-                ChocolateyApps = ($chocoApps | Measure-Object).Count
-                ManualApps = ($manualApps | Measure-Object).Count
+            Complete-PerformanceTracking -PerformanceContext $perfContext -Success $success -ResultData @{ =  $results.TotalApps =  $results.Installed =  $results.Skipped =  $results.Failed =  $duration =  $Categories =  ($wingetApps | Measure-Object).Count
+                ChocolateyApps = ($chocoApps | Measure-Object).Count =  ($manualApps | Measure-Object).Count
             } | Out-Null
             Write-StructuredLogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARNING' }) -Component 'ESSENTIAL-APPS' -Message 'Essential applications installation completed' -Data $results
         }
@@ -918,9 +890,7 @@ function Install-AppViaWinget {
     }
 
     $results = @{
-        Installed = 0
-        Failed = 0
-        Details = [List[PSCustomObject]]::new()
+        Installed = 0 =  0 =  [List[PSCustomObject]]::new()
     }
 
     if (-not (Test-PackageManagerAvailable -Manager 'Winget')) {
@@ -937,13 +907,8 @@ function Install-AppViaWinget {
             $app = $_
             $operationStart = Get-Date
 
-            $result = @{
-                Name = $app.Name
-                Category = $app.Category
-                PackageId = $app.Winget
-                Status = 'Unknown'
-                PackageManager = 'Winget'
-                Error = $null
+            $result = @{ =  $app.Name =  $app.Category =  $app.Winget =  'Unknown'
+                PackageManager = 'Winget' =  $null
             }
 
             try {
@@ -982,18 +947,13 @@ function Install-AppViaWinget {
 
                         if ($verifyInstalled) {
                             # Log successful verification
-                            Write-OperationSuccess -Component 'ESSENTIAL-APPS' -Operation 'Verify' -Target $app.Name -Metrics @{
-                                PackageId = $app.Winget
-                                VerificationPassed = $true
-                                IsInstalled = $true
+                            Write-OperationSuccess -Component 'ESSENTIAL-APPS' -Operation 'Verify' -Target $app.Name -Metrics @{ =  $app.Winget
+                                VerificationPassed = $true =  $true
                             }
 
                             # Log successful installation
-                            Write-OperationSuccess -Component 'ESSENTIAL-APPS' -Operation 'Install' -Target $app.Name -Metrics @{
-                                Duration = $operationDuration
-                                PackageManager = 'Winget'
-                                PackageId = $app.Winget
-                                Verified = $true
+                            Write-OperationSuccess -Component 'ESSENTIAL-APPS' -Operation 'Install' -Target $app.Name -Metrics @{ =  $operationDuration
+                                PackageManager = 'Winget' =  $app.Winget =  $true
                             }
 
                             $result.Status = 'Installed'
@@ -1074,9 +1034,7 @@ function Install-AppViaChocolatey {
     }
 
     $results = @{
-        Installed = 0
-        Failed = 0
-        Details = [List[PSCustomObject]]::new()
+        Installed = 0 =  0 =  [List[PSCustomObject]]::new()
     }
 
     if (-not (Test-PackageManagerAvailable -Manager 'Chocolatey')) {
@@ -1087,13 +1045,8 @@ function Install-AppViaChocolatey {
 
     foreach ($app in $Apps) {
         $operationStart = Get-Date
-        $result = @{
-            Name = $app.Name
-            Category = $app.Category
-            PackageId = $app.Chocolatey
-            Status = 'Unknown'
-            PackageManager = 'Chocolatey'
-            Error = $null
+        $result = @{ =  $app.Name =  $app.Category =  $app.Chocolatey =  'Unknown'
+            PackageManager = 'Chocolatey' =  $null
         }
 
         try {
@@ -1141,20 +1094,13 @@ function Install-AppViaChocolatey {
 
                     if ($verifyInstalled) {
                         # Log successful verification
-                        Write-OperationSuccess -Component 'ESSENTIAL-APPS' -Operation 'Verify' -Target $app.Name -Metrics @{
-                            PackageId = $app.Chocolatey
-                            InstalledVersion = $newVersion
-                            VerificationPassed = $true
-                            IsInstalled = $true
+                        Write-OperationSuccess -Component 'ESSENTIAL-APPS' -Operation 'Verify' -Target $app.Name -Metrics @{ =  $app.Chocolatey =  $newVersion
+                            VerificationPassed = $true =  $true
                         }
 
                         # Log successful installation
-                        Write-OperationSuccess -Component 'ESSENTIAL-APPS' -Operation 'Install' -Target $app.Name -Metrics @{
-                            Duration = $operationDuration
-                            PackageManager = 'Chocolatey'
-                            PackageId = $app.Chocolatey
-                            Version = $newVersion
-                            Verified = $true
+                        Write-OperationSuccess -Component 'ESSENTIAL-APPS' -Operation 'Install' -Target $app.Name -Metrics @{ =  $operationDuration
+                            PackageManager = 'Chocolatey' =  $app.Chocolatey =  $newVersion =  $true
                         }
 
                         $result.Status = 'Installed'
@@ -1494,12 +1440,14 @@ function Get-InstallationStatistic {
         [hashtable]$Results
     )
 
+    $successRate = if ($Results.TotalApps -gt 0) {
+        [math]::Round(($Results.Installed / $Results.TotalApps) * 100, 1)
+    }
+    else { 0 }
+
     return @{
         TotalProcessed = $Results.TotalApps
-        SuccessRate = if ($Results.TotalApps -gt 0) {
-            [math]::Round(($Results.Installed / $Results.TotalApps) * 100, 1)
-        }
-        else { 0 }
+        SuccessRate = $successRate
         MostUsedPackageManager = ($Results.ByPackageManager.GetEnumerator() |
             Sort-Object { $_.Value.Installed } -Descending |
             Select-Object -First 1).Key
@@ -1897,6 +1845,8 @@ Export-ModuleMember -Function @(
     # Note: Legacy functions (Install-EssentialApplication, Get-AppNotInstalled, Get-InstallationStatistic)
     # are used internally but not exported to maintain clean module interface
 )
+
+
 
 
 

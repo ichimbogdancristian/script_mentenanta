@@ -1679,11 +1679,22 @@ function New-MaintenanceLogSection {
         $html.AppendLine("                            <div class='change-item'><em>No errors</em></div>")
     }
 
+    $rawTranscript = if ($maintenanceLog.RawContent) { $maintenanceLog.RawContent } else { $maintenanceLog.Content }
+    $transcriptContent = if ($rawTranscript) { [System.Web.HttpUtility]::HtmlEncode($rawTranscript) } else { 'Transcript unavailable.' }
+
     $html.AppendLine(@"
                         </div>
                     </div>
                 </div>
             </div>
+
+            <div class="maintenance-transcript">
+                <h4>Maintenance Transcript</h4>
+                <pre class="transcript-content">$transcriptContent</pre>
+            </div>
+"@)
+
+    $html.AppendLine(@"
         </div>
     </div>
 </div>

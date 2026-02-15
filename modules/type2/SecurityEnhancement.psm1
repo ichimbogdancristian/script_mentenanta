@@ -112,7 +112,10 @@ function Invoke-SecurityEnhancement {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $true)]
-        [hashtable]$Config
+        [hashtable]$Config,
+
+        [Parameter()]
+        [array]$DiffList
     )
 
     $perfContext = $null
@@ -168,6 +171,22 @@ function Invoke-SecurityEnhancement {
         Write-Information "" -InformationAction Continue
         Write-Information "[Step 2/3] Analyzing current security posture..." -InformationAction Continue
 
+        $diffListProvided = $PSBoundParameters.ContainsKey('DiffList')
+        $diffListFromDisk = if (-not $diffListProvided) { Get-DiffResults -ModuleName 'SecurityEnhancement' } else { @() }
+        $effectiveDiffList = if ($diffListProvided) { $DiffList } elseif ($diffListFromDisk.Count -gt 0) { $diffListFromDisk } else { $null }
+
+        if ($effectiveDiffList -and $effectiveDiffList.Count -eq 0) {
+            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null }
+            $executionTime = (Get-Date) - $executionStartTime
+            return New-ModuleExecutionResult `
+                -Success $true `
+                -ItemsDetected 0 `
+                -ItemsProcessed 0 `
+                -DurationMilliseconds ($executionTime.TotalMilliseconds) `
+                -LogPath $executionLogPath `
+                -ModuleName 'SecurityEnhancement'
+        }
+
         # Explicit assignment to prevent pipeline contamination
         $auditResults = $null
         $auditResults = Get-SecurityAuditAnalysis -Config $Config
@@ -193,12 +212,12 @@ function Invoke-SecurityEnhancement {
         Write-Information "[Step 3/3] Applying security enhancements..." -InformationAction Continue
 
         $enhancementResults = @{
-            WindowsDefender    = $null
-            Firewall           = $null
+            WindowsDefender = $null
+            Firewall = $null
             UserAccountControl = $null
-            ExecutionPolicy    = $null
-            AuditPolicies      = $null
-            NetworkSecurity    = $null
+            ExecutionPolicy = $null
+            AuditPolicies = $null
+            NetworkSecurity = $null
         }
 
         $itemsProcessed = 0
@@ -266,13 +285,13 @@ function Invoke-SecurityEnhancement {
 
         # Return standardized v3.0 result structure
         return [PSCustomObject]@{
-            Success            = $true
-            ItemsDetected      = $issuesDetected
-            ItemsProcessed     = $itemsProcessed
-            ExecutionTime      = $executionDuration
-            AuditResults       = $auditResults
+            Success = $true
+            ItemsDetected = $issuesDetected
+            ItemsProcessed = $itemsProcessed
+            ExecutionTime = $executionDuration
+            AuditResults = $auditResults
             EnhancementResults = $enhancementResults
-            Message            = "Security enhancements completed successfully"
+            Message = "Security enhancements completed successfully"
         }
     }
     catch {
@@ -283,11 +302,11 @@ function Invoke-SecurityEnhancement {
         }
 
         return [PSCustomObject]@{
-            Success        = $false
-            ItemsDetected  = 0
+            Success = $false
+            ItemsDetected = 0
             ItemsProcessed = 0
-            Error          = $_.Exception.Message
-            Message        = "Security enhancement failed"
+            Error = $_.Exception.Message
+            Message = "Security enhancement failed"
         }
     }
     finally {
@@ -352,14 +371,14 @@ function Get-SecurityEnhancementConfiguration {
 #>
 function Get-DefaultSecurityConfiguration {
     return [PSCustomObject]@{
-        security   = [PSCustomObject]@{
+        security = [PSCustomObject]@{
             enableDigitalSignatureVerification = $true
-            enableRealTimeProtection           = $true
-            defenderIntegration                = $true
-            enableAuditLogging                 = $true
+            enableRealTimeProtection = $true
+            defenderIntegration = $true
+            enableAuditLogging = $true
         }
         compliance = [PSCustomObject]@{
-            enableCISBaseline      = $true
+            enableCISBaseline = $true
             enforceExecutionPolicy = 'RemoteSigned'
         }
     }
@@ -663,11 +682,11 @@ function Invoke-ComprehensiveSecurityHardening {
     }
 
     $hardeningOptions = @{
-        RestrictLogs         = $RestrictLogs.IsPresent
-        SkipPrivacyChanges   = $SkipPrivacyChanges.IsPresent
-        DisableIPv6          = $DisableIPv6.IsPresent
+        RestrictLogs = $RestrictLogs.IsPresent
+        SkipPrivacyChanges = $SkipPrivacyChanges.IsPresent
+        DisableIPv6 = $DisableIPv6.IsPresent
         DisableDefenderCloud = $DisableDefenderCloud.IsPresent
-        ValidateOnly         = $Validate.IsPresent
+        ValidateOnly = $Validate.IsPresent
     }
 
     try {
@@ -724,19 +743,19 @@ function Invoke-ComprehensiveSecurityHardening {
         Write-LogEntry -Level 'SUCCESS' -Component 'SECURITY-HARDENING' -Message "Comprehensive security hardening completed successfully"
 
         return @{
-            Success         = $true
-            TasksCompleted  = $completedTasks
+            Success = $true
+            TasksCompleted = $completedTasks
             DurationSeconds = 0
-            LogFile         = $LogFile
-            Options         = $hardeningOptions
-            Message         = "Security hardening completed"
+            LogFile = $LogFile
+            Options = $hardeningOptions
+            Message = "Security hardening completed"
         }
     }
     catch {
         Write-LogEntry -Level 'ERROR' -Component 'SECURITY-HARDENING' -Message "Security hardening failed: $($_.Exception.Message)"
         return @{
             Success = $false
-            Error   = $_.Exception.Message
+            Error = $_.Exception.Message
             Message = "Security hardening failed"
         }
     }
@@ -749,6 +768,7 @@ Export-ModuleMember -Function @(
     'Invoke-SecurityEnhancement',
     'Invoke-ComprehensiveSecurityHardening'
 )
+
 
 
 

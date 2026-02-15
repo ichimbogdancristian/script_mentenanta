@@ -68,7 +68,13 @@ if (-not (Get-Command -Name 'Get-TelemetryAnalysis' -ErrorAction SilentlyContinu
 function Invoke-TelemetryDisable {
     [CmdletBinding()]
     [OutputType([hashtable])]
-    param([Parameter(Mandatory)][hashtable]$Config)
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Config,
+
+        [Parameter()]
+        [array]$DiffList
+    )
 
     $perfContext = Start-PerformanceTrackingSafe -OperationName 'TelemetryDisable' -Component 'TELEMETRY-DISABLE'
 
@@ -80,7 +86,29 @@ function Invoke-TelemetryDisable {
         Initialize-ModuleExecution -ModuleName 'TelemetryDisable'
 
         Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting telemetry analysis'
-        $analysisResults = Get-TelemetryAnalysis
+
+        $diffListProvided = $PSBoundParameters.ContainsKey('DiffList')
+        $diffListFromDisk = if (-not $diffListProvided) { Get-DiffResults -ModuleName 'TelemetryDisable' } else { @() }
+        $effectiveDiffList = if ($diffListProvided) { $DiffList } elseif ($diffListFromDisk.Count -gt 0) { $diffListFromDisk } else { $null }
+
+        if ($effectiveDiffList -and $effectiveDiffList.Count -eq 0) {
+            if ($perfContext) { Complete-PerformanceTracking -Context $perfContext -Status 'Success' | Out-Null }
+            $executionTime = (Get-Date) - $executionStartTime
+            return New-ModuleExecutionResult `
+                -Success $true `
+                -ItemsDetected 0 `
+                -ItemsProcessed 0 `
+                -DurationMilliseconds $executionTime.TotalMilliseconds `
+                -LogPath "" `
+                -ModuleName 'TelemetryDisable'
+        }
+
+        $analysisResults = if ($effectiveDiffList) {
+            [PSCustomObject]@{ ActiveTelemetryItems = $effectiveDiffList; ActiveTelemetryCount = $effectiveDiffList.Count }
+        }
+        else {
+            Get-TelemetryAnalysis
+        }
 
         if (-not $analysisResults -or $analysisResults.ActiveTelemetryCount -eq 0) {
             Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'No active telemetry detected'
@@ -145,37 +173,37 @@ function Invoke-TelemetryDisable {
 
         Write-StructuredLogEntry -Level 'SUCCESS' -Component 'TELEMETRY-DISABLE' -Message "Telemetry disable completed. Processed: $processedCount/$telemetryCount" -LogPath $executionLogPath -Operation 'Complete' -Result 'Success' -Metadata @{
             ProcessedCount = $processedCount
-            TotalCount     = $telemetryCount
+            TotalCount = $telemetryCount
         }
 
         # Create execution summary JSON
         $summaryPath = Join-Path $executionLogDir "execution-summary.json"
         $executionTime = (Get-Date) - $executionStartTime
         $executionSummary = @{
-            ModuleName    = 'TelemetryDisable'
+            ModuleName = 'TelemetryDisable'
             ExecutionTime = @{
-                Start      = $executionStartTime.ToString('o')
-                End        = (Get-Date).ToString('o')
+                Start = $executionStartTime.ToString('o')
+                End = (Get-Date).ToString('o')
                 DurationMs = $executionTime.TotalMilliseconds
             }
-            Results       = @{
-                Success        = $true
-                ItemsDetected  = $telemetryCount
+            Results = @{
+                Success = $true
+                ItemsDetected = $telemetryCount
                 ItemsProcessed = $processedCount
-                ItemsFailed    = 0
-                ItemsSkipped   = ($telemetryCount - $processedCount)
+                ItemsFailed = 0
+                ItemsSkipped = ($telemetryCount - $processedCount)
             }
             ExecutionMode = 'Live'
-            LogFiles      = @{
+            LogFiles = @{
                 TextLog = $executionLogPath
                 JsonLog = $executionLogPath -replace '\.log$', '-data.json'
                 Summary = $summaryPath
             }
-            SessionInfo   = @{
-                SessionId    = $env:MAINTENANCE_SESSION_ID
+            SessionInfo = @{
+                SessionId = $env:MAINTENANCE_SESSION_ID
                 ComputerName = $env:COMPUTERNAME
-                UserName     = $env:USERNAME
-                PSVersion    = $PSVersionTable.PSVersion.ToString()
+                UserName = $env:USERNAME
+                PSVersion = $PSVersionTable.PSVersion.ToString()
             }
         }
 
@@ -272,10 +300,10 @@ function Disable-WindowsTelemetry {
     # Initialize structured logging and performance tracking
     try {
         Write-LogEntry -Level 'INFO' -Component 'TELEMETRY-DISABLE' -Message 'Starting Windows telemetry and privacy hardening' -Data @{
-            DisableServices         = $DisableServices.IsPresent
-            DisableNotifications    = $DisableNotifications.IsPresent
+            DisableServices = $DisableServices.IsPresent
+            DisableNotifications = $DisableNotifications.IsPresent
             DisableConsumerFeatures = $DisableConsumerFeatures.IsPresent
-            DisableCortana          = $DisableCortana.IsPresent
+            DisableCortana = $DisableCortana.IsPresent
             DisableLocationTracking = $DisableLocationTracking.IsPresent
         }
         $perfContext = Start-PerformanceTracking -OperationName 'TelemetryPrivacyHardening' -Component 'TELEMETRY-DISABLE'
@@ -304,26 +332,26 @@ function Disable-WindowsTelemetry {
     # Initialize results tracking
     $results = @{
         TotalOperations = 0
-        Successful      = 0
-        Failed          = 0
-        Skipped         = 0
-        Details         = [List[PSCustomObject]]::new()
-        Categories      = @{
-            Registry      = @{
+        Successful = 0
+        Failed = 0
+        Skipped = 0
+        Details = [List[PSCustomObject]]::new()
+        Categories = @{
+            Registry = @{
                 Applied = 0
-                Failed  = 0
+                Failed = 0
             }
-            Services      = @{
+            Services = @{
                 Disabled = 0
-                Failed   = 0
+                Failed = 0
             }
             Notifications = @{
                 Disabled = 0
-                Failed   = 0
+                Failed = 0
             }
-            Features      = @{
+            Features = @{
                 Disabled = 0
-                Failed   = 0
+                Failed = 0
             }
         }
     }
@@ -384,15 +412,15 @@ function Disable-WindowsTelemetry {
         # Complete performance tracking and structured logging
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $success -ResultData @{
-                TotalOperations        = $results.TotalOperations
-                Successful             = $results.Successful
-                Failed                 = $results.Failed
-                Skipped                = $results.Skipped
-                Duration               = $duration
-                RegistryOperations     = $results.Categories.Registry
-                ServicesOperations     = $results.Categories.Services
+                TotalOperations = $results.TotalOperations
+                Successful = $results.Successful
+                Failed = $results.Failed
+                Skipped = $results.Skipped
+                Duration = $duration
+                RegistryOperations = $results.Categories.Registry
+                ServicesOperations = $results.Categories.Services
                 NotificationOperations = $results.Categories.Notifications
-                FeatureOperations      = $results.Categories.Features
+                FeatureOperations = $results.Categories.Features
             }
             Write-LogEntry -Level $(if ($success) { 'SUCCESS' } else { 'WARNING' }) -Component 'TELEMETRY-DISABLE' -Message 'Privacy hardening operation completed' -Data $results
         }
@@ -422,7 +450,7 @@ function Disable-WindowsTelemetry {
         try {
             Complete-PerformanceTracking -PerformanceContext $perfContext -Success $false -ResultData @{ Error = $_.Exception.Message }
             Write-LogEntry -Level 'ERROR' -Component 'TELEMETRY-DISABLE' -Message 'Privacy hardening operation failed' -Data @{
-                Error     = $_.Exception.Message
+                Error = $_.Exception.Message
                 ErrorType = $_.Exception.GetType().Name
             }
         }
@@ -493,13 +521,13 @@ function Test-PrivacySetting {
     Write-Information " Analyzing current privacy and telemetry settings..." -InformationAction Continue
 
     $analysis = @{
-        TelemetryLevel          = Get-TelemetryLevel
-        ServicesRunning         = Get-TelemetryServiceStatus
-        NotificationsEnabled    = Test-NotificationsEnabled
+        TelemetryLevel = Get-TelemetryLevel
+        ServicesRunning = Get-TelemetryServiceStatus
+        NotificationsEnabled = Test-NotificationsEnabled
         ConsumerFeaturesEnabled = Test-ConsumerFeaturesEnabled
-        CortanaEnabled          = Test-CortanaEnabled
+        CortanaEnabled = Test-CortanaEnabled
         LocationServicesEnabled = Test-LocationServiceEnabled
-        Recommendations         = [List[string]]::new()
+        Recommendations = [List[string]]::new()
     }
 
     # Generate recommendations
@@ -574,44 +602,44 @@ function Set-TelemetryRegistrySetting {
 
     $results = @{
         Applied = 0
-        Failed  = 0
+        Failed = 0
         Details = [List[PSCustomObject]]::new()
     }
 
     # Core telemetry registry settings
     $telemetrySettings = @{
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection'                = @{
-            'AllowTelemetry'                 = 0
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' = @{
+            'AllowTelemetry' = 0
             'DoNotShowFeedbackNotifications' = 1
-            'AllowCommercialDataPipeline'    = 0
-            'AllowDeviceNameInTelemetry'     = 0
+            'AllowCommercialDataPipeline' = 0
+            'AllowDeviceNameInTelemetry' = 0
         }
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection' = @{
-            'AllowTelemetry'      = 0
+            'AllowTelemetry' = 0
             'MaxTelemetryAllowed' = 0
         }
-        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'  = @{
-            'ContentDeliveryAllowed'       = 0
-            'OemPreInstalledAppsEnabled'   = 0
-            'PreInstalledAppsEnabled'      = 0
-            'SilentInstalledAppsEnabled'   = 0
-            'SubscribedContentEnabled'     = 0
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' = @{
+            'ContentDeliveryAllowed' = 0
+            'OemPreInstalledAppsEnabled' = 0
+            'PreInstalledAppsEnabled' = 0
+            'SilentInstalledAppsEnabled' = 0
+            'SubscribedContentEnabled' = 0
             'SystemPaneSuggestionsEnabled' = 0
-            'SoftLandingEnabled'           = 0
+            'SoftLandingEnabled' = 0
         }
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent'                  = @{
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' = @{
             'DisableWindowsConsumerFeatures' = 1
-            'DisableCloudOptimizedContent'   = 1
-            'DisableSoftLanding'             = 1
+            'DisableCloudOptimizedContent' = 1
+            'DisableSoftLanding' = 1
         }
     }
 
     foreach ($registryPath in $telemetrySettings.Keys) {
         $pathResult = @{
-            Path     = $registryPath
+            Path = $registryPath
             Settings = 0
-            Success  = $true
-            Error    = $null
+            Success = $true
+            Error = $null
         }
 
         try {
@@ -703,8 +731,8 @@ function Disable-TelemetryService {
 
     $results = @{
         Disabled = 0
-        Failed   = 0
-        Details  = [List[PSCustomObject]]::new()
+        Failed = 0
+        Details = [List[PSCustomObject]]::new()
     }
 
     # Telemetry services to disable
@@ -718,10 +746,10 @@ function Disable-TelemetryService {
     foreach ($serviceName in $telemetryServices) {
         $operationStart = Get-Date
         $serviceResult = @{
-            Name    = $serviceName
+            Name = $serviceName
             Success = $false
-            Action  = 'None'
-            Error   = $null
+            Action = 'None'
+            Error = $null
         }
 
         try {
@@ -740,9 +768,9 @@ function Disable-TelemetryService {
             else {
                 # Enhanced logging: Pre-action state
                 Write-OperationStart -Component 'TELEMETRY-DISABLE' -Operation 'Disable' -Target $serviceName -AdditionalInfo @{
-                    PreviousState     = $service.Status
+                    PreviousState = $service.Status
                     PreviousStartType = $service.StartType
-                    Type              = 'TelemetryService'
+                    Type = 'TelemetryService'
                 }
 
                 if ($PSCmdlet.ShouldProcess($serviceName, 'Stop and disable telemetry service')) {
@@ -765,19 +793,19 @@ function Disable-TelemetryService {
                     if ($verifyService.StartupType -eq 'Disabled') {
                         # Log successful verification
                         Write-OperationSuccess -Component 'TELEMETRY-DISABLE' -Operation 'Verify' -Target $serviceName -Metrics @{
-                            ExpectedStartType  = 'Disabled'
-                            ActualStartType    = $verifyService.StartupType
-                            ActualStatus       = $verifyService.Status
+                            ExpectedStartType = 'Disabled'
+                            ActualStartType = $verifyService.StartupType
+                            ActualStatus = $verifyService.Status
                             VerificationPassed = $true
                         }
 
                         # Log successful disable
                         Write-OperationSuccess -Component 'TELEMETRY-DISABLE' -Operation 'Disable' -Target $serviceName -Metrics @{
-                            Duration          = $operationDuration
-                            PreviousState     = $service.Status
+                            Duration = $operationDuration
+                            PreviousState = $service.Status
                             PreviousStartType = $service.StartType
-                            NewStartType      = 'Disabled'
-                            Verified          = $true
+                            NewStartType = 'Disabled'
+                            Verified = $true
                         }
                         $serviceResult.Action = 'Disabled'
                         $serviceResult.Success = $true
@@ -846,8 +874,8 @@ function Disable-WindowsNotification {
 
     $results = @{
         Disabled = 0
-        Failed   = 0
-        Details  = [List[PSCustomObject]]::new()
+        Failed = 0
+        Details = [List[PSCustomObject]]::new()
     }
 
     try {
@@ -862,8 +890,8 @@ function Disable-WindowsNotification {
         # Global notification settings
         $globalSettings = @{
             'NOC_GLOBAL_SETTING_TOASTS_ENABLED' = 0
-            'NOC_GLOBAL_SETTING_BADGE_ENABLED'  = 0
-            'NOC_GLOBAL_SETTING_SOUND_ENABLED'  = 0
+            'NOC_GLOBAL_SETTING_BADGE_ENABLED' = 0
+            'NOC_GLOBAL_SETTING_SOUND_ENABLED' = 0
         }
 
         foreach ($setting in $globalSettings.GetEnumerator()) {
@@ -883,7 +911,7 @@ function Disable-WindowsNotification {
 
         # Disable per-app notifications
         $appNotifications = Get-ChildItem -Path $notificationPath -ErrorAction SilentlyContinue |
-        Where-Object { $_.PSChildName -notin $globalSettings.Keys }
+            Where-Object { $_.PSChildName -notin $globalSettings.Keys }
 
         foreach ($app in $appNotifications) {
             try {
@@ -947,22 +975,22 @@ function Disable-ConsumerFeature {
 
     $results = @{
         Disabled = 0
-        Failed   = 0
-        Details  = [List[PSCustomObject]]::new()
+        Failed = 0
+        Details = [List[PSCustomObject]]::new()
     }
 
     # Consumer features registry settings
     $consumerSettings = @{
-        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent'                 = @{
-            'DisableWindowsConsumerFeatures'     = 1
+        'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' = @{
+            'DisableWindowsConsumerFeatures' = 1
             'DisableConsumerAccountStateContent' = 1
-            'DisableCloudOptimizedContent'       = 1
+            'DisableCloudOptimizedContent' = 1
         }
         'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' = @{
             'SystemPaneSuggestionsEnabled' = 0
-            'SilentInstalledAppsEnabled'   = 0
-            'PreInstalledAppsEnabled'      = 0
-            'OemPreInstalledAppsEnabled'   = 0
+            'SilentInstalledAppsEnabled' = 0
+            'PreInstalledAppsEnabled' = 0
+            'OemPreInstalledAppsEnabled' = 0
         }
     }
 
@@ -1036,14 +1064,14 @@ function Disable-CortanaFeature {
 
     $results = @{
         Disabled = 0
-        Failed   = 0
-        Details  = @()
+        Failed = 0
+        Details = @()
     }
 
     $cortanaSettings = @{
         'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search' = @{
-            'AllowCortana'          = 0
-            'DisableWebSearch'      = 1
+            'AllowCortana' = 0
+            'DisableWebSearch' = 1
             'ConnectedSearchUseWeb' = 0
         }
     }
@@ -1107,13 +1135,13 @@ function Disable-LocationService {
 
     $results = @{
         Disabled = 0
-        Failed   = 0
-        Details  = @()
+        Failed = 0
+        Details = @()
     }
 
     $locationSettings = @{
         'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors' = @{
-            'DisableLocation'          = 1
+            'DisableLocation' = 1
             'DisableLocationScripting' = 1
         }
     }
@@ -1307,6 +1335,7 @@ Export-ModuleMember -Function @(
     'Disable-WindowsTelemetry',
     'Test-PrivacySetting'
 )
+
 
 
 
