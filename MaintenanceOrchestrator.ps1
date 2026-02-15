@@ -2509,7 +2509,8 @@ try {
                     $logsDirCount = (Get-ChildItem -Path $logsDir -Directory -ErrorAction SilentlyContinue).Count
                     Write-Information "  Log subdirectories: $logsDirCount" -InformationAction Continue
                 }
-            } else {
+            }
+            else {
                 Write-Warning "  ERROR: Temp root does not exist!"
             }
             Write-Information "" -InformationAction Continue
@@ -2539,10 +2540,12 @@ try {
                         foreach ($file in $processedFiles) {
                             Write-Information "    • $($file.Name) - $([math]::Round($file.Length/1KB, 1)) KB" -InformationAction Continue
                         }
-                    } else {
+                    }
+                    else {
                         Write-Warning "  ERROR: Processed data path does not exist: $($logProcessingResult.ProcessedDataPath)"
                     }
-                } else {
+                }
+                else {
                     Write-Warning "  WARNING: ProcessedDataPath not in result"
                 }
 
@@ -2891,10 +2894,10 @@ if (Get-Command -Name 'Start-MaintenanceCountdown' -ErrorAction SilentlyContinue
     try {
         # Load shutdown configuration
         $shutdownConfig = @{
-            CountdownSeconds             = $MainConfig.execution.shutdown.countdownSeconds ?? 120
-            CleanupOnTimeout             = $MainConfig.execution.shutdown.cleanupOnTimeout ?? $true
-            RebootOnTimeout              = $MainConfig.execution.shutdown.rebootOnTimeout ?? $false
-            RebootOnlyForWindowsUpdates  = $MainConfig.execution.shutdown.rebootOnlyForWindowsUpdates ?? $true
+            CountdownSeconds            = $MainConfig.execution.shutdown.countdownSeconds ?? 120
+            CleanupOnTimeout            = $MainConfig.execution.shutdown.cleanupOnTimeout ?? $true
+            RebootOnTimeout             = $MainConfig.execution.shutdown.rebootOnTimeout ?? $false
+            RebootOnlyForWindowsUpdates = $MainConfig.execution.shutdown.rebootOnlyForWindowsUpdates ?? $true
         }
 
         Write-Information "╔═══════════════════════════════════════════════════════════════╗" -ForegroundColor Yellow -InformationAction Continue
