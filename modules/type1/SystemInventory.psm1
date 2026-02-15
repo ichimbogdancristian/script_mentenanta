@@ -82,36 +82,37 @@ function Get-SystemInventory {
     # Check for cached inventory data if UseCache is enabled
     if ($UseCache) {
         $scriptRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-        # Use CoreInfrastructure for path resolution (loaded globally)
+
+        # Prefer standardized audit results path when available
+        $cachePath = $null
         try {
-            $inventoryDir = Get-MaintenancePath 'TempRoot'
-            $inventoryDir = Join-Path $inventoryDir "data"
+            if (Get-Command 'Get-AuditResultsPath' -ErrorAction SilentlyContinue) {
+                $cachePath = Get-AuditResultsPath -ModuleName 'SystemInventory'
+            }
+            else {
+                $inventoryDir = Join-Path (Get-MaintenancePath 'TempRoot') 'data'
+                $cachePath = Join-Path $inventoryDir 'system-inventory-results.json'
+            }
         }
         catch {
-            $inventoryDir = Join-Path $scriptRoot 'temp_files\inventory'
+            $inventoryDir = Join-Path $scriptRoot 'temp_files\data'
+            $cachePath = Join-Path $inventoryDir 'system-inventory-results.json'
         }
 
-        if (Test-Path $inventoryDir) {
-            # Find the most recent inventory file
-            $recentInventory = Get-ChildItem -Path $inventoryDir -Filter "system-inventory-*.json" |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
-
-            if ($recentInventory) {
-                $cacheAge = (Get-Date) - $recentInventory.LastWriteTime
-                if ($cacheAge.TotalMinutes -le $CacheTimeout) {
-                    try {
-                        Write-Information "  🗂️  Using cached inventory data (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes)" -InformationAction Continue
-                        $cachedData = Get-Content -Path $recentInventory.FullName -Raw | ConvertFrom-Json -AsHashtable
-                        return $cachedData
-                    }
-                    catch {
-                        Write-Warning "Failed to load cached inventory data: $_. Collecting fresh data."
-                    }
+        if ($cachePath -and (Test-Path $cachePath)) {
+            $cacheAge = (Get-Date) - (Get-Item $cachePath).LastWriteTime
+            if ($cacheAge.TotalMinutes -le $CacheTimeout) {
+                try {
+                    Write-Information "  Using cached inventory data (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes)" -InformationAction Continue
+                    $cachedData = Get-Content -Path $cachePath -Raw | ConvertFrom-Json -AsHashtable
+                    return $cachedData
                 }
-                else {
-                    Write-Warning "  ⏰ Cached inventory data expired (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes > $CacheTimeout minutes)"
+                catch {
+                    Write-Warning "Failed to load cached inventory data: $_. Collecting fresh data."
                 }
+            }
+            else {
+                Write-Warning "  Cached inventory data expired (age: $([math]::Round($cacheAge.TotalMinutes, 1)) minutes > $CacheTimeout minutes)"
             }
         }
     }

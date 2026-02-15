@@ -1,4 +1,4 @@
-# Note: PowerShell 7+ verification is handled by the launcher (script.bat).
+﻿# Note: PowerShell 7+ verification is handled by the launcher (script.bat).
 # The launcher ensures a compatible pwsh.exe is available before invoking this orchestrator.
 using namespace System.Collections.Generic
 <#
@@ -704,7 +704,7 @@ try {
         Write-Information "   Creating system restore point before maintenance..." -InformationAction Continue
 
         $restoreDescription = "Before Windows Maintenance - $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
-        
+
         # FIX: Try New-SystemRestorePoint first (Windows 10+)
         $restoreResult = $null
         try {
@@ -716,7 +716,7 @@ try {
             Write-Verbose "New-SystemRestorePoint failed: $_"
             $restoreResult = $null
         }
-        
+
         # FIX: If New-SystemRestorePoint failed, try Checkpoint-Computer (may not exist in PS7)
         if (-not $restoreResult) {
             try {
@@ -733,7 +733,7 @@ try {
                 $restoreResult = $null
             }
         }
-        
+
         # FIX: If both methods failed, fall back to Windows PowerShell
         if (-not $restoreResult) {
             # PowerShell 7 doesn't include Checkpoint-Computer natively
@@ -1513,19 +1513,19 @@ try {
     # STAGE 3: Interactive Type2 Task Selection (based on audit findings)
     # STAGE 4: Execute Selected Tasks
     # STAGE 5: Report Generation & Cleanup
-    
+
     $ExecutionParams = @{
         Mode          = 'StagedExecution'
         SelectedTasks = @()
     }
-    
+
     $AuditResults = @{}
     $TaskResults = @()
-    
+
     # Interactive Mode: Implement the original 5-stage vision
     if (-not $NonInteractive -and -not $TaskNumbers) {
         Write-Information "`nStarting interactive staged execution mode..." -InformationAction Continue
-        
+
         # ============================================================
         # STAGE 1: SYSTEM INVENTORY (Type1 Audit Modules)
         # ============================================================
@@ -1533,14 +1533,14 @@ try {
         Write-Host "============================================================" -ForegroundColor Magenta
         Write-Host "  STAGE 1: SYSTEM INVENTORY (Type1 Audit Modules)" -ForegroundColor White
         Write-Host "============================================================" -ForegroundColor Magenta
-        Write-Host "" 
+        Write-Host ""
         Write-Host "  Scanning your system for maintenance opportunities..." -ForegroundColor Cyan
         Write-Host ""
-        
+
         # Discover Type1 modules
         $type1Path = Join-Path $script:ModulesPath 'type1'
         $type1ModulesAvailable = @()
-        
+
         if (Test-Path $type1Path) {
             $type1Files = Get-ChildItem -Path $type1Path -Filter "*.psm1" -ErrorAction SilentlyContinue
             foreach ($file in $type1Files) {
@@ -1557,7 +1557,7 @@ try {
                     '*SystemInventory*' { 'Collect comprehensive system information' }
                     default { 'System audit module' }
                 }
-                
+
                 $type1ModulesAvailable += @{
                     Name        = $moduleName
                     Path        = $file.FullName
@@ -1565,17 +1565,17 @@ try {
                 }
             }
         }
-        
+
         if ($type1ModulesAvailable.Count -eq 0) {
             Write-Warning "No Type1 audit modules found in: $type1Path"
             Write-Warning "Cannot proceed with staged execution. Please check module installation."
             exit 1
         }
-        
+
         # Show Type1 module selection menu
         $countdownSeconds = $MainConfig.execution.countdownSeconds ?? 10
         $selectedType1Indices = Show-Type1ModuleMenu -CountdownSeconds $countdownSeconds -AvailableModules $type1ModulesAvailable
-        
+
         # Determine which Type1 modules to execute
         $selectedType1Modules = @()
         if ($selectedType1Indices -contains 0) {
@@ -1592,25 +1592,25 @@ try {
             }
             Write-Host "`n  [OK] Selected: $($selectedType1Modules.Count) Type1 audit module(s)" -ForegroundColor Green
         }
-        
+
         # Execute selected Type1 audit modules
         Write-Host ""
         Write-Host "  Executing system inventory audits..." -ForegroundColor Cyan
         Write-Host ""
-        
+
         foreach ($module in $selectedType1Modules) {
             Write-Host "  → $($module.Name)..." -NoNewline -ForegroundColor White
-            
+
             try {
                 # Import the Type1 module
                 Import-Module $module.Path -Force -ErrorAction Stop
-                
+
                 # Determine the execution function name
                 $moduleBase = $module.Name
                 $rootName = $moduleBase
                 if ($moduleBase -match 'DetectionAudit$') { $rootName = $moduleBase -replace 'DetectionAudit$', '' }
                 elseif ($moduleBase -match 'Audit$') { $rootName = $moduleBase -replace 'Audit$', '' }
-                
+
                 $candidateFunctions = @(
                     "Get-$rootName`Analysis",
                     "Get-$moduleBase`Analysis",
@@ -1619,9 +1619,9 @@ try {
                     "Get-$rootName",
                     "Start-$rootName"
                 )
-                
+
                 $functionName = $candidateFunctions | Where-Object { Get-Command -Name $_ -ErrorAction SilentlyContinue } | Select-Object -First 1
-                
+
                 if ($functionName) {
                     # Execute audit function with proper parameters
                     # Try with -Config parameter first (required by some Type1 modules)
@@ -1634,7 +1634,7 @@ try {
                     }
                     $AuditResults[$rootName] = $auditResult
                     Write-Host " [OK]" -ForegroundColor Green
-                    
+
                     # Log audit completion
                     Write-LogEntry -Level 'INFO' -Component 'ORCHESTRATOR-STAGE1' -Message "Type1 audit completed: $($module.Name)"
                 }
@@ -1650,12 +1650,12 @@ try {
                 $AuditResults[$rootName] = @{ DetectedItems = @(); Error = $_.Exception.Message }
             }
         }
-        
+
         Write-Host ""
         Write-Host "  [✓] Stage 1 Complete: System inventory audits finished" -ForegroundColor Green
         Write-Host "      Audit results saved to: temp_files/data/" -ForegroundColor DarkGray
         Write-Host ""
-        
+
         # ============================================================
         # STAGE 2: ANALYZE AUDIT RESULTS
         # ============================================================
@@ -1665,32 +1665,32 @@ try {
         Write-Host ""
         Write-Host "  Processing audit data to determine required maintenance tasks..." -ForegroundColor Cyan
         Write-Host ""
-        
+
         # Analyze audit results to determine which Type2 modules have work to do
         $type2Recommendations = @()
-        
+
         foreach ($task in $AvailableTasks) {
             $moduleName = $task.Name
             $shouldRun = $false
             $reason = 'No issues detected'
             $detectedCount = 0
-            
+
             # Map Type2 module name to audit result key
             $auditKey = switch ($moduleName) {
-                'BloatwareRemoval' { 'Bloatware' }
+                'BloatwareRemoval' { 'BloatwareDetection' }
                 'EssentialApps' { 'EssentialApps' }
                 'SystemOptimization' { 'SystemOptimization' }
                 'TelemetryDisable' { 'Telemetry' }
-                'SecurityEnhancement' { 'Security' }
+                'SecurityEnhancement' { 'SecurityAudit' }
                 'WindowsUpdates' { 'WindowsUpdates' }
                 'AppUpgrade' { 'AppUpgrade' }
                 default { $moduleName }
             }
-            
+
             # Check if audit found issues for this module
             if ($AuditResults.ContainsKey($auditKey)) {
                 $auditData = $AuditResults[$auditKey]
-                
+
                 # Determine if module should run based on audit data
                 if ($auditData.DetectedItems) {
                     $detectedCount = $auditData.DetectedItems.Count
@@ -1721,7 +1721,7 @@ try {
                     }
                 }
             }
-            
+
             # Add to recommendations if work is needed
             if ($shouldRun) {
                 $type2Recommendations += @{
@@ -1745,14 +1745,14 @@ try {
                 Write-Host "No action needed" -ForegroundColor Gray
             }
         }
-        
+
         # Display analysis summary
         Write-Host ""
         if ($type2Recommendations.Count -eq 0) {
             Write-Host "  [✓] Stage 2 Complete: No maintenance tasks required" -ForegroundColor Green
             Write-Host "      Your system is already optimized!" -ForegroundColor Cyan
             Write-Host ""
-            
+
             # Skip to report generation
             $ExecutionParams.Mode = 'AuditOnlyComplete'
         }
@@ -1760,7 +1760,7 @@ try {
             Write-Host "  [✓] Stage 2 Complete: Analysis finished" -ForegroundColor Green
             Write-Host "      Found $($type2Recommendations.Count) maintenance task(s) with work to do" -ForegroundColor Cyan
             Write-Host ""
-            
+
             # ============================================================
             # STAGE 3: TYPE2 TASK SELECTION (Based on Audit Findings)
             # ============================================================
@@ -1770,7 +1770,7 @@ try {
             Write-Host ""
             Write-Host "  Recommended tasks based on system audit:" -ForegroundColor Cyan
             Write-Host ""
-            
+
             # Display recommendations with priority indicators
             Write-Host "┌─────────────────────────────────────────────────────────────┐" -ForegroundColor Cyan
             Write-Host "│ RECOMMENDED MAINTENANCE TASKS                               │" -ForegroundColor Cyan
@@ -1778,7 +1778,7 @@ try {
             Write-Host "│                                                             │" -ForegroundColor Cyan
             Write-Host "│  [0] Execute All Recommended Tasks (Default)                │" -ForegroundColor Green
             Write-Host "│                                                             │" -ForegroundColor Cyan
-            
+
             for ($i = 0; $i -lt $type2Recommendations.Count; $i++) {
                 $rec = $type2Recommendations[$i]
                 $taskNum = "  [$($i+1)]"
@@ -1789,26 +1789,26 @@ try {
                     default { 'White' }
                 }
                 $priorityBadge = "[$($rec.Priority)]"
-                
+
                 Write-Host "│  $taskNum " -NoNewline -ForegroundColor Cyan
                 Write-Host "$priorityBadge" -NoNewline -ForegroundColor $priorityColor
                 Write-Host " $($rec.Task.Name)" -ForegroundColor White
                 Write-Host "│      → $($rec.Reason)" -ForegroundColor DarkGray
             }
-            
+
             Write-Host "│                                                             │" -ForegroundColor Cyan
             Write-Host "└─────────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
             Write-Host ""
             Write-Host "  Tip: Enter 0 for all, or comma-separated numbers (e.g., 1,3,5)" -ForegroundColor DarkGray
             Write-Host ""
-            
+
             # Countdown with auto-selection
             Write-Host "  Auto-selecting option 0 (All Tasks) in $countdownSeconds seconds..." -ForegroundColor Gray
             Write-Host "  Press any key to make manual selection..." -ForegroundColor Gray
             Write-Host ""
-            
+
             $selectionInput = Start-CountdownInput -CountdownSeconds $countdownSeconds -DefaultValue "0"
-            
+
             # Parse user selection
             $selectedType2Indices = @()
             if ($selectionInput -eq "0" -or [string]::IsNullOrWhiteSpace($selectionInput)) {
@@ -1831,22 +1831,22 @@ try {
                     Write-Warning "  Invalid input, defaulting to all tasks"
                     $selectedType2Indices = 0..($type2Recommendations.Count - 1)
                 }
-                
+
                 if ($selectedType2Indices.Count -eq 0) {
                     Write-Warning "  No valid tasks selected, defaulting to all tasks"
                     $selectedType2Indices = 0..($type2Recommendations.Count - 1)
                 }
-                
+
                 Write-Host ""
                 Write-Host "  [OK] Selected: $($selectedType2Indices.Count) task(s)" -ForegroundColor Green
             }
-            
+
             # Build selected tasks list
             $ExecutionParams.SelectedTasks = @()
             foreach ($index in $selectedType2Indices) {
                 $ExecutionParams.SelectedTasks += $type2Recommendations[$index].Task
             }
-            
+
             Write-Host ""
             Write-Host "  [✓] Stage 3 Complete: Tasks selected for execution" -ForegroundColor Green
             Write-Host ""
@@ -1903,7 +1903,7 @@ try {
         else {
             Write-Warning "Type1 modules directory not found: $type1Path"
         }
-        
+
         # Auto-select all Type2 tasks for execution in non-interactive mode
         Write-Information "Auto-selecting all available Type2 tasks (non-interactive)..." -InformationAction Continue
         $ExecutionParams.SelectedTasks = $AvailableTasks
@@ -1913,7 +1913,7 @@ try {
     # Handle TaskNumbers parameter (command-line specific task selection)
     if ($TaskNumbers) {
         Write-Information "`nTask numbers specified: $TaskNumbers" -InformationAction Continue
-        
+
         # Run Type1 audits first (non-interactive)
         Write-Information "Running Type1 audit modules..." -InformationAction Continue
         $type1Path = Join-Path $script:ModulesPath 'type1'
@@ -1949,7 +1949,7 @@ try {
                 }
             }
         }
-        
+
         try {
             $taskNumbersArray = $TaskNumbers -split ',' | ForEach-Object { [int]$_.Trim() }
             $ExecutionParams.SelectedTasks = @()
@@ -2120,13 +2120,13 @@ try {
             $reason = $null
 
             switch ($task.Name) {
-                'BloatwareRemoval' { $auditKey = 'bloatware-detection' }
+                'BloatwareRemoval' { $auditKey = 'bloatware' }
                 'EssentialApps' { $auditKey = 'essential-apps' }
                 'SystemOptimization' { $auditKey = 'system-optimization' }
                 'TelemetryDisable' { $auditKey = 'telemetry' }
                 'WindowsUpdates' { $auditKey = 'windows-updates' }
                 'AppUpgrade' { $auditKey = 'app-upgrade' }
-                'SecurityEnhancement' { $auditKey = 'security-audit' }
+                'SecurityEnhancement' { $auditKey = 'security' }
             }
 
             $auditData = if ($auditKey -and $type1AuditResults.ContainsKey($auditKey)) { $type1AuditResults[$auditKey] } else { $null }
@@ -2452,19 +2452,6 @@ try {
     }  # End of else block for Manual/NonInteractive task execution
     #endregion
 
-    # Stop transcript before report generation
-    if ($script:TranscriptStarted) {
-        Write-Information " Finalizing transcript logging (pre-report)..." -InformationAction Continue
-        try {
-            Stop-Transcript -ErrorAction Stop | Out-Null
-            $script:TranscriptStarted = $false
-            Write-Information "  [OK] Transcript stopped and saved" -InformationAction Continue
-        }
-        catch {
-            Write-Warning "Transcript stop error: $($_.Exception.Message)"
-        }
-    }
-
     #region Report Generation (v3.1 Architecture - Enhanced)
     # Generate comprehensive reports using v3.0 split architecture: LogProcessor -> ReportGenerator
     Write-Information "" -InformationAction Continue
@@ -2507,13 +2494,13 @@ try {
             if (Test-Path $tempRoot) {
                 $tempDirs = Get-ChildItem -Path $tempRoot -Directory -ErrorAction SilentlyContinue
                 Write-Information "  Subdirectories found: $($tempDirs.Name -join ', ')" -InformationAction Continue
-                
+
                 # Check for data and logs directories
                 $dataDir = Join-Path $tempRoot 'data'
                 $logsDir = Join-Path $tempRoot 'logs'
                 Write-Information "  Data directory exists: $(Test-Path $dataDir)" -InformationAction Continue
                 Write-Information "  Logs directory exists: $(Test-Path $logsDir)" -InformationAction Continue
-                
+
                 if (Test-Path $dataDir) {
                     $dataFiles = Get-ChildItem -Path $dataDir -File -ErrorAction SilentlyContinue
                     Write-Information "  Data files: $($dataFiles.Count)" -InformationAction Continue
@@ -2540,10 +2527,10 @@ try {
                 Write-Information "DEBUG: Invoke-LogProcessing completed" -InformationAction Continue
                 Write-Information "  Result type: $($logProcessingResult.GetType().Name)" -InformationAction Continue
                 Write-Information "  Result.Success: $($logProcessingResult.Success)" -InformationAction Continue
-                
+
                 if ($logProcessingResult.ProcessedDataPath) {
                     Write-Information "  Result.ProcessedDataPath: $($logProcessingResult.ProcessedDataPath)" -InformationAction Continue
-                    
+
                     # DEBUG: Check what files were created in processed directory
                     Write-Information "DEBUG: Checking processed data output..." -InformationAction Continue
                     if (Test-Path $logProcessingResult.ProcessedDataPath) {
@@ -2558,7 +2545,7 @@ try {
                 } else {
                     Write-Warning "  WARNING: ProcessedDataPath not in result"
                 }
-                
+
                 Write-Information "  Log processing completed successfully" -InformationAction Continue
             }
             else {
@@ -2579,22 +2566,22 @@ try {
                 Write-Information "DEBUG: Ensuring reports directory exists: $reportsDir" -InformationAction Continue
                 New-Item -Path $reportsDir -ItemType Directory -Force | Out-Null
                 Write-Information "  Reports directory ready: $(Test-Path $reportsDir)" -InformationAction Continue
-                
+
                 $reportBasePath = Join-Path $reportsDir "MaintenanceReport_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss').html"
                 Write-Information "DEBUG: Report will be saved to: $reportBasePath" -InformationAction Continue
-                
+
                 # Generate report using processed data (with fallback capability)
                 Write-Information "DEBUG: Calling New-MaintenanceReport with -EnableFallback..." -InformationAction Continue
                 $reportResult = New-MaintenanceReport -OutputPath $reportBasePath -EnableFallback
                 Write-Information "DEBUG: New-MaintenanceReport completed" -InformationAction Continue
                 Write-Information "  Result type: $($reportResult.GetType().Name)" -InformationAction Continue
                 Write-Information "  Result.Success: $($reportResult.Success)" -InformationAction Continue
-                
+
                 if ($reportResult -and $reportResult.Success) {
                     Write-Information "   Reports generated successfully using split architecture" -InformationAction Continue
                     Write-Information "  Report Type: $($reportResult.ReportType)" -InformationAction Continue
                     Write-Information "  Duration: $([math]::Round($reportResult.Duration, 2)) seconds" -InformationAction Continue
-                    
+
                     if ($reportResult.ReportPaths) {
                         Write-Information "DEBUG: Verifying generated report files..." -InformationAction Continue
                         foreach ($reportPath in $reportResult.ReportPaths) {
@@ -2956,4 +2943,5 @@ else {
     exit 0
 }
 #endregion
+
 

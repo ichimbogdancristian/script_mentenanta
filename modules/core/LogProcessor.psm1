@@ -567,6 +567,7 @@ function Get-MaintenanceLog {
 
         if ($result.Success) {
             $maintenanceLogData.Content = $result.Data
+            $maintenanceLogData.RawContent = $result.Data
             $maintenanceLogData.Available = $true
 
             # Parse log entries by level
@@ -598,6 +599,7 @@ function Get-MaintenanceLog {
         }
         else {
             $maintenanceLogData.Content = $result.Data
+            $maintenanceLogData.RawContent = $result.Data
             $maintenanceLogData.Available = $result.FallbackUsed
             Write-LogEntry -Level 'WARNING' -Component 'LOG-PROCESSOR' -Message "Maintenance.log loaded with fallback content"
         }

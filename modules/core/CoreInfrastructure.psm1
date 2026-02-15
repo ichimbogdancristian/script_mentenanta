@@ -486,7 +486,7 @@ function Get-MaintenancePath {
 #>
 function Get-SessionPath {
     [CmdletBinding()]
-    [OutputType([hashtable])]
+    [OutputType([string])]
     param(
         [Parameter(Mandatory = $true)]
         [ValidateSet('data', 'logs', 'reports', 'temp', 'inventory')]
@@ -2706,7 +2706,7 @@ function Initialize-MaintenanceInfrastructure {
 #>
 function Get-AuditResultsPath {
     [CmdletBinding()]
-    [OutputType([hashtable])]
+    [OutputType([string])]
     param(
         [Parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
@@ -2771,7 +2771,7 @@ function Get-AuditResultsPath {
 #>
 function Save-DiffResults {
     [CmdletBinding()]
-    [OutputType([hashtable])]
+    [OutputType([string])]
     param(
         [Parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]

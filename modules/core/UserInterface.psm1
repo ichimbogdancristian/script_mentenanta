@@ -129,7 +129,8 @@ function Show-MainMenu {
         SelectedTasks = @()
     }
 
-    # ===== MAIN MENU ===== Write-Host "`n===================================================" -ForegroundColor Cyan
+    # ===== MAIN MENU =====
+    Write-Host "`n===================================================" -ForegroundColor Cyan
     Write-Host "    Windows Maintenance Automation v3.0.0" -ForegroundColor White
     Write-Host "===================================================" -ForegroundColor Cyan
     Write-Host ""
