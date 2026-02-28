@@ -30,7 +30,11 @@
         'PSAvoidUsingPlainTextForPassword',
         
         # Style - Allow positional parameters in internal helper functions
-        'PSAvoidUsingPositionalParameters'
+        'PSAvoidUsingPositionalParameters',
+
+        # Project-defined function 'Write-Log' shadows a platform-specific module cmdlet.
+        # Write-Log is intentionally defined as the project's structured logging function.
+        'PSAvoidOverwritingBuiltInCmdlets'
     )
     
     # ============================================================================

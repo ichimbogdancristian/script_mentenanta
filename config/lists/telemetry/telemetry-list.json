@@ -1,0 +1,118 @@
+{
+    "_comment": "Telemetry & Privacy baseline - services/registry entries that should be DISABLED on a hardened Windows system.",
+    "services": {
+        "disable": [
+            "DiagTrack",
+            "dmwappushservice",
+            "PcaSvc",
+            "WerSvc",
+            "WMPNetworkSvc",
+            "RemoteRegistry",
+            "MapsBroker",
+            "lfsvc",
+            "SharedAccess",
+            "NetTcpPortSharing",
+            "WlanSvc",
+            "Fax"
+        ]
+    },
+    "registry": {
+        "telemetry": [
+            {
+                "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
+                "name": "AllowTelemetry",
+                "type": "DWord",
+                "desiredValue": 0,
+                "description": "Disable telemetry data collection"
+            },
+            {
+                "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection",
+                "name": "AllowTelemetry",
+                "type": "DWord",
+                "desiredValue": 0,
+                "description": "Disable telemetry collection (legacy path)"
+            },
+            {
+                "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
+                "name": "LimitDiagnosticLogCollection",
+                "type": "DWord",
+                "desiredValue": 1,
+                "description": "Limit diagnostic log collection"
+            },
+            {
+                "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
+                "name": "DisableOneSettingsDownloads",
+                "type": "DWord",
+                "desiredValue": 1,
+                "description": "Disable OneSettings telemetry downloads"
+            }
+        ],
+        "advertising": [
+            {
+                "path": "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\AdvertisingInfo",
+                "name": "Enabled",
+                "type": "DWord",
+                "desiredValue": 0,
+                "description": "Disable advertising ID"
+            },
+            {
+                "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\AdvertisingInfo",
+                "name": "DisabledByGroupPolicy",
+                "type": "DWord",
+                "desiredValue": 1,
+                "description": "Disable advertising ID via policy"
+            }
+        ],
+        "cortana": [
+            {
+                "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search",
+                "name": "AllowCortana",
+                "type": "DWord",
+                "desiredValue": 0,
+                "description": "Disable Cortana"
+            },
+            {
+                "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search",
+                "name": "DisableWebSearch",
+                "type": "DWord",
+                "desiredValue": 1,
+                "description": "Disable web search in taskbar"
+            }
+        ],
+        "privacy": [
+            {
+                "path": "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Privacy",
+                "name": "TailoredExperiencesWithDiagnosticDataEnabled",
+                "type": "DWord",
+                "desiredValue": 0,
+                "description": "Disable tailored experiences"
+            },
+            {
+                "path": "HKCU:\\SOFTWARE\\Microsoft\\InputPersonalization",
+                "name": "RestrictImplicitInkCollection",
+                "type": "DWord",
+                "desiredValue": 1,
+                "description": "Restrict ink data collection"
+            },
+            {
+                "path": "HKCU:\\SOFTWARE\\Microsoft\\InputPersonalization",
+                "name": "RestrictImplicitTextCollection",
+                "type": "DWord",
+                "desiredValue": 1,
+                "description": "Restrict text input data collection"
+            }
+        ]
+    },
+    "scheduledTasks": {
+        "disable": [
+            "\\Microsoft\\Windows\\Application Experience\\Microsoft Compatibility Appraiser",
+            "\\Microsoft\\Windows\\Application Experience\\ProgramDataUpdater",
+            "\\Microsoft\\Windows\\Autochk\\Proxy",
+            "\\Microsoft\\Windows\\Customer Experience Improvement Program\\Consolidator",
+            "\\Microsoft\\Windows\\Customer Experience Improvement Program\\UsbCeip",
+            "\\Microsoft\\Windows\\DiskDiagnostic\\Microsoft-Windows-DiskDiagnosticDataCollector",
+            "\\Microsoft\\Windows\\Feedback\\Siuf\\DmClient",
+            "\\Microsoft\\Windows\\Feedback\\Siuf\\DmClientOnScenarioDownload"
+        ]
+    }
+}

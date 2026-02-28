@@ -1,0 +1,91 @@
+{
+    "_comment": "Security baseline - desired security settings for hardened Windows 10/11 workstations.",
+    "windowsDefender": {
+        "realTimeProtection": true,
+        "cloudProtection": true,
+        "automaticSampleSubmission": false,
+        "networkProtection": true,
+        "controlledFolderAccess": false,
+        "pua": true
+    },
+    "firewall": {
+        "enabled": {
+            "domain": true,
+            "private": true,
+            "public": true
+        }
+    },
+    "uac": {
+        "enabled": true,
+        "level": 2,
+        "description": "Level 2 = Notify on app changes (default)"
+    },
+    "passwordPolicy": {
+        "maxPasswordAge": 90,
+        "minPasswordLength": 8,
+        "complexityEnabled": true,
+        "description": "Basic password policy recommendations"
+    },
+    "registry": [
+        {
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "name": "EnableLUA",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Ensure UAC is enabled"
+        },
+        {
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "name": "ConsentPromptBehaviorAdmin",
+            "type": "DWord",
+            "desiredValue": 2,
+            "description": "UAC prompts for admins"
+        },
+        {
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU",
+            "name": "NoAutoUpdate",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Windows Update must not be disabled"
+        },
+        {
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\SharedAccess\\Parameters\\FirewallPolicy\\StandardProfile",
+            "name": "EnableFirewall",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Windows Firewall (private) enabled"
+        },
+        {
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization",
+            "name": "NoLockScreen",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Lock screen must be enabled"
+        },
+        {
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
+            "name": "AutoAdminLogon",
+            "type": "String",
+            "desiredValue": "0",
+            "description": "Auto admin logon must be disabled"
+        }
+    ],
+    "services": {
+        "ensureRunning": [
+            "WinDefend",
+            "MpsSvc",
+            "EventLog"
+        ],
+        "ensureDisabled": [
+            "RemoteRegistry",
+            "Telnet"
+        ]
+    },
+    "auditPolicy": {
+        "logonEvents": true,
+        "accountLogon": true,
+        "policyChange": true,
+        "privilegeUse": false,
+        "description": "Recommended audit policy events"
+    }
+}

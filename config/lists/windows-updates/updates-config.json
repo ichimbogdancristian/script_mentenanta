@@ -1,0 +1,23 @@
+{
+    "_comment": "Windows Update configuration - controls which update categories to install and update behavior.",
+    "enabled": true,
+    "categories": {
+        "security": true,
+        "critical": true,
+        "important": true,
+        "optional": false,
+        "drivers": false,
+        "featureUpdates": false
+    },
+    "excludePatterns": [
+        "*Preview*",
+        "*Insider*",
+        "*Beta*"
+    ],
+    "settings": {
+        "autoRestartIfPending": false,
+        "maxWaitMinutes": 60,
+        "continueOnError": true,
+        "createRestorePointFirst": true
+    }
+}
