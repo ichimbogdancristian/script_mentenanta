@@ -27,11 +27,13 @@
 using namespace System.Collections.Generic
 Set-StrictMode -Off
 
-#region ─── INITIALISATION ────────────────────────────────────────────────────
+#region ─── INITIALIZATION ────────────────────────────────────────────────────
 
 <#
-.SYNOPSIS  Initialises path environment variables from the known project root.
-.PARAMETER ProjectRoot  Absolute path to the project folder (where script.bat lives).
+.SYNOPSIS
+    Initializes path environment variables from the known project root.
+.PARAMETER ProjectRoot
+    Absolute path to the project folder (where script.bat lives).
 #>
 function Initialize-Maintenance {
     [CmdletBinding()]
@@ -51,7 +53,7 @@ function Initialize-Maintenance {
         $dir = Join-Path $env:MAINT_TEMP $sub
         if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     }
-    Write-Log -Level INFO -Component CORE -Message "Maintenance initialised. Root: $ProjectRoot"
+    Write-Log -Level INFO -Component CORE -Message "Maintenance initialized. Root: $ProjectRoot"
 }
 
 #endregion
@@ -59,13 +61,16 @@ function Initialize-Maintenance {
 #region ─── LOGGING ───────────────────────────────────────────────────────────
 
 <#
-.SYNOPSIS  Writes a structured log line to the console (captured by Start-Transcript).
-           Colors are stripped inside non-interactive sessions automatically.
-.PARAMETER Level      INFO | WARN | ERROR | DEBUG | SUCCESS
-.PARAMETER Component  Uppercase short module tag, e.g. BLOATWARE, CORE, ESSENTIALAPPS
-.PARAMETER Message    Free-form message text
+.SYNOPSIS
+    Writes a structured log line to the console (captured by Start-Transcript).
+    Colors are stripped inside non-interactive sessions automatically.
+.PARAMETER Level
+    INFO | WARN | ERROR | DEBUG | SUCCESS
+.PARAMETER Component
+    Uppercase short module tag, e.g. BLOATWARE, CORE, ESSENTIALAPPS
+.PARAMETER Message
+    Free-form message text
 #>
-[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification = 'Write-Log is not a PS7 built-in; defined here as the project logging function.')]
 function Write-Log {
     [CmdletBinding()]
     param(
@@ -99,9 +104,11 @@ function Write-Log {
 #region ─── OS DETECTION ──────────────────────────────────────────────────────
 
 <#
-.SYNOPSIS  Returns a structured OS context object.
-.OUTPUTS   hashtable with keys: IsWindows11, BuildNumber, MajorVersion, DisplayText,
-           Features (hashtable of available OS features)
+.SYNOPSIS
+    Returns a structured OS context object.
+.OUTPUTS
+    hashtable with keys: IsWindows11, BuildNumber, MajorVersion, DisplayText,
+    Features (hashtable of available OS features)
 #>
 function Get-OSContext {
     [CmdletBinding()]
@@ -150,7 +157,8 @@ function Get-OSContext {
 #region ─── CONFIGURATION ─────────────────────────────────────────────────────
 
 <#
-.SYNOPSIS  Loads and returns the main configuration hashtable from main-config.json.
+.SYNOPSIS
+    Loads and returns the main configuration hashtable from main-config.json.
 #>
 function Get-MainConfig {
     [CmdletBinding()]
@@ -162,7 +170,7 @@ function Get-MainConfig {
         Write-Log -Level WARN -Component CORE -Message "main-config.json not found at $path. Using built-in defaults."
         return @{
             execution = @{ countdownSeconds = 30; enableDryRun = $false; autoSelectDefault = $true
-                shutdown = @{ countdownSeconds = 120; rebootOnTimeout = $true; cleanupOnTimeout = $true } 
+                shutdown = @{ countdownSeconds = 120; rebootOnTimeout = $true; cleanupOnTimeout = $true }
             }
             modules   = @{}
             reporting = @{ enableHtmlReport = $true }
@@ -182,9 +190,12 @@ function Get-MainConfig {
 }
 
 <#
-.SYNOPSIS  Loads a preexisting baseline list for a module from config/lists/[folder]/[file].
-.PARAMETER ModuleFolder  Subfolder name under config/lists/  (e.g. 'bloatware')
-.PARAMETER FileName      JSON filename (e.g. 'bloatware-list.json')
+.SYNOPSIS
+    Loads a preexisting baseline list for a module from config/lists/[folder]/[file].
+.PARAMETER ModuleFolder
+    Subfolder name under config/lists/ (e.g. 'bloatware').
+.PARAMETER FileName
+    JSON filename (e.g. 'bloatware-list.json').
 #>
 function Get-BaselineList {
     [CmdletBinding()]
@@ -214,10 +225,14 @@ function Get-BaselineList {
 #region ─── TEMP FILE PATHS ───────────────────────────────────────────────────
 
 <#
-.SYNOPSIS  Returns an absolute path inside temp_files, creating the parent directory.
-.PARAMETER Category  Subfolder: 'data' | 'logs' | 'reports' | 'diff'
-.PARAMETER SubFolder Optional sub-subfolder (e.g. module name for logs)
-.PARAMETER FileName  Optional file name; if omitted returns the folder path
+.SYNOPSIS
+    Returns an absolute path inside temp_files, creating the parent directory if needed.
+.PARAMETER Category
+    Subfolder: 'data' | 'logs' | 'reports' | 'diff'
+.PARAMETER SubFolder
+    Optional sub-subfolder (e.g. module name for logs).
+.PARAMETER FileName
+    Optional file name; if omitted returns the folder path.
 #>
 function Get-TempPath {
     [CmdletBinding()]
@@ -244,22 +259,27 @@ function Get-TempPath {
 #region ─── DIFF ENGINE ───────────────────────────────────────────────────────
 
 <#
-.SYNOPSIS  Produces a diff list by comparing Type1 scan results against a baseline.
+.SYNOPSIS
+    Produces a diff list by comparing Type1 scan results against a baseline.
 .DESCRIPTION
     Strategies:
       Present  - items IN baseline that ARE found in scan (bloatware to remove)
       Missing  - items IN baseline that are NOT in scan (apps to install)
       Changed  - items where scanned state differs from desired state in baseline
-
-.PARAMETER ScannedItems   Array of objects returned by Type1 audit
-.PARAMETER BaselineItems  Array/object from config/lists JSON
-.PARAMETER Strategy       'Present' | 'Missing' | 'Changed'
-.PARAMETER MatchProperty  Property name to match on (default: 'Name')
-.OUTPUTS   Array of diff items (subset of scanned or baseline items)
+.PARAMETER ScannedItems
+    Array of objects returned by Type1 audit.
+.PARAMETER BaselineItems
+    Array/object from config/lists JSON.
+.PARAMETER Strategy
+    'Present' | 'Missing' | 'Changed'
+.PARAMETER MatchProperty
+    Property name to match on (default: 'Name').
+.OUTPUTS
+    Array of diff items (subset of scanned or baseline items).
 #>
 function Compare-ListDiff {
     [CmdletBinding()]
-    [OutputType([array])]
+    [OutputType([object[]])]
     param(
         [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$ScannedItems,
         [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$BaselineItems,
@@ -333,7 +353,8 @@ function Compare-ListDiff {
 }
 
 <#
-.SYNOPSIS  Persists a diff list to temp_files/diff/[ModuleName]-diff.json.
+.SYNOPSIS
+    Persists a diff list to temp_files/diff/[ModuleName]-diff.json.
 #>
 function Save-DiffList {
     [CmdletBinding()]
@@ -349,11 +370,12 @@ function Save-DiffList {
 }
 
 <#
-.SYNOPSIS  Loads a previously saved diff list. Returns empty array if not found.
+.SYNOPSIS
+    Loads a previously saved diff list. Returns empty array if not found.
 #>
 function Get-DiffList {
     [CmdletBinding()]
-    [OutputType([array])]
+    [OutputType([object[]])]
     param(
         [Parameter(Mandatory)] [string]$ModuleName
     )
@@ -373,7 +395,8 @@ function Get-DiffList {
 #region ─── MODULE RESULT OBJECTS ─────────────────────────────────────────────
 
 <#
-.SYNOPSIS  Creates a standardised module result hashtable used by the orchestrator.
+.SYNOPSIS
+    Creates a standardized module result hashtable used by the orchestrator.
 #>
 function New-ModuleResult {
     [CmdletBinding(SupportsShouldProcess)]
@@ -389,6 +412,11 @@ function New-ModuleResult {
         [Parameter()] [object[]]$Errors = @(),
         [Parameter()] [hashtable]$ExtraData = @{}
     )
+    # Guard: SupportsShouldProcess satisfies PSUseShouldProcessForStateChangingFunctions for New-* verb.
+    # New-ModuleResult only creates an in-memory hashtable; no system state is changed.
+    if (-not $PSCmdlet.ShouldProcess($ModuleName, 'Create module result')) {
+        return @{}
+    }
     return @{
         ModuleName     = $ModuleName
         Status         = $Status
@@ -408,12 +436,13 @@ function New-ModuleResult {
 #region ─── SHARED SYSTEM QUERIES ─────────────────────────────────────────────
 
 <#
-.SYNOPSIS  Returns a list of installed applications from the Windows registry.
-           Covers both 32-bit and 64-bit entry points plus AppX packages.
+.SYNOPSIS
+    Returns a list of installed applications from the Windows registry.
+    Covers both 32-bit and 64-bit entry points plus AppX packages.
 #>
 function Get-InstalledApp {
     [CmdletBinding()]
-    [OutputType([array])]
+    [OutputType([object[]])]
     param()
 
     $apps = [System.Collections.Generic.List[hashtable]]::new()
@@ -429,15 +458,16 @@ function Get-InstalledApp {
             Get-ItemProperty -Path $path -ErrorAction SilentlyContinue |
             Where-Object { $_.DisplayName } |
             ForEach-Object {
-                $apps.Add(@{
-                        Name      = $_.DisplayName
-                        Version   = $_.DisplayVersion
-                        Publisher = $_.Publisher
-                        Source    = 'Registry'
-                    })
+                $regApp = @{
+                    Name      = $_.DisplayName
+                    Version   = $_.DisplayVersion
+                    Publisher = $_.Publisher
+                    Source    = 'Registry'
+                }
+                $apps.Add($regApp)
             }
         }
-        catch { <# silent #> }
+        catch { Write-Verbose "Registry path skipped: $_" }
     }
 
     # Add AppX / MSIX packages
@@ -445,26 +475,28 @@ function Get-InstalledApp {
         Get-AppxPackage -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -and $_.PackageFullName } |
         ForEach-Object {
-            $apps.Add(@{
-                    Name      = $_.Name
-                    Version   = $_.Version.ToString()
-                    Publisher = $_.Publisher
-                    Source    = 'AppX'
-                })
+            $appxApp = @{
+                Name      = $_.Name
+                Version   = $_.Version.ToString()
+                Publisher = $_.Publisher
+                Source    = 'AppX'
+            }
+            $apps.Add($appxApp)
         }
     }
-    catch { <# silent #> }
+    catch { Write-Verbose "AppX enumeration skipped: $_" }
 
     return $apps.ToArray()
 }
 
 <#
-.SYNOPSIS  Returns winget upgrade list as an array of hashtables.
-           Returns empty array if winget is not available.
+.SYNOPSIS
+    Returns winget upgrade list as an array of hashtables.
+    Returns empty array if winget is not available.
 #>
 function Get-WingetUpgrade {
     [CmdletBinding()]
-    [OutputType([array])]
+    [OutputType([object[]])]
     param()
 
     if (-not (Test-CommandAvailable 'winget')) { return @() }
@@ -481,13 +513,14 @@ function Get-WingetUpgrade {
 
             $parts = $line -split '\s{2,}'
             if ($parts.Count -ge 4) {
-                $result.Add(@{
-                        Name             = $parts[0].Trim()
-                        Id               = $parts[1].Trim()
-                        CurrentVersion   = $parts[2].Trim()
-                        AvailableVersion = $parts[3].Trim()
-                        Source           = 'Winget'
-                    })
+                $wingetItem = @{
+                    Name             = $parts[0].Trim()
+                    Id               = $parts[1].Trim()
+                    CurrentVersion   = $parts[2].Trim()
+                    AvailableVersion = $parts[3].Trim()
+                    Source           = 'Winget'
+                }
+                $result.Add($wingetItem)
             }
         }
         return $result.ToArray()
@@ -499,7 +532,8 @@ function Get-WingetUpgrade {
 }
 
 <#
-.SYNOPSIS  Checks whether a command is available in the current session.
+.SYNOPSIS
+    Checks whether a command is available in the current session.
 #>
 function Test-CommandAvailable {
     [CmdletBinding()]
@@ -509,7 +543,8 @@ function Test-CommandAvailable {
 }
 
 <#
-.SYNOPSIS  Reads a registry value safely, returning $null on failure.
+.SYNOPSIS
+    Reads a registry value safely, returning $null on failure.
 #>
 function Get-RegistryValue {
     [CmdletBinding()]
@@ -524,8 +559,10 @@ function Get-RegistryValue {
 }
 
 <#
-.SYNOPSIS  Sets or creates a registry value. Skips if value already correct.
-.OUTPUTS   bool - $true if change was made
+.SYNOPSIS
+    Sets or creates a registry value. Skips if value already correct.
+.OUTPUTS
+    bool - $true if a change was made.
 #>
 function Set-RegistryValue {
     [CmdletBinding(SupportsShouldProcess)]

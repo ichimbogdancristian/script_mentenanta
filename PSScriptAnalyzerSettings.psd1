@@ -173,7 +173,9 @@
         PSUseConsistentIndentation                  = @{
             Enable              = $true
             IndentationSize     = 4
-            PipelineIndentation = 'IncreaseIndentationForFirstPipeline'
+            # 'None' matches the project's style where pipeline continuation lines
+            # sit at the same indentation level as the first pipeline element.
+            PipelineIndentation = 'None'
             Kind                = 'space'
         }
         
@@ -275,6 +277,12 @@
             Enable         = $true
             TargetProfiles = @(
                 'win-8_x64_10.0.17763.0_7.0.0_x64_3.1.2_core'
+            )
+            # Write-Log is a user-defined project logging function (not a PS7 built-in).
+            # Set-ItemProperty -Type is Windows registry-provider-specific; project targets Windows-only.
+            IgnoreCommands = @(
+                'Write-Log',
+                'Set-ItemProperty'
             )
         }
         

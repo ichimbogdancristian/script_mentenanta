@@ -183,9 +183,9 @@ IF !ERRORLEVEL! EQU 0 (
     )
 )
 
-REM Detect pending restart from all supported signals (Win10/11 safe)
-CALL :LOG_MESSAGE "Checking for pending restart status..." "INFO" "LAUNCHER"
-CALL :LOG_MESSAGE "Reboot detection version: 3.1.1" "DEBUG" "LAUNCHER"
+REM Detect pending restart from Windows Update authoritative signals only (Win10/11)
+CALL :LOG_MESSAGE "Checking for pending Windows Update restart status..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Reboot detection version: 3.2.0 (authoritative WU markers only - boot loop fix)" "DEBUG" "LAUNCHER"
 SET "RESTART_NEEDED=NO"
 SET "RESTART_SIGNALS="
 SET "RESTART_NEEDED_WU=NO"
@@ -205,35 +205,54 @@ IF !ERRORLEVEL! EQU 2 CALL :LOG_MESSAGE "PSWindowsUpdate Get-WURebootStatus not 
 IF !ERRORLEVEL! EQU 3 CALL :LOG_MESSAGE "PSWindowsUpdate not available. Continuing with registry reboot signals." "INFO" "LAUNCHER"
 IF !ERRORLEVEL! EQU 4 CALL :LOG_MESSAGE "PSWindowsUpdate reboot check failed. Continuing with registry reboot signals." "WARN" "LAUNCHER"
 
-REM Windows Update-specific registry checks only
+REM Windows Update-specific registry checks (authoritative markers only)
+REM -----------------------------------------------------------------------
+REM CHECK 2: Windows Update Auto Update RebootRequired (most reliable)
+REM Set by: WU after installing updates that require reboot
+REM Cleared: Automatically after successful reboot
+REM -----------------------------------------------------------------------
 REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     SET "RESTART_NEEDED=YES"
-    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=WU-RebootRequired") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,WU-RebootRequired")
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=WU-AutoUpdate-RebootRequired") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,WU-AutoUpdate-RebootRequired")
     SET "RESTART_NEEDED_WU=YES"
-    IF NOT DEFINED RESTART_SIGNALS_WU (SET "RESTART_SIGNALS_WU=WU-RebootRequired") ELSE (SET "RESTART_SIGNALS_WU=!RESTART_SIGNALS_WU!,WU-RebootRequired")
+    IF NOT DEFINED RESTART_SIGNALS_WU (SET "RESTART_SIGNALS_WU=WU-AutoUpdate-RebootRequired") ELSE (SET "RESTART_SIGNALS_WU=!RESTART_SIGNALS_WU!,WU-AutoUpdate-RebootRequired")
 )
 
-REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Services\Pending" >nul 2>&1
+REM -----------------------------------------------------------------------
+REM CHECK 3: Windows Update Orchestrator RebootRequired (Win10 1903+ / Win11)
+REM Set by: WaaS orchestrator - PRIMARY signal used by Windows 11 Update UI
+REM Cleared: Automatically after successful reboot
+REM -----------------------------------------------------------------------
+REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Orchestrator\RebootRequired" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     SET "RESTART_NEEDED=YES"
-    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=WU-Services-Pending") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,WU-Services-Pending")
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=WU-Orchestrator-RebootRequired") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,WU-Orchestrator-RebootRequired")
     SET "RESTART_NEEDED_WU=YES"
-    IF NOT DEFINED RESTART_SIGNALS_WU (SET "RESTART_SIGNALS_WU=WU-Services-Pending") ELSE (SET "RESTART_SIGNALS_WU=!RESTART_SIGNALS_WU!,WU-Services-Pending")
+    IF NOT DEFINED RESTART_SIGNALS_WU (SET "RESTART_SIGNALS_WU=WU-Orchestrator-RebootRequired") ELSE (SET "RESTART_SIGNALS_WU=!RESTART_SIGNALS_WU!,WU-Orchestrator-RebootRequired")
 )
 
-REM UpdateExeVolatile indicates a pending reboot after updates (non-zero value)
-SET "UPDATE_EXE_VOLATILE=0"
-FOR /F "tokens=3" %%A IN ('REG QUERY "HKLM\SOFTWARE\Microsoft\Updates" /v UpdateExeVolatile 2^>nul ^| find /I "UpdateExeVolatile"') DO SET "UPDATE_EXE_VOLATILE=%%A"
-IF /I NOT "!UPDATE_EXE_VOLATILE!"=="0x0" (
+REM -----------------------------------------------------------------------
+REM CHECK 4: Windows Update Orchestrator PostRebootReporting (Win10 1903+ / Win11)
+REM Set by: WaaS pipeline when reboot is needed for post-reboot reporting
+REM -----------------------------------------------------------------------
+REG QUERY "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Orchestrator\PostRebootReporting" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
     SET "RESTART_NEEDED=YES"
-    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=UpdateExeVolatile") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,UpdateExeVolatile")
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=WU-Orchestrator-PostRebootReporting") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,WU-Orchestrator-PostRebootReporting")
     SET "RESTART_NEEDED_WU=YES"
-    IF NOT DEFINED RESTART_SIGNALS_WU (SET "RESTART_SIGNALS_WU=UpdateExeVolatile") ELSE (SET "RESTART_SIGNALS_WU=!RESTART_SIGNALS_WU!,UpdateExeVolatile")
+    IF NOT DEFINED RESTART_SIGNALS_WU (SET "RESTART_SIGNALS_WU=WU-Orchestrator-PostRebootReporting") ELSE (SET "RESTART_SIGNALS_WU=!RESTART_SIGNALS_WU!,WU-Orchestrator-PostRebootReporting")
 )
 
-REM NOTE: Non-Windows Update reboot signals (CBS, PendingFileRenameOperations, pending rename)
-REM are intentionally ignored to prevent restart loops unrelated to updates.
+REM -----------------------------------------------------------------------
+REM REMOVED CHECKS (caused boot loops - DO NOT RE-ADD):
+REM   WU\Services\Pending       - populated during downloads, not just post-install
+REM   UpdateExeVolatile         - MSI/legacy installer flag, NOT a WU signal;
+REM                               frequently non-zero on healthy systems (Office,
+REM                               VC++ runtimes, etc.) - primary boot loop cause
+REM   CBS\RebootPending         - triggered by DISM/feature installs, not WU-only
+REM   PendingFileRenameOperations - set by any installer, guaranteed false positives
+REM -----------------------------------------------------------------------
 
 IF /I "%RESTART_NEEDED_WU%"=="YES" (
     IF NOT DEFINED RESTART_SIGNALS_WU SET "RESTART_SIGNALS_WU=Unknown"
