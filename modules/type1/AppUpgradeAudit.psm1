@@ -32,7 +32,7 @@ function Invoke-AppUpgradeAudit {
         $upgradeable = [System.Collections.Generic.List[hashtable]]::new()
 
         # 2. Winget upgrades
-        if (Test-CommandAvailable 'winget' -and $config.EnabledSources -contains 'Winget') {
+        if ((Test-CommandAvailable 'winget') -and $config.EnabledSources -contains 'Winget') {
             Write-Log -Level INFO -Component UPGRADE-AUDIT -Message 'Querying winget for upgrades...'
             $wingetItems = Get-WingetUpgrade
             foreach ($item in $wingetItems) {
@@ -60,7 +60,7 @@ function Invoke-AppUpgradeAudit {
         }
 
         # 3. Chocolatey upgrades
-        if (Test-CommandAvailable 'choco' -and $config.EnabledSources -contains 'Chocolatey') {
+        if ((Test-CommandAvailable 'choco') -and $config.EnabledSources -contains 'Chocolatey') {
             Write-Log -Level INFO -Component UPGRADE-AUDIT -Message 'Querying chocolatey for upgrades...'
             try {
                 $chocoOutput = & choco outdated --no-progress --no-color 2>&1 | Where-Object { $_ -is [string] }

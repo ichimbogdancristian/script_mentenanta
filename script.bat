@@ -429,41 +429,13 @@ IF EXIST "%EXTRACTED_PATH%" (
     SET "WORKING_DIRECTORY=%WORKING_DIR%"
     CALL :LOG_MESSAGE "Updated working directory to: %WORKING_DIR%" "INFO" "LAUNCHER"
     
-    REM ============================================================================
-    REM CRITICAL: Create temp_files structure in extracted repository (ONLY LOCATION)
-    REM ============================================================================
-    IF NOT EXIST "%WORKING_DIR%temp_files" MKDIR "%WORKING_DIR%temp_files" >nul 2>&1
-    IF NOT EXIST "%WORKING_DIR%temp_files\logs" MKDIR "%WORKING_DIR%temp_files\logs" >nul 2>&1
-    
-    REM Move bootstrap log to final location (consolidate all logs to ONE place)
-    SET "FINAL_LOG=%WORKING_DIR%temp_files\logs\maintenance.log"
-    
-    IF EXIST "%BOOTSTRAP_LOG%" (
-        CALL :LOG_MESSAGE "Consolidating bootstrap log to final location: %FINAL_LOG%" "INFO" "LAUNCHER"
-        TYPE "%BOOTSTRAP_LOG%" > "%FINAL_LOG%" 2>nul
-        DEL "%BOOTSTRAP_LOG%" >nul 2>&1
-    ) ELSE (
-        REM Initialize new log file with header
-        (
-            ECHO ================================================
-            ECHO  Windows Maintenance Automation Launcher v2.0
-            ECHO ================================================
-            ECHO.
-            ECHO  Computer: %COMPUTERNAME%
-            ECHO  User: %USERNAME%
-            ECHO  Repository: %EXTRACTED_PATH%
-            ECHO.
-            ECHO ================================================
-            ECHO.
-        ) > "%FINAL_LOG%"
-    )
-    
-    SET "LOG_FILE=%FINAL_LOG%"
-    CALL :LOG_MESSAGE "All logs now writing to: %LOG_FILE%" "SUCCESS" "LAUNCHER"
+    REM Keep bootstrap log alive - orchestrator will inject it into maintenance.log
+    REM via $env:BOOTSTRAP_LOG (inherited by the child pwsh process)
+    CALL :LOG_MESSAGE "Bootstrap log ready for orchestrator injection: %BOOTSTRAP_LOG%" "DEBUG" "LAUNCHER"
     
     REM Update environment variable for PowerShell orchestrator
-    SET "SCRIPT_LOG_FILE=%LOG_FILE%"
-    CALL :LOG_MESSAGE "SCRIPT_LOG_FILE environment variable updated" "DEBUG" "LAUNCHER"
+    SET "SCRIPT_LOG_FILE=%WORKING_DIR%temp_files\logs\maintenance.log"
+    CALL :LOG_MESSAGE "SCRIPT_LOG_FILE set for orchestrator: %SCRIPT_LOG_FILE%" "DEBUG" "LAUNCHER"
     
     REM Set orchestrator path within the extracted folder
     IF EXIST "%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1" (

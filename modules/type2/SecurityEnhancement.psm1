@@ -36,9 +36,9 @@ function Invoke-SecurityEnhancement {
         try {
             switch ($type) {
                 'registry' {
-                    $path  = $item.Path ?? $item.RegistryPath
+                    $path = $item.Path ?? $item.RegistryPath
                     $vname = $item.ValueName ?? $item.Name
-                    $val   = $item.DesiredValue
+                    $val = $item.DesiredValue
                     $vtype = $item.ValueType ?? 'DWord'
                     if ($path -and $vname -and $null -ne $val) {
                         if ($PSCmdlet.ShouldProcess("$path\$vname", "Set $val")) {
@@ -49,13 +49,13 @@ function Invoke-SecurityEnhancement {
                 }
                 'defender' {
                     $feature = $item.Feature ?? $item.Name
-                    $enable  = $item.ShouldEnable ?? $true
-                    if ($PSCmdlet.ShouldProcess("Defender.$feature", if ($enable) { 'Enable' } else { 'Disable' })) {
+                    $enable = $item.ShouldEnable ?? $true
+                    if ($PSCmdlet.ShouldProcess("Defender.$feature", ($enable ? 'Enable' : 'Disable'))) {
                         switch ($feature) {
-                            'RealTimeProtection'   { Set-MpPreference -DisableRealtimeMonitoring (-not $enable) -ErrorAction Stop }
-                            'CloudProtection'      { Set-MpPreference -MAPSReporting (if ($enable) { 2 } else { 0 }) -ErrorAction Stop }
-                            'NetworkProtection'    { Set-MpPreference -EnableNetworkProtection (if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
-                            'PUAProtection'        { Set-MpPreference -PUAProtection (if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
+                            'RealTimeProtection' { Set-MpPreference -DisableRealtimeMonitoring (-not $enable) -ErrorAction Stop }
+                            'CloudProtection' { Set-MpPreference -MAPSReporting (if ($enable) { 2 } else { 0 }) -ErrorAction Stop }
+                            'NetworkProtection' { Set-MpPreference -EnableNetworkProtection (if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
+                            'PUAProtection' { Set-MpPreference -PUAProtection (if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
                             default { Write-Log -Level WARN -Component SECURITY -Message "Unknown Defender feature: $feature" }
                         }
                         Write-Log -Level SUCCESS -Component SECURITY -Message "Defender.$feature -> $enable"
@@ -69,7 +69,7 @@ function Invoke-SecurityEnhancement {
                     }
                 }
                 'service' {
-                    $svc    = $item.ServiceName ?? $item.Name
+                    $svc = $item.ServiceName ?? $item.Name
                     $action = $item.Action ?? 'EnsureRunning'
                     if ($PSCmdlet.ShouldProcess($svc, $action)) {
                         if ($action -eq 'EnsureRunning') {
@@ -99,7 +99,7 @@ function Invoke-SecurityEnhancement {
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
     Write-Log -Level INFO -Component SECURITY -Message "Done: $processed applied, $failed failed"
     return New-ModuleResult -ModuleName 'SecurityEnhancement' -Status $status -ItemsDetected $diff.Count `
-                            -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors
+        -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors
 }
 
 Export-ModuleMember -Function 'Invoke-SecurityEnhancement'

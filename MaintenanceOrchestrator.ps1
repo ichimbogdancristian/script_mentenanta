@@ -53,6 +53,21 @@ foreach ($sub in 'logs', 'data', 'reports', 'diff') {
 
 # maintenance.log = PowerShell transcript of the ENTIRE project run
 Start-Transcript -Path $TranscriptPath -Append -Force | Out-Null
+
+# Inject bootstrap log from script.bat launcher if present
+if ($env:BOOTSTRAP_LOG -and (Test-Path $env:BOOTSTRAP_LOG)) {
+    Write-Host ""
+    Write-Host ('=' * 70) -ForegroundColor DarkGray
+    Write-Host '  LAUNCHER LOG  (script.bat — pre-orchestrator phase)' -ForegroundColor DarkGray
+    Write-Host ('=' * 70) -ForegroundColor DarkGray
+    Get-Content $env:BOOTSTRAP_LOG | ForEach-Object { Write-Host $_ -ForegroundColor DarkGray }
+    Write-Host ('=' * 70) -ForegroundColor DarkGray
+    Write-Host '  END LAUNCHER LOG' -ForegroundColor DarkGray
+    Write-Host ('=' * 70) -ForegroundColor DarkGray
+    Remove-Item $env:BOOTSTRAP_LOG -Force -ErrorAction SilentlyContinue
+    [System.Environment]::SetEnvironmentVariable('BOOTSTRAP_LOG', $null, 'Process')
+}
+
 Write-Host ""
 Write-Host "======================================================================" -ForegroundColor Magenta
 Write-Host "  WINDOWS MAINTENANCE AUTOMATION  v5.0" -ForegroundColor White

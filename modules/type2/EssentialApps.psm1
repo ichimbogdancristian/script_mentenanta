@@ -53,8 +53,8 @@ function Invoke-EssentialApp {
             # 1. winget
             if (-not $installed -and $wingetId -and $hasWinget) {
                 if ($PSCmdlet.ShouldProcess($wingetId, 'winget install')) {
-                    $scopeArg = if ($scope -eq 'user') { '--scope user' } else { '--scope machine' }
-                    $null = & winget install --id $wingetId --silent --accept-package-agreements --accept-source-agreements $scopeArg 2>&1
+                    $scopeArgs = if ($scope -eq 'user') { @('--scope', 'user') } else { @('--scope', 'machine') }
+                    $null = & winget install --id $wingetId --silent --accept-package-agreements --accept-source-agreements @scopeArgs 2>&1
                     if ($LASTEXITCODE -in 0, -1978335189) {  # 0=success, -1978335189=already installed
                         Write-Log -Level SUCCESS -Component ESSAPPS -Message "winget installed: $name"
                         $installed = $true
