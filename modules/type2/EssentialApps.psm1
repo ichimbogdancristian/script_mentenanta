@@ -20,12 +20,12 @@ function Invoke-WithTimeout {
         [Parameter()] [int]$TimeoutSeconds = 180
     )
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName               = $FilePath
-    $psi.Arguments              = $ArgumentList -join ' '
-    $psi.UseShellExecute        = $false
+    $psi.FileName = $FilePath
+    $psi.Arguments = $ArgumentList -join ' '
+    $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError  = $true
-    $psi.CreateNoWindow         = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
 
     $proc = [System.Diagnostics.Process]::new()
     $proc.StartInfo = $psi
