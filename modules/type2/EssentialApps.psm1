@@ -11,6 +11,35 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
 }
 
+#region ─── TIMEOUT HELPER ────────────────────────────────────────────────────
+function Invoke-WithTimeout {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$FilePath,
+        [Parameter(Mandatory)] [string[]]$ArgumentList,
+        [Parameter()] [int]$TimeoutSeconds = 180
+    )
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName               = $FilePath
+    $psi.Arguments              = $ArgumentList -join ' '
+    $psi.UseShellExecute        = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError  = $true
+    $psi.CreateNoWindow         = $true
+
+    $proc = [System.Diagnostics.Process]::new()
+    $proc.StartInfo = $psi
+    $null = $proc.Start()
+
+    $completed = $proc.WaitForExit($TimeoutSeconds * 1000)
+    if (-not $completed) {
+        try { $proc.Kill() } catch {}
+        return -1  # sentinel: timed out
+    }
+    return $proc.ExitCode
+}
+#endregion
+
 function Invoke-EssentialApp {
     [CmdletBinding(SupportsShouldProcess)]
     [OutputType([hashtable])]
@@ -54,14 +83,26 @@ function Invoke-EssentialApp {
             if (-not $installed -and $wingetId -and $hasWinget) {
                 if ($PSCmdlet.ShouldProcess($wingetId, 'winget install')) {
                     $scopeArgs = if ($scope -eq 'user') { @('--scope', 'user') } else { @('--scope', 'machine') }
-                    $null = & winget install --id $wingetId --source winget --silent --accept-package-agreements --accept-source-agreements @scopeArgs 2>&1
-                    if ($LASTEXITCODE -in 0, -1978335189) {
+                    $wingetArgs = @(
+                        'install',
+                        '--id', $wingetId,
+                        '--source', 'winget',
+                        '--silent',
+                        '--disable-interactivity',
+                        '--accept-package-agreements',
+                        '--accept-source-agreements'
+                    ) + $scopeArgs
+                    $exitCode = Invoke-WithTimeout -FilePath 'winget' -ArgumentList $wingetArgs -TimeoutSeconds 180
+                    if ($exitCode -eq -1) {
+                        Write-Log -Level WARN -Component ESSAPPS -Message "winget timed out (180s) for $name"
+                    }
+                    elseif ($exitCode -in 0, -1978335189) {
                         # 0=success, -1978335189=already installed
                         Write-Log -Level SUCCESS -Component ESSAPPS -Message "winget installed: $name"
                         $installed = $true
                     }
                     else {
-                        Write-Log -Level WARN -Component ESSAPPS -Message "winget exit $LASTEXITCODE for $name"
+                        Write-Log -Level WARN -Component ESSAPPS -Message "winget exit $exitCode for $name"
                     }
                 }
             }

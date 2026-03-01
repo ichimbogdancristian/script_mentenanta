@@ -440,8 +440,10 @@ try {
 
     Write-Host "  ✔  Report: $reportFile" -ForegroundColor Green
 
-    # Copy report to script.bat folder (project root)
-    $destReport = Join-Path $ProjectRoot (Split-Path $reportFile -Leaf)
+    # Copy report to the folder where script.bat was launched from (e.g. USB drive / Desktop)
+    $launcherDir = $env:ORIGINAL_SCRIPT_DIR
+    $copyTarget  = if ($launcherDir -and (Test-Path $launcherDir)) { $launcherDir } else { $ProjectRoot }
+    $destReport  = Join-Path $copyTarget (Split-Path $reportFile -Leaf)
     Copy-Item -Path $reportFile -Destination $destReport -Force
     Write-Host "  ✔  Report also saved to: $destReport" -ForegroundColor Green
 }
