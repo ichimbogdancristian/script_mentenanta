@@ -37,9 +37,11 @@ function Invoke-BloatwareRemoval {
     Write-Log -Level INFO -Component BLOATWARE -Message "Processing $($diff.Count) item(s) on $($osCtx.DisplayText)"
 
     foreach ($item in $diff) {
-        $name = $item.Name ?? $item.PackageName ?? "$item"
-        $pkgName = $item.PackageName ?? $item.AppxName ?? ''
-        $wingetId = $item.WingetId ?? ''
+        # Diff items may be plain strings (package names) or hashtables
+        $isString = $item -is [string]
+        $name = if ($isString) { $item } else { $item.Name ?? $item.PackageName ?? "$item" }
+        $pkgName = if ($isString) { $item } else { $item.PackageName ?? $item.AppxName ?? $item.Name ?? '' }
+        $wingetId = if ($isString) { '' }    else { $item.WingetId ?? '' }
 
         try {
             $removed = $false
