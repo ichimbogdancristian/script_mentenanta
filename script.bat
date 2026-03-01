@@ -1395,15 +1395,17 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     SET "PS_ARGS=!PS_ARGS!Write-Host '✅ Maintenance session completed. You can close this window or run additional commands.' -ForegroundColor Green; "
     SET "PS_ARGS=!PS_ARGS!}"
     
-    REM Launch new PowerShell 7 window and exit batch script
+    REM Write all remaining launcher messages BEFORE START so the bootstrap log
+    REM is complete by the time the orchestrator reads and deletes it.
     CALL :LOG_MESSAGE "Launching: \"%PS_EXECUTABLE%\" !PS_ARGS!" "DEBUG" "LAUNCHER"
-    START "Windows Maintenance Automation - PowerShell 7" "%PS_EXECUTABLE%" !PS_ARGS!
-    
-    REM Give the new window a moment to start
-    TIMEOUT /T 2 /NOBREAK >NUL 2>&1
-    
-    CALL :LOG_MESSAGE "PowerShell 7+ window launched successfully - batch launcher exiting" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "PowerShell 7+ window launching - batch launcher exiting" "SUCCESS" "LAUNCHER"
     CALL :LOG_MESSAGE "All further operations will run in the dedicated PowerShell window" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "=== END OF LAUNCHER LOG ===" "INFO" "LAUNCHER"
+    
+    REM Clear LOG_FILE now so no stray write can race with the orchestrator's delete
+    SET "LOG_FILE="
+    
+    START "Windows Maintenance Automation - PowerShell 7" "%PS_EXECUTABLE%" !PS_ARGS!
     
     REM Exit batch script cleanly - PowerShell 7 window takes over
     EXIT /B 0
