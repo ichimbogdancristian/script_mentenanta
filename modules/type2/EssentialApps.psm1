@@ -26,18 +26,18 @@ function Invoke-EssentialApp {
         return New-ModuleResult -ModuleName 'EssentialApps' -Status 'Skipped' -Message 'All apps present'
     }
 
-    $osCtx     = if ($OSContext) { $OSContext } elseif ($global:OSContext) { $global:OSContext } else { Get-OSContext }
+    $osCtx = if ($OSContext) { $OSContext } elseif ($global:OSContext) { $global:OSContext } else { Get-OSContext }
     $hasWinget = Test-CommandAvailable 'winget'
-    $hasChoco  = Test-CommandAvailable 'choco'
+    $hasChoco = Test-CommandAvailable 'choco'
     $processed = 0; $failed = 0; $errors = @()
 
     Write-Log -Level INFO -Component ESSAPPS -Message "Installing $($diff.Count) missing app(s) - winget:$hasWinget choco:$hasChoco"
 
     foreach ($item in $diff) {
-        $name      = $item.Name     ?? $item.name     ?? "$item"
-        $wingetId  = $item.WingetId ?? $item.winget   ?? ''
-        $chocoId   = $item.ChocoId  ?? $item.choco    ?? ''
-        $scope     = $item.Scope    ?? $item.scope    ?? 'machine'
+        $name = $item.Name ?? $item.name ?? "$item"
+        $wingetId = $item.WingetId ?? $item.winget ?? ''
+        $chocoId = $item.ChocoId ?? $item.choco ?? ''
+        $scope = $item.Scope ?? $item.scope ?? 'machine'
         $installed = $false
 
         # OS-platform exclusion
@@ -55,10 +55,12 @@ function Invoke-EssentialApp {
                 if ($PSCmdlet.ShouldProcess($wingetId, 'winget install')) {
                     $scopeArgs = if ($scope -eq 'user') { @('--scope', 'user') } else { @('--scope', 'machine') }
                     $null = & winget install --id $wingetId --silent --accept-package-agreements --accept-source-agreements @scopeArgs 2>&1
-                    if ($LASTEXITCODE -in 0, -1978335189) {  # 0=success, -1978335189=already installed
+                    if ($LASTEXITCODE -in 0, -1978335189) {
+                        # 0=success, -1978335189=already installed
                         Write-Log -Level SUCCESS -Component ESSAPPS -Message "winget installed: $name"
                         $installed = $true
-                    } else {
+                    }
+                    else {
                         Write-Log -Level WARN -Component ESSAPPS -Message "winget exit $LASTEXITCODE for $name"
                     }
                 }
@@ -78,7 +80,8 @@ function Invoke-EssentialApp {
             if (-not $installed) {
                 Write-Log -Level WARN -Component ESSAPPS -Message "Could not install (no suitable method): $name"
                 $errors += "No installer available: $name"; $failed++
-            } else {
+            }
+            else {
                 $processed++
             }
         }
@@ -91,7 +94,7 @@ function Invoke-EssentialApp {
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
     Write-Log -Level INFO -Component ESSAPPS -Message "Done: $processed installed, $failed failed"
     return New-ModuleResult -ModuleName 'EssentialApps' -Status $status -ItemsDetected $diff.Count `
-                            -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors
+        -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors
 }
 
 Export-ModuleMember -Function 'Invoke-EssentialApp'

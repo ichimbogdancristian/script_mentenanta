@@ -26,7 +26,7 @@ function Invoke-BloatwareRemoval {
         return New-ModuleResult -ModuleName 'BloatwareRemoval' -Status 'Skipped' -Message 'No bloatware found by audit'
     }
 
-    $osCtx    = if ($OSContext) { $OSContext } elseif ($global:OSContext) { $global:OSContext } else { Get-OSContext }
+    $osCtx = if ($OSContext) { $OSContext } elseif ($global:OSContext) { $global:OSContext } else { Get-OSContext }
     $processed = 0; $failed = 0; $errors = @()
 
     # PS7 Core requires UseWindowsPowerShell to load the Appx module
@@ -37,8 +37,8 @@ function Invoke-BloatwareRemoval {
     Write-Log -Level INFO -Component BLOATWARE -Message "Processing $($diff.Count) item(s) on $($osCtx.DisplayText)"
 
     foreach ($item in $diff) {
-        $name     = $item.Name ?? $item.PackageName ?? "$item"
-        $pkgName  = $item.PackageName ?? $item.AppxName ?? ''
+        $name = $item.Name ?? $item.PackageName ?? "$item"
+        $pkgName = $item.PackageName ?? $item.AppxName ?? ''
         $wingetId = $item.WingetId ?? ''
 
         try {
@@ -58,7 +58,7 @@ function Invoke-BloatwareRemoval {
                 }
                 # Remove provisioned to prevent re-install
                 $prov = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
-                        Where-Object { $_.PackageName -like "*$pkgName*" }
+                Where-Object { $_.PackageName -like "*$pkgName*" }
                 if ($prov -and $PSCmdlet.ShouldProcess($pkgName, 'Remove provisioned')) {
                     $prov | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue }
                 }
@@ -87,7 +87,7 @@ function Invoke-BloatwareRemoval {
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
     Write-Log -Level INFO -Component BLOATWARE -Message "Done: $processed processed, $failed failed"
     return New-ModuleResult -ModuleName 'BloatwareRemoval' -Status $status -ItemsDetected $diff.Count `
-                            -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors
+        -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors
 }
 
 Export-ModuleMember -Function 'Invoke-BloatwareRemoval'
