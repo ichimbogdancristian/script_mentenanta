@@ -26,19 +26,19 @@ function Invoke-AppUpgrade {
         return New-ModuleResult -ModuleName 'AppUpgrade' -Status 'Skipped' -Message 'No upgrades available'
     }
 
-    $hasWinget   = Test-CommandAvailable 'winget'
-    $hasChoco    = Test-CommandAvailable 'choco'
-    $processed   = 0; $failed = 0; $errors = @()
-    $timeoutSec  = 300   # 5 minutes max per app
+    $hasWinget = Test-CommandAvailable 'winget'
+    $hasChoco = Test-CommandAvailable 'choco'
+    $processed = 0; $failed = 0; $errors = @()
+    $timeoutSec = 300   # 5 minutes max per app
 
     # Helper: run an executable with a hard timeout; returns exit code or -1 on timeout
     function Invoke-WithTimeout {
         param([string]$Exe, [string[]]$Args, [int]$TimeoutMs)
         $psi = [System.Diagnostics.ProcessStartInfo]::new($Exe)
-        $psi.Arguments        = $Args -join ' '
-        $psi.UseShellExecute  = $false
+        $psi.Arguments = $Args -join ' '
+        $psi.UseShellExecute = $false
         $psi.RedirectStandardOutput = $true
-        $psi.RedirectStandardError  = $true
+        $psi.RedirectStandardError = $true
         $p = [System.Diagnostics.Process]::new()
         $p.StartInfo = $psi
         $p.Start() | Out-Null
@@ -52,10 +52,10 @@ function Invoke-AppUpgrade {
     Write-Log -Level INFO -Component APPUPGR -Message "Upgrading $($diff.Count) app(s)"
 
     foreach ($item in $diff) {
-        $name      = $item.Name     ?? "$item"
-        $id        = $item.Id       ?? $item.WingetId ?? ''
-        $source    = $item.Source   ?? 'winget'
-        $current   = $item.CurrentVersion  ?? $item.Current  ?? 'unknown'
+        $name = $item.Name ?? "$item"
+        $id = $item.Id ?? $item.WingetId ?? ''
+        $source = $item.Source ?? 'winget'
+        $current = $item.CurrentVersion ?? $item.Current ?? 'unknown'
         $available = $item.AvailableVersion ?? $item.Available ?? 'latest'
 
         Write-Log -Level INFO -Component APPUPGR -Message "Upgrading $name ($current -> $available)"
@@ -68,15 +68,17 @@ function Invoke-AppUpgrade {
             if ($source -eq 'winget' -and $id -and $hasWinget) {
                 if ($PSCmdlet.ShouldProcess($id, 'winget upgrade')) {
                     $wingetArgs = @('upgrade', '--id', $id, '--silent',
-                                    '--accept-package-agreements', '--accept-source-agreements',
-                                    '--disable-interactivity')
+                        '--accept-package-agreements', '--accept-source-agreements',
+                        '--disable-interactivity')
                     $exitCode = Invoke-WithTimeout -Exe 'winget' -Args $wingetArgs -TimeoutMs ($timeoutSec * 1000)
                     if ($exitCode -eq -99) {
                         throw "winget upgrade timed out after $timeoutSec seconds"
-                    } elseif ($exitCode -in 0, -1978335189) {
+                    }
+                    elseif ($exitCode -in 0, -1978335189) {
                         Write-Log -Level SUCCESS -Component APPUPGR -Message "Upgraded (winget): $name"
                         $upgraded = $true
-                    } else {
+                    }
+                    else {
                         Write-Log -Level WARN -Component APPUPGR -Message "winget exit $exitCode for $name"
                     }
                 }
@@ -86,10 +88,11 @@ function Invoke-AppUpgrade {
             if (-not $upgraded -and $source -eq 'choco' -and $id -and $hasChoco) {
                 if ($PSCmdlet.ShouldProcess($id, 'choco upgrade')) {
                     $chocoArgs = @('upgrade', $id, '--yes', '--no-progress')
-                    $exitCode  = Invoke-WithTimeout -Exe 'choco' -Args $chocoArgs -TimeoutMs ($timeoutSec * 1000)
+                    $exitCode = Invoke-WithTimeout -Exe 'choco' -Args $chocoArgs -TimeoutMs ($timeoutSec * 1000)
                     if ($exitCode -eq -99) {
                         throw "choco upgrade timed out after $timeoutSec seconds"
-                    } elseif ($exitCode -eq 0) {
+                    }
+                    elseif ($exitCode -eq 0) {
                         Write-Log -Level SUCCESS -Component APPUPGR -Message "Upgraded (choco): $name"
                         $upgraded = $true
                     }
@@ -99,7 +102,8 @@ function Invoke-AppUpgrade {
             if (-not $upgraded) {
                 Write-Log -Level WARN -Component APPUPGR -Message "Could not upgrade: $name"
                 $errors += "No upgrade method succeeded: $name"; $failed++
-            } else {
+            }
+            else {
                 $processed++
             }
         }
@@ -112,7 +116,7 @@ function Invoke-AppUpgrade {
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
     Write-Log -Level INFO -Component APPUPGR -Message "Done: $processed upgraded, $failed failed"
     return New-ModuleResult -ModuleName 'AppUpgrade' -Status $status -ItemsDetected $diff.Count `
-                            -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors
+        -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors
 }
 
 Export-ModuleMember -Function 'Invoke-AppUpgrade'
