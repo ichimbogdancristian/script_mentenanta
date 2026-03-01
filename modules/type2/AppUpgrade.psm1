@@ -26,9 +26,28 @@ function Invoke-AppUpgrade {
         return New-ModuleResult -ModuleName 'AppUpgrade' -Status 'Skipped' -Message 'No upgrades available'
     }
 
-    $hasWinget = Test-CommandAvailable 'winget'
-    $hasChoco  = Test-CommandAvailable 'choco'
-    $processed = 0; $failed = 0; $errors = @()
+    $hasWinget   = Test-CommandAvailable 'winget'
+    $hasChoco    = Test-CommandAvailable 'choco'
+    $processed   = 0; $failed = 0; $errors = @()
+    $timeoutSec  = 300   # 5 minutes max per app
+
+    # Helper: run an executable with a hard timeout; returns exit code or -1 on timeout
+    function Invoke-WithTimeout {
+        param([string]$Exe, [string[]]$Args, [int]$TimeoutMs)
+        $psi = [System.Diagnostics.ProcessStartInfo]::new($Exe)
+        $psi.Arguments        = $Args -join ' '
+        $psi.UseShellExecute  = $false
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError  = $true
+        $p = [System.Diagnostics.Process]::new()
+        $p.StartInfo = $psi
+        $p.Start() | Out-Null
+        if (-not $p.WaitForExit($TimeoutMs)) {
+            try { $p.Kill() } catch {}
+            return -99  # timeout sentinel
+        }
+        return $p.ExitCode
+    }
 
     Write-Log -Level INFO -Component APPUPGR -Message "Upgrading $($diff.Count) app(s)"
 
@@ -36,23 +55,29 @@ function Invoke-AppUpgrade {
         $name      = $item.Name     ?? "$item"
         $id        = $item.Id       ?? $item.WingetId ?? ''
         $source    = $item.Source   ?? 'winget'
-        $current   = $item.Current  ?? 'unknown'
-        $available = $item.Available ?? 'latest'
+        $current   = $item.CurrentVersion  ?? $item.Current  ?? 'unknown'
+        $available = $item.AvailableVersion ?? $item.Available ?? 'latest'
 
         Write-Log -Level INFO -Component APPUPGR -Message "Upgrading $name ($current -> $available)"
 
         try {
             $upgraded = $false
 
-            # 1. winget
+            # 1. winget — disable-interactivity prevents interactive prompts;
+            #    Invoke-WithTimeout prevents hung installers from blocking the run
             if ($source -eq 'winget' -and $id -and $hasWinget) {
                 if ($PSCmdlet.ShouldProcess($id, 'winget upgrade')) {
-                    $null = & winget upgrade --id $id --silent --accept-package-agreements --accept-source-agreements 2>&1
-                    if ($LASTEXITCODE -in 0, -1978335189) {
+                    $wingetArgs = @('upgrade', '--id', $id, '--silent',
+                                    '--accept-package-agreements', '--accept-source-agreements',
+                                    '--disable-interactivity')
+                    $exitCode = Invoke-WithTimeout -Exe 'winget' -Args $wingetArgs -TimeoutMs ($timeoutSec * 1000)
+                    if ($exitCode -eq -99) {
+                        throw "winget upgrade timed out after $timeoutSec seconds"
+                    } elseif ($exitCode -in 0, -1978335189) {
                         Write-Log -Level SUCCESS -Component APPUPGR -Message "Upgraded (winget): $name"
                         $upgraded = $true
                     } else {
-                        Write-Log -Level WARN -Component APPUPGR -Message "winget exit $LASTEXITCODE for $name"
+                        Write-Log -Level WARN -Component APPUPGR -Message "winget exit $exitCode for $name"
                     }
                 }
             }
@@ -60,8 +85,11 @@ function Invoke-AppUpgrade {
             # 2. chocolatey
             if (-not $upgraded -and $source -eq 'choco' -and $id -and $hasChoco) {
                 if ($PSCmdlet.ShouldProcess($id, 'choco upgrade')) {
-                    $null = & choco upgrade $id --yes --no-progress 2>&1
-                    if ($LASTEXITCODE -eq 0) {
+                    $chocoArgs = @('upgrade', $id, '--yes', '--no-progress')
+                    $exitCode  = Invoke-WithTimeout -Exe 'choco' -Args $chocoArgs -TimeoutMs ($timeoutSec * 1000)
+                    if ($exitCode -eq -99) {
+                        throw "choco upgrade timed out after $timeoutSec seconds"
+                    } elseif ($exitCode -eq 0) {
                         Write-Log -Level SUCCESS -Component APPUPGR -Message "Upgraded (choco): $name"
                         $upgraded = $true
                     }
