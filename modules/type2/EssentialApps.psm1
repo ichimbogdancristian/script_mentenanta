@@ -34,10 +34,10 @@ function Invoke-EssentialApp {
     Write-Log -Level INFO -Component ESSAPPS -Message "Installing $($diff.Count) missing app(s) - winget:$hasWinget choco:$hasChoco"
 
     foreach ($item in $diff) {
-        $name      = $item.Name ?? "$item"
-        $wingetId  = $item.WingetId ?? ''
-        $chocoId   = $item.ChocoId  ?? ''
-        $scope     = $item.Scope    ?? 'machine'
+        $name      = $item.Name     ?? $item.name     ?? "$item"
+        $wingetId  = $item.WingetId ?? $item.winget   ?? ''
+        $chocoId   = $item.ChocoId  ?? $item.choco    ?? ''
+        $scope     = $item.Scope    ?? $item.scope    ?? 'machine'
         $installed = $false
 
         # OS-platform exclusion

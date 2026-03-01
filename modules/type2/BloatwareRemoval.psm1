@@ -29,6 +29,11 @@ function Invoke-BloatwareRemoval {
     $osCtx    = if ($OSContext) { $OSContext } elseif ($global:OSContext) { $global:OSContext } else { Get-OSContext }
     $processed = 0; $failed = 0; $errors = @()
 
+    # PS7 Core requires UseWindowsPowerShell to load the Appx module
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        Import-Module -Name Appx -UseWindowsPowerShell -ErrorAction SilentlyContinue
+    }
+
     Write-Log -Level INFO -Component BLOATWARE -Message "Processing $($diff.Count) item(s) on $($osCtx.DisplayText)"
 
     foreach ($item in $diff) {
