@@ -471,6 +471,9 @@ function Get-InstalledApp {
 
     # Add AppX / MSIX packages
     try {
+        if ($PSVersionTable.PSEdition -eq 'Core') {
+            Import-Module -Name Appx -SkipEditionCheck -ErrorAction SilentlyContinue
+        }
         Get-AppxPackage -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -and $_.PackageFullName } |
         ForEach-Object {
@@ -575,10 +578,7 @@ function Get-RegistryValue {
         [Parameter(Mandatory)] [string]$Path,
         [Parameter(Mandatory)] [string]$Name
     )
-    try {
-        return Get-ItemPropertyValue -Path $Path -Name $Name -ErrorAction Stop
-    }
-    catch { return $null }
+    return (Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name
 }
 
 <#

@@ -39,9 +39,9 @@ function Invoke-BloatwareAudit {
         Write-Log -Level INFO -Component BLOAT-AUDIT -Message "Baseline entries: $($allBaseline.Count) (OS: $($osCtx.DisplayText))"
 
         # 3. Scan AppX packages (primary source for bloatware)
-        # PS7 Core requires UseWindowsPowerShell to load the Appx module
+        # PS7 Core: SkipEditionCheck avoids the WinPS compat remoting overhead
         if ($PSVersionTable.PSEdition -eq 'Core') {
-            Import-Module -Name Appx -UseWindowsPowerShell -ErrorAction SilentlyContinue
+            Import-Module -Name Appx -SkipEditionCheck -ErrorAction SilentlyContinue
         }
         $appxInstalled = @(Get-AppxPackage -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
 

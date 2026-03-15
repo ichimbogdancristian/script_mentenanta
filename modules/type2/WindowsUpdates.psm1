@@ -30,70 +30,46 @@ function Invoke-WindowsUpdate {
 
     Write-Log -Level INFO -Component WINUPDATE -Message "Installing $($diff.Count) update(s)"
 
-    try {
-        $session  = New-Object -ComObject Microsoft.Update.Session
-        $downloader = $session.CreateUpdateDownloader()
-        $installer  = $session.CreateUpdateInstaller()
-        $installer.ForceQuiet = $true
-
-        foreach ($update in $diff) {
-            $title = $update.Title ?? $update.Name ?? "$update"
-            Write-Log -Level INFO -Component WINUPDATE -Message "Processing: $title"
-
+    if ($PSCmdlet.ShouldProcess('Windows Updates', 'Install pending updates')) {
+        # Primary: PSWindowsUpdate — installs by KB ID and confirms result
+        $pswuAvailable = $null -ne (Get-Module -ListAvailable -Name 'PSWindowsUpdate' -ErrorAction SilentlyContinue)
+        if ($pswuAvailable) {
             try {
-                if ($PSCmdlet.ShouldProcess($title, 'Install Windows Update')) {
-                    # Download
-                    $toDownload = New-Object -ComObject Microsoft.Update.UpdateColl
-                    $updateObj  = $update._COMObject  # Stored by audit if available
-                    if (-not $updateObj) {
-                        Write-Log -Level WARN -Component WINUPDATE -Message "No COM ref available for: $title — using usoclient fallback"
-                        $usoClient = Join-Path $env:SystemRoot 'System32\usoclient.exe'
-                        $null = & $usoClient StartScan 2>&1
-                        Start-Sleep -Seconds 2
-                        $null = & $usoClient StartInstall 2>&1
-                        $processed++
-                        continue
-                    }
-
-                    if (-not $updateObj.IsDownloaded) {
-                        $toDownload.Add($updateObj) | Out-Null
-                        $downloader.Updates = $toDownload
-                        $dlResult = $downloader.Download()
-                        if ($dlResult.ResultCode -ne 2) {  # 2 = rcSucceeded
-                            throw "Download failed: ResultCode $($dlResult.ResultCode)"
+                Import-Module PSWindowsUpdate -SkipEditionCheck -ErrorAction Stop
+                foreach ($update in $diff) {
+                    $title = $update.Title ?? $update.Name ?? "$update"
+                    Write-Log -Level INFO -Component WINUPDATE -Message "Processing: $title"
+                    try {
+                        $kb = if ($title -match 'KB(\d+)') { $Matches[1] } else { $null }
+                        if (-not $kb) {
+                            Write-Log -Level WARN -Component WINUPDATE -Message "No KB number in title — skipping: $title"
+                            $failed++; $errors += "[No KB] $title"; continue
                         }
-                    }
-
-                    # Install
-                    $toInstall = New-Object -ComObject Microsoft.Update.UpdateColl
-                    $toInstall.Add($updateObj) | Out-Null
-                    $installer.Updates = $toInstall
-                    $instResult = $installer.Install()
-
-                    if ($instResult.ResultCode -eq 2) {  # rcSucceeded
+                        $result = Install-WindowsUpdate -KBArticleID $kb -AcceptAll -AutoReboot:$false -IgnoreReboot -Confirm:$false -ErrorAction Stop
                         Write-Log -Level SUCCESS -Component WINUPDATE -Message "Installed: $title"
-                        if ($instResult.RebootRequired) { $rebootRequired = $true }
+                        if ($result | Where-Object { $_.RebootRequired }) { $rebootRequired = $true }
                         $processed++
-                    } else {
-                        throw "Install ResultCode=$($instResult.ResultCode) HResult=$($instResult.GetUpdateResult(0).HResult)"
+                    }
+                    catch {
+                        Write-Log -Level ERROR -Component WINUPDATE -Message "PSWindowsUpdate failed [$title]: $_"
+                        $errors += "[$title] $_"; $failed++
                     }
                 }
             }
             catch {
-                Write-Log -Level ERROR -Component WINUPDATE -Message "Failed [$title]: $_"
-                $errors += "[$title] $_"; $failed++
+                Write-Log -Level WARN -Component WINUPDATE -Message "PSWindowsUpdate module error: $_. Falling back to usoclient."
+                $pswuAvailable = $false
             }
         }
-    }
-    catch {
-        # COM not available or total failure - try usoclient
-        Write-Log -Level WARN -Component WINUPDATE -Message "COM method failed, triggering usoclient: $_"
-        if ($PSCmdlet.ShouldProcess('usoclient', 'Trigger update detection')) {
+
+        if (-not $pswuAvailable) {
+            # Fallback: usoclient — async, triggers WU service to scan+install all pending at once
+            Write-Log -Level INFO -Component WINUPDATE -Message "Triggering usoclient to install $($diff.Count) update(s) (async — reboot may be required)"
             $usoClient = Join-Path $env:SystemRoot 'System32\usoclient.exe'
             $null = & $usoClient StartScan 2>&1
             Start-Sleep -Seconds 2
             $null = & $usoClient StartInstall 2>&1
-            $processed = $diff.Count  # Assume all triggered
+            $processed = $diff.Count
         }
     }
 
@@ -103,9 +79,9 @@ function Invoke-WindowsUpdate {
     }
 
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
-    Write-Log -Level INFO -Component WINUPDATE -Message "Done: $processed installed, $failed failed"
+    Write-Log -Level INFO -Component WINUPDATE -Message "Done: $processed triggered/installed, $failed failed"
     return New-ModuleResult -ModuleName 'WindowsUpdates' -Status $status -ItemsDetected $diff.Count `
-                            -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors -ExtraData $extraData
+        -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors -ExtraData $extraData
 }
 
 Export-ModuleMember -Function 'Invoke-WindowsUpdate'

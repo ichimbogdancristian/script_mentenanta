@@ -10,6 +10,7 @@
     "name": "Windows Terminal",
     "winget": "Microsoft.WindowsTerminal",
     "choco": "microsoft-windows-terminal",
+    "scope": "user",
     "category": "System",
     "description": "Modern terminal application"
   },
@@ -45,6 +46,7 @@
     "name": "LibreOffice",
     "winget": "TheDocumentFoundation.LibreOffice",
     "choco": "libreoffice",
+    "timeout": 600,
     "category": "Office",
     "description": "Free and open-source office suite (installed only if Microsoft Office not detected)"
   },
@@ -52,6 +54,7 @@
     "name": "Adobe Acrobat Reader",
     "winget": "Adobe.Acrobat.Reader.64-bit",
     "choco": "adobereader",
+    "timeout": 600,
     "category": "Document",
     "description": "PDF reader and editor"
   },
@@ -59,6 +62,7 @@
     "name": "PDF24 Creator",
     "winget": "geeksoftwareGmbH.PDF24Creator",
     "choco": "pdf24",
+    "scope": "user",
     "category": "Document",
     "description": "Free PDF creator and editor"
   },

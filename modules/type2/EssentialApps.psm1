@@ -67,6 +67,7 @@ function Invoke-EssentialApp {
         $wingetId = $item.WingetId ?? $item.winget ?? ''
         $chocoId = $item.ChocoId ?? $item.choco ?? ''
         $scope = $item.Scope ?? $item.scope ?? 'machine'
+        $timeoutSecs = if ($item.timeout) { [int]$item.timeout } elseif ($item.Timeout) { [int]$item.Timeout } else { 180 }
         $installed = $false
 
         # OS-platform exclusion
@@ -92,9 +93,9 @@ function Invoke-EssentialApp {
                         '--accept-package-agreements',
                         '--accept-source-agreements'
                     ) + $scopeArgs
-                    $exitCode = Invoke-WithTimeout -FilePath 'winget' -ArgumentList $wingetArgs -TimeoutSeconds 180
+                    $exitCode = Invoke-WithTimeout -FilePath 'winget' -ArgumentList $wingetArgs -TimeoutSeconds $timeoutSecs
                     if ($exitCode -eq -1) {
-                        Write-Log -Level WARN -Component ESSAPPS -Message "winget timed out (180s) for $name"
+                        Write-Log -Level WARN -Component ESSAPPS -Message "winget timed out (${timeoutSecs}s) for $name"
                     }
                     elseif ($exitCode -in 0, -1978335189) {
                         # 0=success, -1978335189=already installed

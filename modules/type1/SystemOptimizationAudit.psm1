@@ -23,11 +23,11 @@ function Invoke-SystemOptimizationAudit {
         $baseline = Get-BaselineList -ModuleFolder 'system-optimization' -FileName 'system-optimization-config.json'
         if (-not $baseline) {
             return New-ModuleResult -ModuleName 'SystemOptimizationAudit' -Status 'Failed' `
-                                    -Message 'System optimization baseline not found'
+                -Message 'System optimization baseline not found'
         }
 
-        $osCtx  = if ($global:OSContext) { $global:OSContext } else { Get-OSContext }
-        $diff   = [System.Collections.Generic.List[hashtable]]::new()
+        $osCtx = if ($global:OSContext) { $global:OSContext } else { Get-OSContext }
+        $diff = [System.Collections.Generic.List[hashtable]]::new()
 
         # 2. Audit services that should be disabled
         $svcsToDisable = [System.Collections.Generic.List[string]]::new()
@@ -54,7 +54,7 @@ function Invoke-SystemOptimizationAudit {
         if ($baseline.common.powerPlan.defaultPlan) {
             $desiredPlan = $baseline.common.powerPlan.defaultPlan
             try {
-                $powercfg    = Join-Path $env:SystemRoot 'System32\powercfg.exe'
+                $powercfg = Join-Path $env:SystemRoot 'System32\powercfg.exe'
                 $currentPlan = & $powercfg /getactivescheme 2>&1
                 if ($currentPlan -notmatch [regex]::Escape($desiredPlan)) {
                     # Resolve the GUID for the desired plan name so the Type2 module can apply it directly
@@ -66,14 +66,15 @@ function Invoke-SystemOptimizationAudit {
                                 $desiredGuid = $Matches[1]
                             }
                         }
-                    } catch {}
+                    }
+                    catch {}
                     $diff.Add(@{
-                        Type         = 'powerplan'
-                        Name         = 'ActivePlan'
-                        GUID         = $desiredGuid ?? '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
-                        CurrentState = $currentPlan
-                        DesiredState = $desiredPlan
-                    })
+                            Type         = 'powerplan'
+                            Name         = 'ActivePlan'
+                            GUID         = $desiredGuid ?? '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
+                            CurrentState = $currentPlan
+                            DesiredState = $desiredPlan
+                        })
                     Write-Log -Level DEBUG -Component SYSOPT-AUDIT -Message "Power plan mismatch: desired '$desiredPlan'"
                 }
             }
@@ -82,9 +83,9 @@ function Invoke-SystemOptimizationAudit {
 
         # 4. Audit visual effects (check registry)
         $visualAudioPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects'
-        $currentVisual   = Get-RegistryValue -Path $visualAudioPath -Name 'VisualFXSetting'
-        if ($null -ne $currentVisual -and $currentVisual -ne 2) {
-            # 2 = custom / performance; anything else means potentially max effects
+        $currentVisual = Get-RegistryValue -Path $visualAudioPath -Name 'VisualFXSetting'
+        if ($null -eq $currentVisual -or $currentVisual -ne 2) {
+            # 2 = custom / performance; anything else (or missing key) means not optimized
             $diff.Add(@{ Type = 'VisualFX'; Name = 'VisualFXSetting'; CurrentState = $currentVisual; DesiredState = 2 })
         }
 
@@ -96,12 +97,12 @@ function Invoke-SystemOptimizationAudit {
         # 6. Persist audit data
         $auditPath = Get-TempPath -Category 'data' -FileName 'sysopt-audit.json'
         @{ Timestamp = (Get-Date -Format 'o'); Gaps = $diff.ToArray(); OS = $osCtx.DisplayText } `
-            | ConvertTo-Json -Depth 6 | Set-Content -Path $auditPath -Encoding UTF8 -Force
+        | ConvertTo-Json -Depth 6 | Set-Content -Path $auditPath -Encoding UTF8 -Force
 
         Write-Log -Level SUCCESS -Component SYSOPT-AUDIT -Message "System optimization audit complete: $($diff.Count) gaps"
         return New-ModuleResult -ModuleName 'SystemOptimizationAudit' -Status 'Success' `
-                                -ItemsDetected $diff.Count `
-                                -Message "$($diff.Count) optimization settings need adjustment"
+            -ItemsDetected $diff.Count `
+            -Message "$($diff.Count) optimization settings need adjustment"
     }
     catch {
         Write-Log -Level ERROR -Component SYSOPT-AUDIT -Message "Audit failed: $_"
