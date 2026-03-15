@@ -62,7 +62,7 @@ function Invoke-BloatwareRemoval {
                 $prov = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
                 Where-Object { $_.PackageName -like "*$pkgName*" }
                 if ($prov -and $PSCmdlet.ShouldProcess($pkgName, 'Remove provisioned')) {
-                    $prov | ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue }
+                    $prov | ForEach-Object { $null = Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue }
                 }
             }
 

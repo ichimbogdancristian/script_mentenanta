@@ -54,7 +54,8 @@ function Invoke-SystemOptimizationAudit {
         if ($baseline.common.powerPlan.defaultPlan) {
             $desiredPlan = $baseline.common.powerPlan.defaultPlan
             try {
-                $currentPlan = & powercfg /getactivescheme 2>&1
+                $powercfg = Join-Path $env:SystemRoot 'System32\powercfg.exe'
+                $currentPlan = & $powercfg /getactivescheme 2>&1
                 if ($currentPlan -notmatch [regex]::Escape($desiredPlan)) {
                     $diff.Add(@{ Type = 'PowerPlan'; Name = 'ActivePlan'; CurrentState = $currentPlan; DesiredState = $desiredPlan })
                     Write-Log -Level DEBUG -Component SYSOPT-AUDIT -Message "Power plan mismatch: desired '$desiredPlan'"

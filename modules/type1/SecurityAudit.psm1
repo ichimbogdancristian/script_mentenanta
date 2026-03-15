@@ -23,7 +23,7 @@ function Invoke-SecurityAudit {
         $baseline = Get-BaselineList -ModuleFolder 'security' -FileName 'security-baseline.json'
         if (-not $baseline) {
             return New-ModuleResult -ModuleName 'SecurityAudit' -Status 'Failed' `
-                                    -Message 'Security baseline not found'
+                -Message 'Security baseline not found'
         }
 
         $diff = [System.Collections.Generic.List[hashtable]]::new()
@@ -33,13 +33,16 @@ function Invoke-SecurityAudit {
             $current = Get-RegistryValue -Path $entry.path -Name $entry.name
             if ($null -eq $current -or "$current" -ne "$($entry.desiredValue)") {
                 $diff.Add(@{
-                    Category     = 'Registry'
-                    Name         = "$($entry.path)\$($entry.name)"
-                    Description  = $entry.description
-                    CurrentState = $current
-                    DesiredState = $entry.desiredValue
-                    Entry        = $entry
-                })
+                        Type         = 'registry'
+                        Name         = "$($entry.path)\$($entry.name)"
+                        Description  = $entry.description
+                        Path         = $entry.path
+                        ValueName    = $entry.name
+                        DesiredValue = $entry.desiredValue
+                        ValueType    = if ($entry.type) { $entry.type } else { 'DWord' }
+                        CurrentState = $current
+                        DesiredState = $entry.desiredValue
+                    })
                 Write-Log -Level DEBUG -Component SEC-AUDIT -Message "Security mismatch: $($entry.description)"
             }
         }
@@ -50,22 +53,26 @@ function Invoke-SecurityAudit {
                 $mpStatus = Get-MpComputerStatus -ErrorAction Stop
                 if (-not $mpStatus.RealTimeProtectionEnabled) {
                     $diff.Add(@{
-                        Category     = 'Defender'
-                        Name         = 'RealTimeProtection'
-                        Description  = 'Windows Defender real-time protection'
-                        CurrentState = $false
-                        DesiredState = $true
-                    })
+                            Type         = 'defender'
+                            Name         = 'RealTimeProtection'
+                            Feature      = 'RealTimeProtection'
+                            ShouldEnable = $true
+                            Description  = 'Windows Defender real-time protection'
+                            CurrentState = $false
+                            DesiredState = $true
+                        })
                     Write-Log -Level WARN -Component SEC-AUDIT -Message 'Defender real-time protection is DISABLED'
                 }
                 if (-not $mpStatus.AntivirusEnabled) {
                     $diff.Add(@{
-                        Category     = 'Defender'
-                        Name         = 'AntivirusEnabled'
-                        Description  = 'Windows Defender antivirus service'
-                        CurrentState = $false
-                        DesiredState = $true
-                    })
+                            Type         = 'defender'
+                            Name         = 'AntivirusEnabled'
+                            Feature      = 'AntivirusEnabled'
+                            ShouldEnable = $true
+                            Description  = 'Windows Defender antivirus service'
+                            CurrentState = $false
+                            DesiredState = $true
+                        })
                 }
             }
             catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Defender status query failed: $_" }
@@ -79,12 +86,13 @@ function Invoke-SecurityAudit {
                     $desiredEnabled = $baseline.firewall.enabled.($profile.Name.ToLower())
                     if ($null -ne $desiredEnabled -and $profile.Enabled -ne $desiredEnabled) {
                         $diff.Add(@{
-                            Category     = 'Firewall'
-                            Name         = "Firewall-$($profile.Name)"
-                            Description  = "Windows Firewall $($profile.Name) profile"
-                            CurrentState = $profile.Enabled
-                            DesiredState = $desiredEnabled
-                        })
+                                Type         = 'firewall'
+                                Name         = "Firewall-$($profile.Name)"
+                                Profile      = $profile.Name
+                                Description  = "Windows Firewall $($profile.Name) profile"
+                                CurrentState = $profile.Enabled
+                                DesiredState = $desiredEnabled
+                            })
                         Write-Log -Level WARN -Component SEC-AUDIT -Message "Firewall $($profile.Name) profile mismatch"
                     }
                 }
@@ -98,12 +106,14 @@ function Invoke-SecurityAudit {
                 $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
                 if ($svc -and $svc.Status -ne 'Running') {
                     $diff.Add(@{
-                        Category     = 'Service'
-                        Name         = $svcName
-                        Description  = "Service $svcName must be Running"
-                        CurrentState = $svc.Status.ToString()
-                        DesiredState = 'Running'
-                    })
+                            Type         = 'service'
+                            Name         = $svcName
+                            ServiceName  = $svcName
+                            Action       = 'EnsureRunning'
+                            Description  = "Service $svcName must be Running"
+                            CurrentState = $svc.Status.ToString()
+                            DesiredState = 'Running'
+                        })
                 }
             }
             catch { }
@@ -115,12 +125,14 @@ function Invoke-SecurityAudit {
                 $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
                 if ($svc -and $svc.StartType -ne 'Disabled') {
                     $diff.Add(@{
-                        Category     = 'Service'
-                        Name         = $svcName
-                        Description  = "Service $svcName must be Disabled"
-                        CurrentState = $svc.StartType.ToString()
-                        DesiredState = 'Disabled'
-                    })
+                            Type         = 'service'
+                            Name         = $svcName
+                            ServiceName  = $svcName
+                            Action       = 'EnsureDisabled'
+                            Description  = "Service $svcName must be Disabled"
+                            CurrentState = $svc.StartType.ToString()
+                            DesiredState = 'Disabled'
+                        })
                 }
             }
             catch { }
@@ -134,13 +146,13 @@ function Invoke-SecurityAudit {
         # 8. Persist
         $auditPath = Get-TempPath -Category 'data' -FileName 'security-audit.json'
         @{ Timestamp = (Get-Date -Format 'o'); Gaps = $diff.ToArray() } `
-            | ConvertTo-Json -Depth 8 | Set-Content -Path $auditPath -Encoding UTF8 -Force
+        | ConvertTo-Json -Depth 8 | Set-Content -Path $auditPath -Encoding UTF8 -Force
 
         $status = if ($diff.Count -eq 0) { 'Success' } else { 'Warning' }
         Write-Log -Level INFO -Component SEC-AUDIT -Message "Security audit complete: $($diff.Count) gaps"
         return New-ModuleResult -ModuleName 'SecurityAudit' -Status $status `
-                                -ItemsDetected $diff.Count `
-                                -Message "$($diff.Count) security settings need attention"
+            -ItemsDetected $diff.Count `
+            -Message "$($diff.Count) security settings need attention"
     }
     catch {
         Write-Log -Level ERROR -Component SEC-AUDIT -Message "Audit failed: $_"

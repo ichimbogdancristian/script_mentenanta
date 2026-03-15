@@ -48,7 +48,8 @@ function Invoke-SystemOptimization {
                 'powerplan' {
                     $planGuid = $item.GUID ?? '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'  # High performance
                     if ($PSCmdlet.ShouldProcess("Power plan $planGuid", 'powercfg')) {
-                        $null = & powercfg /setactive $planGuid 2>&1
+                        $powercfg = Join-Path $env:SystemRoot 'System32\powercfg.exe'
+                        $null = & $powercfg /setactive $planGuid 2>&1
                         Write-Log -Level SUCCESS -Component SYSOPT -Message "Power plan set to GUID $planGuid"
                     }
                 }

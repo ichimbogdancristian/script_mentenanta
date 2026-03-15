@@ -366,7 +366,6 @@ function Save-DiffList {
     $path = Get-TempPath -Category 'diff' -FileName "$ModuleName-diff.json"
     $DiffList | ConvertTo-Json -Depth 10 | Set-Content -Path $path -Encoding UTF8 -Force
     Write-Log -Level DEBUG -Component CORE -Message "Diff saved: $path ($($DiffList.Count) items)"
-    return $path
 }
 
 <#

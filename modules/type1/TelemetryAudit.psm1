@@ -23,7 +23,7 @@ function Invoke-TelemetryAudit {
         $baseline = Get-BaselineList -ModuleFolder 'telemetry' -FileName 'telemetry-list.json'
         if (-not $baseline) {
             return New-ModuleResult -ModuleName 'TelemetryAudit' -Status 'Failed' `
-                                    -Message 'Telemetry baseline list not found'
+                -Message 'Telemetry baseline list not found'
         }
 
         $diff = [System.Collections.Generic.List[hashtable]]::new()
@@ -34,9 +34,9 @@ function Invoke-TelemetryAudit {
                 $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
                 if ($svc -and $svc.StartType -ne 'Disabled') {
                     $diff.Add(@{
-                        Category = 'Service'; Name = $svcName
-                        CurrentState = $svc.StartType.ToString(); DesiredState = 'Disabled'
-                    })
+                            Type = 'service'; Name = $svcName; ServiceName = $svcName
+                            CurrentState = $svc.StartType.ToString(); DesiredState = 'Disabled'
+                        })
                     Write-Log -Level DEBUG -Component TELEM-AUDIT -Message "Service active (should disable): $svcName"
                 }
             }
@@ -51,12 +51,15 @@ function Invoke-TelemetryAudit {
                 $current = Get-RegistryValue -Path $entry.path -Name $entry.name
                 if ($null -eq $current -or $current -ne $entry.desiredValue) {
                     $diff.Add(@{
-                        Category     = "Registry-$grp"
-                        Name         = "$($entry.path)\$($entry.name)"
-                        CurrentState = $current
-                        DesiredState = $entry.desiredValue
-                        Entry        = $entry
-                    })
+                            Type         = 'registry'
+                            Name         = "$($entry.path)\$($entry.name)"
+                            Path         = $entry.path
+                            ValueName    = $entry.name
+                            DesiredValue = $entry.desiredValue
+                            ValueType    = if ($entry.type) { $entry.type } else { 'DWord' }
+                            CurrentState = $current
+                            DesiredState = $entry.desiredValue
+                        })
                     Write-Log -Level DEBUG -Component TELEM-AUDIT -Message "Registry mismatch: $($entry.name) = $current (want $($entry.desiredValue))"
                 }
             }
@@ -65,14 +68,15 @@ function Invoke-TelemetryAudit {
         # 4. Scheduled tasks that should be disabled
         foreach ($taskPath in $baseline.scheduledTasks.disable) {
             try {
-                $taskName   = Split-Path $taskPath -Leaf
+                $taskName = Split-Path $taskPath -Leaf
                 $taskFolder = Split-Path $taskPath -Parent
                 $task = Get-ScheduledTask -TaskName $taskName -TaskPath "$taskFolder\" -ErrorAction SilentlyContinue
                 if ($task -and $task.State -ne 'Disabled') {
                     $diff.Add(@{
-                        Category = 'ScheduledTask'; Name = $taskPath
-                        CurrentState = $task.State.ToString(); DesiredState = 'Disabled'
-                    })
+                            Type = 'scheduledtask'; Name = $taskPath
+                            TaskPath = "$taskFolder\"; TaskName = $taskName
+                            CurrentState = $task.State.ToString(); DesiredState = 'Disabled'
+                        })
                     Write-Log -Level DEBUG -Component TELEM-AUDIT -Message "Task active (should disable): $taskPath"
                 }
             }
@@ -87,12 +91,12 @@ function Invoke-TelemetryAudit {
         # 6. Persist
         $auditPath = Get-TempPath -Category 'data' -FileName 'telemetry-audit.json'
         @{ Timestamp = (Get-Date -Format 'o'); ActiveItems = $diff.ToArray() } `
-            | ConvertTo-Json -Depth 8 | Set-Content -Path $auditPath -Encoding UTF8 -Force
+        | ConvertTo-Json -Depth 8 | Set-Content -Path $auditPath -Encoding UTF8 -Force
 
         Write-Log -Level SUCCESS -Component TELEM-AUDIT -Message "Telemetry audit complete: $($diff.Count) active"
         return New-ModuleResult -ModuleName 'TelemetryAudit' -Status 'Success' `
-                                -ItemsDetected $diff.Count `
-                                -Message "$($diff.Count) telemetry/privacy items are active"
+            -ItemsDetected $diff.Count `
+            -Message "$($diff.Count) telemetry/privacy items are active"
     }
     catch {
         Write-Log -Level ERROR -Component TELEM-AUDIT -Message "Audit failed: $_"

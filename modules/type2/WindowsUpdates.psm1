@@ -47,9 +47,10 @@ function Invoke-WindowsUpdate {
                     $updateObj  = $update._COMObject  # Stored by audit if available
                     if (-not $updateObj) {
                         Write-Log -Level WARN -Component WINUPDATE -Message "No COM ref available for: $title — using usoclient fallback"
-                        $null = & usoclient.exe StartScan 2>&1
+                        $usoClient = Join-Path $env:SystemRoot 'System32\usoclient.exe'
+                        $null = & $usoClient StartScan 2>&1
                         Start-Sleep -Seconds 2
-                        $null = & usoclient.exe StartInstall 2>&1
+                        $null = & $usoClient StartInstall 2>&1
                         $processed++
                         continue
                     }
@@ -85,12 +86,13 @@ function Invoke-WindowsUpdate {
         }
     }
     catch {
-        # COM not available or total failure - try wuauclt
+        # COM not available or total failure - try usoclient
         Write-Log -Level WARN -Component WINUPDATE -Message "COM method failed, triggering usoclient: $_"
         if ($PSCmdlet.ShouldProcess('usoclient', 'Trigger update detection')) {
-            $null = & usoclient.exe StartScan 2>&1
+            $usoClient = Join-Path $env:SystemRoot 'System32\usoclient.exe'
+            $null = & $usoClient StartScan 2>&1
             Start-Sleep -Seconds 2
-            $null = & usoclient.exe StartInstall 2>&1
+            $null = & $usoClient StartInstall 2>&1
             $processed = $diff.Count  # Assume all triggered
         }
     }
