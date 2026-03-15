@@ -538,7 +538,31 @@ function Test-CommandAvailable {
     [CmdletBinding()]
     [OutputType([bool])]
     param([Parameter(Mandatory)] [string]$Command)
-    return ($null -ne (Get-Command $Command -ErrorAction SilentlyContinue))
+
+    # Fast path: command is already on $PATH
+    if ($null -ne (Get-Command $Command -ErrorAction SilentlyContinue)) { return $true }
+
+    # winget lives in a per-user WindowsApps folder that is often absent from PS7's
+    # elevated session PATH. Try the two known locations before giving up.
+    if ($Command -eq 'winget') {
+        $candidates = @(
+            (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\winget.exe'),
+            (Join-Path $env:ProgramFiles  'WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe')
+        )
+        foreach ($pattern in $candidates) {
+            $resolved = Get-Item -Path $pattern -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($resolved) {
+                # Add the directory to the current session's PATH so subsequent calls work
+                $wingetDir = Split-Path $resolved.FullName
+                if ($env:PATH -notlike "*$wingetDir*") {
+                    $env:PATH = "$($env:PATH);$wingetDir"
+                }
+                return $true
+            }
+        }
+    }
+
+    return $false
 }
 
 <#
