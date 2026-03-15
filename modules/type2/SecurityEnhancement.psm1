@@ -34,6 +34,7 @@ function Invoke-SecurityEnhancement {
         $name = $item.Name ?? "$item"
         $type = $item.Type ?? 'registry'
         try {
+            $changed = $false
             switch ($type) {
                 'registry' {
                     $path = $item.Path ?? $item.RegistryPath
@@ -42,8 +43,9 @@ function Invoke-SecurityEnhancement {
                     $vtype = $item.ValueType ?? 'DWord'
                     if ($path -and $vname -and $null -ne $val) {
                         if ($PSCmdlet.ShouldProcess("$path\$vname", "Set $val")) {
-                            Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
+                            $null = Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
                             Write-Log -Level SUCCESS -Component SECURITY -Message "Registry: $path\$vname = $val"
+                            $changed = $true
                         }
                     }
                 }
@@ -51,14 +53,28 @@ function Invoke-SecurityEnhancement {
                     $feature = $item.Feature ?? $item.Name
                     $enable = $item.ShouldEnable ?? $true
                     if ($PSCmdlet.ShouldProcess("Defender.$feature", ($enable ? 'Enable' : 'Disable'))) {
+                        $defChanged = $true
                         switch ($feature) {
                             'RealTimeProtection' { Set-MpPreference -DisableRealtimeMonitoring (-not $enable) -ErrorAction Stop }
-                            'CloudProtection' { Set-MpPreference -MAPSReporting (if ($enable) { 2 } else { 0 }) -ErrorAction Stop }
-                            'NetworkProtection' { Set-MpPreference -EnableNetworkProtection (if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
-                            'PUAProtection' { Set-MpPreference -PUAProtection (if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
-                            default { Write-Log -Level WARN -Component SECURITY -Message "Unknown Defender feature: $feature" }
+                            'CloudProtection'    { Set-MpPreference -MAPSReporting (if ($enable) { 2 } else { 0 }) -ErrorAction Stop }
+                            'NetworkProtection'  { Set-MpPreference -EnableNetworkProtection (if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
+                            'PUAProtection'      { Set-MpPreference -PUAProtection (if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
+                            'AntivirusEnabled'   {
+                                # Remove policy key that prevents AV from running, then ensure service is started
+                                $null = Set-RegistryValue -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender' `
+                                                          -Name 'DisableAntiSpyware' -Value 0 -Type DWord
+                                Set-Service  -Name WinDefend -StartupType Automatic -ErrorAction SilentlyContinue
+                                Start-Service -Name WinDefend -ErrorAction SilentlyContinue
+                            }
+                            default {
+                                Write-Log -Level WARN -Component SECURITY -Message "Unknown Defender feature: $feature"
+                                $defChanged = $false
+                            }
                         }
-                        Write-Log -Level SUCCESS -Component SECURITY -Message "Defender.$feature -> $enable"
+                        if ($defChanged) {
+                            Write-Log -Level SUCCESS -Component SECURITY -Message "Defender.$feature -> $enable"
+                            $changed = $true
+                        }
                     }
                 }
                 'firewall' {
@@ -66,6 +82,7 @@ function Invoke-SecurityEnhancement {
                     if ($PSCmdlet.ShouldProcess("Firewall ($profile)", 'Enable')) {
                         Set-NetFirewallProfile -Profile $profile.Split(',') -Enabled True -ErrorAction Stop
                         Write-Log -Level SUCCESS -Component SECURITY -Message "Firewall enabled: $profile"
+                        $changed = $true
                     }
                 }
                 'service' {
@@ -76,11 +93,13 @@ function Invoke-SecurityEnhancement {
                             Set-Service -Name $svc -StartupType Automatic -ErrorAction Stop
                             Start-Service -Name $svc -ErrorAction Stop
                             Write-Log -Level SUCCESS -Component SECURITY -Message "Service started: $svc"
+                            $changed = $true
                         }
                         elseif ($action -eq 'EnsureDisabled') {
                             Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
                             Set-Service -Name $svc -StartupType Disabled -ErrorAction Stop
                             Write-Log -Level SUCCESS -Component SECURITY -Message "Service disabled: $svc"
+                            $changed = $true
                         }
                     }
                 }
@@ -88,7 +107,7 @@ function Invoke-SecurityEnhancement {
                     Write-Log -Level WARN -Component SECURITY -Message "Unknown type '$type' for $name"
                 }
             }
-            $processed++
+            if ($changed) { $processed++ }
         }
         catch {
             Write-Log -Level ERROR -Component SECURITY -Message "Failed [$name]: $_"

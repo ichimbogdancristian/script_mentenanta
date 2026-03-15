@@ -40,7 +40,7 @@ function Invoke-TelemetryAudit {
                     Write-Log -Level DEBUG -Component TELEM-AUDIT -Message "Service active (should disable): $svcName"
                 }
             }
-            catch { }
+            catch { Write-Log -Level WARN -Component TELEM-AUDIT -Message "Service query failed '$svcName': $_" }
         }
 
         # 3. Registry keys (all sub-arrays: telemetry, advertising, cortana, privacy)
@@ -80,7 +80,7 @@ function Invoke-TelemetryAudit {
                     Write-Log -Level DEBUG -Component TELEM-AUDIT -Message "Task active (should disable): $taskPath"
                 }
             }
-            catch { }
+            catch { Write-Log -Level WARN -Component TELEM-AUDIT -Message "Task query failed '$taskPath': $_" }
         }
 
         Write-Log -Level INFO -Component TELEM-AUDIT -Message "Telemetry items active: $($diff.Count)"

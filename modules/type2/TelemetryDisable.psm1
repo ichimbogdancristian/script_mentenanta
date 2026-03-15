@@ -34,6 +34,7 @@ function Invoke-TelemetryDisable {
         $name = $item.Name ?? "$item"
         $type = $item.Type ?? 'registry'
         try {
+            $changed = $false
             switch ($type) {
                 'service' {
                     $svc = $item.ServiceName ?? $item.Name
@@ -41,6 +42,7 @@ function Invoke-TelemetryDisable {
                         Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
                         Set-Service -Name $svc -StartupType Disabled -ErrorAction Stop
                         Write-Log -Level SUCCESS -Component TELEMETRY -Message "Disabled service: $svc"
+                        $changed = $true
                     }
                 }
                 'registry' {
@@ -50,8 +52,9 @@ function Invoke-TelemetryDisable {
                     $vtype = $item.ValueType ?? 'DWord'
                     if ($path -and $vname) {
                         if ($PSCmdlet.ShouldProcess("$path\$vname", "Set $val")) {
-                            Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
+                            $null = Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
                             Write-Log -Level SUCCESS -Component TELEMETRY -Message "Registry: $path\$vname = $val"
+                            $changed = $true
                         }
                     }
                 }
@@ -59,15 +62,16 @@ function Invoke-TelemetryDisable {
                     $taskPath = $item.TaskPath ?? '\Microsoft\Windows\'
                     $taskName = $item.TaskName ?? $item.Name
                     if ($PSCmdlet.ShouldProcess("$taskPath$taskName", 'Disable-ScheduledTask')) {
-                        Disable-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction Stop
+                        $null = Disable-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction Stop
                         Write-Log -Level SUCCESS -Component TELEMETRY -Message "Disabled task: $taskPath$taskName"
+                        $changed = $true
                     }
                 }
                 default {
                     Write-Log -Level WARN -Component TELEMETRY -Message "Unknown type '$type' for $name"
                 }
             }
-            $processed++
+            if ($changed) { $processed++ }
         }
         catch {
             Write-Log -Level ERROR -Component TELEMETRY -Message "Failed [$name]: $_"

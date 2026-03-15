@@ -72,10 +72,10 @@ function Invoke-EssentialApp {
         # OS-platform exclusion
         $excl = $item.ExcludeOn ?? @()
         if ($osCtx.IsWindows11 -and $excl -contains 'windows11') {
-            Write-Log -Level DEBUG -Component ESSAPPS -Message "Skipping (Win11 excluded): $name"; $processed++; continue
+            Write-Log -Level DEBUG -Component ESSAPPS -Message "Skipping (Win11 excluded): $name"; continue
         }
         if (-not $osCtx.IsWindows11 -and $excl -contains 'windows10') {
-            Write-Log -Level DEBUG -Component ESSAPPS -Message "Skipping (Win10 excluded): $name"; $processed++; continue
+            Write-Log -Level DEBUG -Component ESSAPPS -Message "Skipping (Win10 excluded): $name"; continue
         }
 
         try {

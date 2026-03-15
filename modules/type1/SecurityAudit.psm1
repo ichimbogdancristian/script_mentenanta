@@ -116,7 +116,7 @@ function Invoke-SecurityAudit {
                         })
                 }
             }
-            catch { }
+            catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Service query failed '$svcName': $_" }
         }
 
         # 6. Services that must be disabled
@@ -135,7 +135,7 @@ function Invoke-SecurityAudit {
                         })
                 }
             }
-            catch { }
+            catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Service query failed '$svcName': $_" }
         }
 
         Write-Log -Level INFO -Component SEC-AUDIT -Message "Security gaps: $($diff.Count)"

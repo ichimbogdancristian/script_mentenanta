@@ -77,8 +77,8 @@ function Invoke-BloatwareRemoval {
                 }
             }
 
-            if (-not $removed) { Write-Log -Level WARN -Component BLOATWARE -Message "Not found to remove: $name" }
-            $processed++
+            if ($removed) { $processed++ }
+            else { Write-Log -Level WARN -Component BLOATWARE -Message "Not found to remove: $name" }
         }
         catch {
             Write-Log -Level ERROR -Component BLOATWARE -Message "Failed [$name]: $_"

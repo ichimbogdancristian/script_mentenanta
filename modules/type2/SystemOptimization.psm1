@@ -35,6 +35,7 @@ function Invoke-SystemOptimization {
         $name = $item.Name ?? "$item"
         $type = $item.Type ?? 'registry'
         try {
+            $changed = $false
             switch ($type) {
                 'service' {
                     $svc   = $item.ServiceName ?? $item.Name
@@ -43,6 +44,7 @@ function Invoke-SystemOptimization {
                         Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
                         Set-Service -Name $svc -StartupType $start -ErrorAction Stop
                         Write-Log -Level SUCCESS -Component SYSOPT -Message "Service '$svc' -> $start"
+                        $changed = $true
                     }
                 }
                 'powerplan' {
@@ -51,6 +53,7 @@ function Invoke-SystemOptimization {
                         $powercfg = Join-Path $env:SystemRoot 'System32\powercfg.exe'
                         $null = & $powercfg /setactive $planGuid 2>&1
                         Write-Log -Level SUCCESS -Component SYSOPT -Message "Power plan set to GUID $planGuid"
+                        $changed = $true
                     }
                 }
                 'registry' {
@@ -60,8 +63,9 @@ function Invoke-SystemOptimization {
                     $vtype = $item.ValueType ?? 'DWord'
                     if ($path -and $null -ne $val) {
                         if ($PSCmdlet.ShouldProcess("$path\$vname", "Set $val")) {
-                            Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
+                            $null = Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
                             Write-Log -Level SUCCESS -Component SYSOPT -Message "Registry set: $path\$vname = $val"
+                            $changed = $true
                         }
                     }
                 }
@@ -69,15 +73,16 @@ function Invoke-SystemOptimization {
                     # Set to best performance visual effects (UserPreferencesMask)
                     if ($PSCmdlet.ShouldProcess('VisualFX', 'Set best performance')) {
                         $regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects'
-                        Set-RegistryValue -Path $regPath -Name 'VisualFXSetting' -Value 2 -Type DWord
+                        $null = Set-RegistryValue -Path $regPath -Name 'VisualFXSetting' -Value 2 -Type DWord
                         Write-Log -Level SUCCESS -Component SYSOPT -Message 'Visual effects set to best performance'
+                        $changed = $true
                     }
                 }
                 default {
                     Write-Log -Level WARN -Component SYSOPT -Message "Unknown optimization type '$type' for $name"
                 }
             }
-            $processed++
+            if ($changed) { $processed++ }
         }
         catch {
             Write-Log -Level ERROR -Component SYSOPT -Message "Failed [$name / $type]: $_"

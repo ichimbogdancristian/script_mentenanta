@@ -54,10 +54,26 @@ function Invoke-SystemOptimizationAudit {
         if ($baseline.common.powerPlan.defaultPlan) {
             $desiredPlan = $baseline.common.powerPlan.defaultPlan
             try {
-                $powercfg = Join-Path $env:SystemRoot 'System32\powercfg.exe'
+                $powercfg    = Join-Path $env:SystemRoot 'System32\powercfg.exe'
                 $currentPlan = & $powercfg /getactivescheme 2>&1
                 if ($currentPlan -notmatch [regex]::Escape($desiredPlan)) {
-                    $diff.Add(@{ Type = 'PowerPlan'; Name = 'ActivePlan'; CurrentState = $currentPlan; DesiredState = $desiredPlan })
+                    # Resolve the GUID for the desired plan name so the Type2 module can apply it directly
+                    $desiredGuid = $null
+                    try {
+                        & $powercfg /list 2>&1 | ForEach-Object {
+                            if ($_ -match 'GUID:\s+([0-9a-f-]{36})\s+\(([^)]+)\)' -and
+                                $Matches[2] -like "*$desiredPlan*") {
+                                $desiredGuid = $Matches[1]
+                            }
+                        }
+                    } catch {}
+                    $diff.Add(@{
+                        Type         = 'powerplan'
+                        Name         = 'ActivePlan'
+                        GUID         = $desiredGuid ?? '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
+                        CurrentState = $currentPlan
+                        DesiredState = $desiredPlan
+                    })
                     Write-Log -Level DEBUG -Component SYSOPT-AUDIT -Message "Power plan mismatch: desired '$desiredPlan'"
                 }
             }

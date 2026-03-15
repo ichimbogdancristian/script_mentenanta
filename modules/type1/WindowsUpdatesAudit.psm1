@@ -73,7 +73,7 @@ function Invoke-WindowsUpdatesAudit {
             }
         }
         catch {
-            Write-Log -Level WARN -Component WU-AUDIT -Message "COM WU query failed: $_. Trying winget msstore fallback."
+            Write-Log -Level WARN -Component WU-AUDIT -Message "COM WU query failed — pending updates will not be detected: $_"
         }
 
         Write-Log -Level INFO -Component WU-AUDIT -Message "Pending updates: $($pendingUpdates.Count)"
