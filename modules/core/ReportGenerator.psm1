@@ -23,12 +23,18 @@ Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
 #region ─── ENTRY POINT ───────────────────────────────────────────────────────
 
 <#
-.SYNOPSIS  Generates the full HTML maintenance report.
-.PARAMETER SessionResults  Array of hashtables from New-ModuleResult
-.PARAMETER OSContext       Hashtable from Get-OSContext
-.PARAMETER TranscriptPath  Path to maintenance.log (Start-Transcript file)
-.PARAMETER ReportTitle     Optional report title override
-.OUTPUTS   [string] Full path of created HTML file
+.SYNOPSIS
+    Generates the full HTML maintenance report.
+.PARAMETER SessionResults
+    Array of hashtables from New-ModuleResult.
+.PARAMETER OSContext
+    Hashtable from Get-OSContext.
+.PARAMETER TranscriptPath
+    Path to maintenance.log (Start-Transcript file).
+.PARAMETER ReportTitle
+    Optional report title override.
+.OUTPUTS
+    [string] Full path of the created HTML file.
 #>
 function New-MaintenanceReport {
     [CmdletBinding(SupportsShouldProcess)]
@@ -62,8 +68,20 @@ function New-MaintenanceReport {
 
 #region ─── HTML BUILDER ──────────────────────────────────────────────────────
 
+<#
+.SYNOPSIS
+    Builds the full HTML string for the maintenance report.
+.PARAMETER SessionResults  Array of hashtables from New-ModuleResult.
+.PARAMETER OSContext       Hashtable from Get-OSContext.
+.PARAMETER TranscriptPath  Path to maintenance.log for inline transcript embedding.
+.PARAMETER Title           Report title string.
+.PARAMETER Timestamp       Session timestamp used in filenames.
+.OUTPUTS
+    [string] Complete HTML document as a single string.
+#>
 function Build-ReportHtml {
     [CmdletBinding()]
+    [OutputType([string])]
     param(
         [array]     $SessionResults,
         [hashtable] $OSContext,
@@ -217,8 +235,17 @@ details[open] summary{border-radius:8px 8px 0 0;border-bottom:none}
 "@
 }
 
+<#
+.SYNOPSIS
+    Builds an HTML card snippet for a single module result.
+.PARAMETER Result
+    Hashtable produced by New-ModuleResult.
+.OUTPUTS
+    [string] HTML fragment for the module card.
+#>
 function Build-ModuleCard {
     [CmdletBinding()]
+    [OutputType([string])]
     param([Parameter(Mandatory)] [hashtable]$Result)
 
     $badgeClass = switch ($Result.Status) {

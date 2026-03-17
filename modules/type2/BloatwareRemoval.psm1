@@ -11,6 +11,17 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
 }
 
+<#
+.SYNOPSIS
+    Removes bloatware applications identified by the Type1 audit.
+.DESCRIPTION
+    Reads the BloatwareRemoval diff list, removes matching AppX packages (all users
+    and provisioned), and falls back to winget uninstall for legacy apps.
+.PARAMETER OSContext
+    OS context hashtable from Get-OSContext. Falls back to the session global if omitted.
+.OUTPUTS
+    [hashtable] Standard module result from New-ModuleResult.
+#>
 function Invoke-BloatwareRemoval {
     [CmdletBinding(SupportsShouldProcess)]
     [OutputType([hashtable])]
@@ -26,7 +37,7 @@ function Invoke-BloatwareRemoval {
         return New-ModuleResult -ModuleName 'BloatwareRemoval' -Status 'Skipped' -Message 'No bloatware found by audit'
     }
 
-    $osCtx = if ($OSContext) { $OSContext } elseif ($global:OSContext) { $global:OSContext } else { Get-OSContext }
+    $osCtx = if ($OSContext) { $OSContext } elseif (Test-Path variable:global:OSContext) { $global:OSContext } else { Get-OSContext }
     $processed = 0; $failed = 0; $errors = @()
 
     # PS7: SkipEditionCheck avoids WinPS compat remoting overhead
@@ -58,12 +69,18 @@ function Invoke-BloatwareRemoval {
                         $removed = $true
                     }
                 }
-                # Remove provisioned to prevent re-install
-                $prov = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
-                Where-Object { $_.PackageName -like "*$pkgName*" }
-                if ($prov -and $PSCmdlet.ShouldProcess($pkgName, 'Remove provisioned')) {
-                    $prov | ForEach-Object { $null = Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue }
+                # Remove provisioned to prevent re-install on new user profiles.
+                # Appx/DISM cmdlets need the Appx module loaded (SkipEditionCheck already done above).
+                try {
+                    $prov = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
+                        Where-Object { $_.PackageName -like "*$pkgName*" }
+                    if ($prov -and $PSCmdlet.ShouldProcess($pkgName, 'Remove provisioned')) {
+                        $prov | ForEach-Object {
+                            $null = Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue
+                        }
+                    }
                 }
+                catch { Write-Log -Level WARN -Component BLOATWARE -Message "Provisioned package removal skipped for '$pkgName': $_" }
             }
 
             # 2. Winget fallback
