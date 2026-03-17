@@ -157,7 +157,7 @@ $ModulePairs = @(
         Type1Func  = 'Invoke-SecurityAudit'
         Type2File  = 'modules\type2\SecurityEnhancement.psm1'
         Type2Func  = 'Invoke-SecurityEnhancement'
-        ConfigSkip = 'skipSecurityAudit'
+        ConfigSkip = 'skipSecurityEnhancement'
     },
     @{
         Num        = 6
@@ -272,7 +272,7 @@ function Get-MenuSelection {
             -NoNewline -ForegroundColor Yellow
 
         if ([Console]::KeyAvailable) {
-            $null = [Console]::ReadLine()   # consume CR
+            $null = [Console]::ReadKey($true)   # consume the trigger key-press only
             $key = Read-Host "`n  Your choice"
             if ($key -match '^\d+$') { $selected = [int]$key }
             break
@@ -342,7 +342,7 @@ Write-Log -Level INFO -Component ORCH -Message "Stage 2: analysing diffs"
 
 $actionNeeded = [System.Collections.Generic.List[hashtable]]::new()
 
-foreach ($pair in $ModulePairs) {
+foreach ($pair in $pairsToAudit) {
     if (-not $pair.Type2Func) { continue }   # inventory-only modules skip
 
     $configSkip = if ($pair.ConfigSkip -and $Config.modules.$($pair.ConfigSkip)) { $true } else { $false }

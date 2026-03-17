@@ -41,11 +41,17 @@ function Invoke-WindowsUpdate {
                     Write-Log -Level INFO -Component WINUPDATE -Message "Processing: $title"
                     try {
                         $kb = if ($title -match 'KB(\d+)') { $Matches[1] } else { $null }
-                        if (-not $kb) {
-                            Write-Log -Level WARN -Component WINUPDATE -Message "No KB number in title — skipping: $title"
-                            $failed++; $errors += "[No KB] $title"; continue
+                        $updateId = $update.Identity ?? ''
+                        if ($kb) {
+                            $result = Install-WindowsUpdate -KBArticleID $kb -AcceptAll -AutoReboot:$false -IgnoreReboot -Confirm:$false -ErrorAction Stop
                         }
-                        $result = Install-WindowsUpdate -KBArticleID $kb -AcceptAll -AutoReboot:$false -IgnoreReboot -Confirm:$false -ErrorAction Stop
+                        elseif ($updateId) {
+                            $result = Install-WindowsUpdate -UpdateID $updateId -AcceptAll -AutoReboot:$false -IgnoreReboot -Confirm:$false -ErrorAction Stop
+                        }
+                        else {
+                            Write-Log -Level WARN -Component WINUPDATE -Message "No KB number or update ID — skipping: $title"
+                            $failed++; $errors += "[No ID] $title"; continue
+                        }
                         Write-Log -Level SUCCESS -Component WINUPDATE -Message "Installed: $title"
                         if ($result | Where-Object { $_.RebootRequired }) { $rebootRequired = $true }
                         $processed++

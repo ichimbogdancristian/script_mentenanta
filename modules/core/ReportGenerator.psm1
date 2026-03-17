@@ -51,8 +51,10 @@ function New-MaintenanceReport {
         -Title          $ReportTitle `
         -Timestamp      $timestamp
 
-    $html | Set-Content -Path $reportPath -Encoding UTF8 -Force
-    Write-Log -Level SUCCESS -Component REPORT -Message "Report saved: $reportPath"
+    if ($PSCmdlet.ShouldProcess($reportPath, 'Write HTML report')) {
+        $html | Set-Content -Path $reportPath -Encoding UTF8 -Force
+        Write-Log -Level SUCCESS -Component REPORT -Message "Report saved: $reportPath"
+    }
     return $reportPath
 }
 

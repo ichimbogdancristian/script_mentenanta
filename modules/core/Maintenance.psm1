@@ -411,11 +411,8 @@ function New-ModuleResult {
         [Parameter()] [object[]]$Errors = @(),
         [Parameter()] [hashtable]$ExtraData = @{}
     )
-    # Guard: SupportsShouldProcess satisfies PSUseShouldProcessForStateChangingFunctions for New-* verb.
+    # SupportsShouldProcess satisfies PSUseShouldProcessForStateChangingFunctions for the New-* verb.
     # New-ModuleResult only creates an in-memory hashtable; no system state is changed.
-    if (-not $PSCmdlet.ShouldProcess($ModuleName, 'Create module result')) {
-        return @{}
-    }
     return @{
         ModuleName     = $ModuleName
         Status         = $Status

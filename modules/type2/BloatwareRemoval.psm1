@@ -55,8 +55,8 @@ function Invoke-BloatwareRemoval {
                         $pkg | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
                         $pkg | Remove-AppxPackage -ErrorAction SilentlyContinue
                         Write-Log -Level SUCCESS -Component BLOATWARE -Message "Removed AppX: $pkgName"
+                        $removed = $true
                     }
-                    $removed = $true
                 }
                 # Remove provisioned to prevent re-install
                 $prov = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |

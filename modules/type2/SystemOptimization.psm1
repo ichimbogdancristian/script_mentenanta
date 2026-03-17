@@ -39,7 +39,7 @@ function Invoke-SystemOptimization {
             switch ($type) {
                 'service' {
                     $svc   = $item.ServiceName ?? $item.Name
-                    $start = $item.DesiredStartType ?? 'Disabled'
+                    $start = $item.DesiredStartType ?? $item.DesiredState ?? 'Disabled'
                     if ($PSCmdlet.ShouldProcess($svc, "Set-Service -StartupType $start")) {
                         Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
                         Set-Service -Name $svc -StartupType $start -ErrorAction Stop
