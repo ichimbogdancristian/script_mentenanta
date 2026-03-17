@@ -10,9 +10,7 @@
             "RemoteRegistry",
             "MapsBroker",
             "lfsvc",
-            "SharedAccess",
             "NetTcpPortSharing",
-            "WlanSvc",
             "Fax"
         ]
     },

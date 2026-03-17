@@ -47,7 +47,7 @@ function Invoke-SecurityAudit {
             }
         }
 
-        # 3. Windows Defender real-time protection
+        # 3. Windows Defender real-time protection + optional features
         if ($baseline.windowsDefender.realTimeProtection) {
             try {
                 $mpStatus = Get-MpComputerStatus -ErrorAction Stop
@@ -76,6 +76,48 @@ function Invoke-SecurityAudit {
                 }
             }
             catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Defender status query failed: $_" }
+
+            # Check cloud protection, network protection, and PUA via Get-MpPreference
+            try {
+                $mpPrefs = Get-MpPreference -ErrorAction Stop
+                if ($baseline.windowsDefender.cloudProtection -and $mpPrefs.MAPSReporting -eq 0) {
+                    $diff.Add(@{
+                            Type         = 'defender'
+                            Name         = 'CloudProtection'
+                            Feature      = 'CloudProtection'
+                            ShouldEnable = $true
+                            Description  = 'Windows Defender cloud-delivered protection'
+                            CurrentState = $false
+                            DesiredState = $true
+                        })
+                    Write-Log -Level WARN -Component SEC-AUDIT -Message 'Defender cloud protection is DISABLED'
+                }
+                if ($baseline.windowsDefender.networkProtection -and $mpPrefs.EnableNetworkProtection -eq 0) {
+                    $diff.Add(@{
+                            Type         = 'defender'
+                            Name         = 'NetworkProtection'
+                            Feature      = 'NetworkProtection'
+                            ShouldEnable = $true
+                            Description  = 'Windows Defender network protection'
+                            CurrentState = $false
+                            DesiredState = $true
+                        })
+                    Write-Log -Level WARN -Component SEC-AUDIT -Message 'Defender network protection is DISABLED'
+                }
+                if ($baseline.windowsDefender.pua -and $mpPrefs.PUAProtection -eq 0) {
+                    $diff.Add(@{
+                            Type         = 'defender'
+                            Name         = 'PUAProtection'
+                            Feature      = 'PUAProtection'
+                            ShouldEnable = $true
+                            Description  = 'Windows Defender PUA (Potentially Unwanted App) protection'
+                            CurrentState = $false
+                            DesiredState = $true
+                        })
+                    Write-Log -Level WARN -Component SEC-AUDIT -Message 'Defender PUA protection is DISABLED'
+                }
+            }
+            catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Defender preference query failed: $_" }
         }
 
         # 4. Firewall status

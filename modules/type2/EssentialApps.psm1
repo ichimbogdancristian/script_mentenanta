@@ -111,8 +111,13 @@ function Invoke-EssentialApp {
             # 2. chocolatey fallback
             if (-not $installed -and $chocoId -and $hasChoco) {
                 if ($PSCmdlet.ShouldProcess($chocoId, 'choco install')) {
-                    $null = & choco install $chocoId --yes --no-progress 2>&1
-                    if ($LASTEXITCODE -eq 0) {
+                    $exitCode = Invoke-WithTimeout -FilePath 'choco' `
+                        -ArgumentList @('install', $chocoId, '--yes', '--no-progress') `
+                        -TimeoutSeconds $timeoutSecs
+                    if ($exitCode -eq -1) {
+                        Write-Log -Level WARN -Component ESSAPPS -Message "choco timed out (${timeoutSecs}s) for $name"
+                    }
+                    elseif ($exitCode -eq 0) {
                         Write-Log -Level SUCCESS -Component ESSAPPS -Message "choco installed: $name"
                         $installed = $true
                     }
