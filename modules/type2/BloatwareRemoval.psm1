@@ -73,7 +73,7 @@ function Invoke-BloatwareRemoval {
                 # Appx/DISM cmdlets need the Appx module loaded (SkipEditionCheck already done above).
                 try {
                     $prov = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
-                        Where-Object { $_.PackageName -like "*$pkgName*" }
+                    Where-Object { $_.PackageName -like "*$pkgName*" }
                     if ($prov -and $PSCmdlet.ShouldProcess($pkgName, 'Remove provisioned')) {
                         $prov | ForEach-Object {
                             $null = Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue
