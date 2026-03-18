@@ -60,6 +60,12 @@ function Invoke-EssentialApp {
     $hasChoco = Test-CommandAvailable 'choco'
     $processed = 0; $failed = 0; $errors = @()
 
+    # Pre-update winget sources so individual installs don't stall on stale metadata
+    if ($hasWinget) {
+        Write-Log -Level INFO -Component ESSAPPS -Message 'Updating winget sources before install run'
+        $null = Invoke-WithTimeout -FilePath 'winget' -ArgumentList @('source', 'update', '--disable-interactivity') -TimeoutSeconds 120
+    }
+
     Write-Log -Level INFO -Component ESSAPPS -Message "Installing $($diff.Count) missing app(s) - winget:$hasWinget choco:$hasChoco"
 
     foreach ($item in $diff) {
@@ -95,9 +101,13 @@ function Invoke-EssentialApp {
                     ) + $scopeArgs
                     $exitCode = Invoke-WithTimeout -FilePath 'winget' -ArgumentList $wingetArgs -TimeoutSeconds $timeoutSecs
                     if ($exitCode -eq -1) {
-                        Write-Log -Level WARN -Component ESSAPPS -Message "winget timed out (${timeoutSecs}s) for $name"
+                        Write-Log -Level WARN -Component ESSAPPS -Message "winget timed out (${timeoutSecs}s) for $name — retrying once"
+                        $exitCode = Invoke-WithTimeout -FilePath 'winget' -ArgumentList $wingetArgs -TimeoutSeconds $timeoutSecs
+                        if ($exitCode -eq -1) {
+                            Write-Log -Level WARN -Component ESSAPPS -Message "winget retry also timed out for $name"
+                        }
                     }
-                    elseif ($exitCode -in 0, -1978335189) {
+                    if ($exitCode -in 0, -1978335189) {
                         # 0=success, -1978335189=already installed
                         Write-Log -Level SUCCESS -Component ESSAPPS -Message "winget installed: $name"
                         $installed = $true

@@ -39,11 +39,22 @@ function Invoke-BloatwareAudit {
         Write-Log -Level INFO -Component BLOAT-AUDIT -Message "Baseline entries: $($allBaseline.Count) (OS: $($osCtx.DisplayText))"
 
         # 3. Scan AppX packages (primary source for bloatware)
-        # PS7 Core: SkipEditionCheck avoids the WinPS compat remoting overhead
-        if ($PSVersionTable.PSEdition -eq 'Core') {
-            Import-Module -Name Appx -SkipEditionCheck -ErrorAction SilentlyContinue
+        $appxInstalled = @()
+        try {
+            if ($PSVersionTable.PSEdition -eq 'Core') {
+                Import-Module -Name Appx -SkipEditionCheck -ErrorAction SilentlyContinue
+            }
+            $appxInstalled = @(Get-AppxPackage -ErrorAction Stop | Select-Object -ExpandProperty Name)
         }
-        $appxInstalled = @(Get-AppxPackage -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
+        catch {
+            Write-Log -Level WARN -Component BLOAT-AUDIT -Message "AppX direct query failed: $_  — falling back to Windows PowerShell"
+            try {
+                $appxInstalled = @(& powershell.exe -NoProfile -Command 'Get-AppxPackage | Select-Object -ExpandProperty Name' 2>$null)
+            }
+            catch {
+                Write-Log -Level WARN -Component BLOAT-AUDIT -Message "AppX fallback also failed: $_ — continuing with registry apps only"
+            }
+        }
 
         # 4. Diff: baseline apps that ARE installed (need removal)
         $diff = $allBaseline | Where-Object {

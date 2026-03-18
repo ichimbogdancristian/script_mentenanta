@@ -11,6 +11,7 @@
     "winget": "Microsoft.WindowsTerminal",
     "choco": "microsoft-windows-terminal",
     "scope": "user",
+    "timeout": 300,
     "category": "System",
     "description": "Modern terminal application"
   },
@@ -46,7 +47,7 @@
     "name": "LibreOffice",
     "winget": "TheDocumentFoundation.LibreOffice",
     "choco": "libreoffice",
-    "timeout": 600,
+    "timeout": 900,
     "category": "Office",
     "description": "Free and open-source office suite (installed only if Microsoft Office not detected)"
   },
