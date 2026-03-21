@@ -11,13 +11,12 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
 }
 
-#region ─── TIMEOUT HELPER ────────────────────────────────────────────────────
-function Invoke-WithTimeout {
+#region ─── PROCESS HELPER ─────────────────────────────────────────────────────
+function Invoke-Install {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] [string]$FilePath,
-        [Parameter(Mandatory)] [string[]]$ArgumentList,
-        [Parameter()] [int]$TimeoutSeconds = 180
+        [Parameter(Mandatory)] [string[]]$ArgumentList
     )
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = $FilePath
@@ -30,12 +29,7 @@ function Invoke-WithTimeout {
     $proc = [System.Diagnostics.Process]::new()
     $proc.StartInfo = $psi
     $null = $proc.Start()
-
-    $completed = $proc.WaitForExit($TimeoutSeconds * 1000)
-    if (-not $completed) {
-        try { $proc.Kill() } catch {}
-        return -1  # sentinel: timed out
-    }
+    $proc.WaitForExit()
     return $proc.ExitCode
 }
 #endregion
@@ -63,7 +57,7 @@ function Invoke-EssentialApp {
     # Pre-update winget sources so individual installs don't stall on stale metadata
     if ($hasWinget) {
         Write-Log -Level INFO -Component ESSAPPS -Message 'Updating winget sources before install run'
-        $null = Invoke-WithTimeout -FilePath 'winget' -ArgumentList @('source', 'update', '--disable-interactivity') -TimeoutSeconds 120
+        $null = Invoke-Install -FilePath 'winget' -ArgumentList @('source', 'update', '--disable-interactivity')
     }
 
     Write-Log -Level INFO -Component ESSAPPS -Message "Installing $($diff.Count) missing app(s) - winget:$hasWinget choco:$hasChoco"
@@ -73,7 +67,6 @@ function Invoke-EssentialApp {
         $wingetId = $item.WingetId ?? $item.winget ?? ''
         $chocoId = $item.ChocoId ?? $item.choco ?? ''
         $scope = $item.Scope ?? $item.scope ?? 'machine'
-        $timeoutSecs = if ($item.timeout) { [int]$item.timeout } elseif ($item.Timeout) { [int]$item.Timeout } else { 180 }
         $installed = $false
 
         # OS-platform exclusion
@@ -99,14 +92,7 @@ function Invoke-EssentialApp {
                         '--accept-package-agreements',
                         '--accept-source-agreements'
                     ) + $scopeArgs
-                    $exitCode = Invoke-WithTimeout -FilePath 'winget' -ArgumentList $wingetArgs -TimeoutSeconds $timeoutSecs
-                    if ($exitCode -eq -1) {
-                        Write-Log -Level WARN -Component ESSAPPS -Message "winget timed out (${timeoutSecs}s) for $name — retrying once"
-                        $exitCode = Invoke-WithTimeout -FilePath 'winget' -ArgumentList $wingetArgs -TimeoutSeconds $timeoutSecs
-                        if ($exitCode -eq -1) {
-                            Write-Log -Level WARN -Component ESSAPPS -Message "winget retry also timed out for $name"
-                        }
-                    }
+                    $exitCode = Invoke-Install -FilePath 'winget' -ArgumentList $wingetArgs
                     if ($exitCode -in 0, -1978335189) {
                         # 0=success, -1978335189=already installed
                         Write-Log -Level SUCCESS -Component ESSAPPS -Message "winget installed: $name"
@@ -121,13 +107,9 @@ function Invoke-EssentialApp {
             # 2. chocolatey fallback
             if (-not $installed -and $chocoId -and $hasChoco) {
                 if ($PSCmdlet.ShouldProcess($chocoId, 'choco install')) {
-                    $exitCode = Invoke-WithTimeout -FilePath 'choco' `
-                        -ArgumentList @('install', $chocoId, '--yes', '--no-progress') `
-                        -TimeoutSeconds $timeoutSecs
-                    if ($exitCode -eq -1) {
-                        Write-Log -Level WARN -Component ESSAPPS -Message "choco timed out (${timeoutSecs}s) for $name"
-                    }
-                    elseif ($exitCode -eq 0) {
+                    $exitCode = Invoke-Install -FilePath 'choco' `
+                        -ArgumentList @('install', $chocoId, '--yes', '--no-progress')
+                    if ($exitCode -eq 0) {
                         Write-Log -Level SUCCESS -Component ESSAPPS -Message "choco installed: $name"
                         $installed = $true
                     }

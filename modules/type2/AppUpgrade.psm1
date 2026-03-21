@@ -29,11 +29,10 @@ function Invoke-AppUpgrade {
     $hasWinget = Test-CommandAvailable 'winget'
     $hasChoco = Test-CommandAvailable 'choco'
     $processed = 0; $failed = 0; $errors = @()
-    $timeoutSec = 300   # 5 minutes max per app
 
-    # Helper: run an executable with a hard timeout; returns exit code or -1 on timeout
-    function Invoke-WithTimeout {
-        param([string]$Exe, [string[]]$Args, [int]$TimeoutMs)
+    # Helper: run an executable and wait for completion; returns exit code
+    function Invoke-Install {
+        param([string]$Exe, [string[]]$Args)
         $psi = [System.Diagnostics.ProcessStartInfo]::new($Exe)
         $psi.Arguments = $Args -join ' '
         $psi.UseShellExecute = $false
@@ -42,10 +41,7 @@ function Invoke-AppUpgrade {
         $p = [System.Diagnostics.Process]::new()
         $p.StartInfo = $psi
         $p.Start() | Out-Null
-        if (-not $p.WaitForExit($TimeoutMs)) {
-            try { $p.Kill() } catch {}
-            return -99  # timeout sentinel
-        }
+        $p.WaitForExit()
         return $p.ExitCode
     }
 
@@ -63,18 +59,14 @@ function Invoke-AppUpgrade {
         try {
             $upgraded = $false
 
-            # 1. winget — disable-interactivity prevents interactive prompts;
-            #    Invoke-WithTimeout prevents hung installers from blocking the run
+            # 1. winget — disable-interactivity prevents interactive prompts
             if ($source -eq 'winget' -and $id -and $hasWinget) {
                 if ($PSCmdlet.ShouldProcess($id, 'winget upgrade')) {
                     $wingetArgs = @('upgrade', '--id', $id, '--silent',
                         '--accept-package-agreements', '--accept-source-agreements',
                         '--disable-interactivity')
-                    $exitCode = Invoke-WithTimeout -Exe 'winget' -Args $wingetArgs -TimeoutMs ($timeoutSec * 1000)
-                    if ($exitCode -eq -99) {
-                        throw "winget upgrade timed out after $timeoutSec seconds"
-                    }
-                    elseif ($exitCode -in 0, -1978335189) {
+                    $exitCode = Invoke-Install -Exe 'winget' -Args $wingetArgs
+                    if ($exitCode -in 0, -1978335189) {
                         Write-Log -Level SUCCESS -Component APPUPGR -Message "Upgraded (winget): $name"
                         $upgraded = $true
                     }
@@ -88,11 +80,8 @@ function Invoke-AppUpgrade {
             if (-not $upgraded -and $source -eq 'choco' -and $id -and $hasChoco) {
                 if ($PSCmdlet.ShouldProcess($id, 'choco upgrade')) {
                     $chocoArgs = @('upgrade', $id, '--yes', '--no-progress')
-                    $exitCode = Invoke-WithTimeout -Exe 'choco' -Args $chocoArgs -TimeoutMs ($timeoutSec * 1000)
-                    if ($exitCode -eq -99) {
-                        throw "choco upgrade timed out after $timeoutSec seconds"
-                    }
-                    elseif ($exitCode -eq 0) {
+                    $exitCode = Invoke-Install -Exe 'choco' -Args $chocoArgs
+                    if ($exitCode -eq 0) {
                         Write-Log -Level SUCCESS -Component APPUPGR -Message "Upgraded (choco): $name"
                         $upgraded = $true
                     }
