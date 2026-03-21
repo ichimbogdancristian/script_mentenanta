@@ -53,9 +53,9 @@ function Invoke-SecurityEnhancement {
                     $defChanged = $true
                     switch ($feature) {
                         'RealTimeProtection' { Set-MpPreference -DisableRealtimeMonitoring (-not $enable) -ErrorAction Stop }
-                        'CloudProtection' { Set-MpPreference -MAPSReporting (if ($enable) { 2 } else { 0 }) -ErrorAction Stop }
-                        'NetworkProtection' { Set-MpPreference -EnableNetworkProtection (if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
-                        'PUAProtection' { Set-MpPreference -PUAProtection (if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
+                        'CloudProtection' { Set-MpPreference -MAPSReporting $(if ($enable) { 2 } else { 0 }) -ErrorAction Stop }
+                        'NetworkProtection' { Set-MpPreference -EnableNetworkProtection $(if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
+                        'PUAProtection' { Set-MpPreference -PUAProtection $(if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
                         'AntivirusEnabled' {
                             # Remove policy key that prevents AV from running, then ensure service is started
                             $null = Set-RegistryValue -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender' `
@@ -74,14 +74,14 @@ function Invoke-SecurityEnhancement {
                     }
                 }
                 'firewall' {
-                    $profile = $item.Profile
-                    if (-not $profile) {
+                    $fwProfile = $item.Profile
+                    if (-not $fwProfile) {
                         Write-Log -Level WARN -Component SECURITY -Message "Firewall diff missing Profile — skipping: $name"
                         $errors += "[No Profile] $name"; $failed++; continue
                     }
                     $enabled = if ($item.DesiredState -eq $false) { 'False' } else { 'True' }
-                    Set-NetFirewallProfile -Profile $profile.Split(',') -Enabled $enabled -ErrorAction Stop
-                    Write-Log -Level SUCCESS -Component SECURITY -Message "Firewall $profile -> Enabled=$enabled"
+                    Set-NetFirewallProfile -Profile $fwProfile.Split(',') -Enabled $enabled -ErrorAction Stop
+                    Write-Log -Level SUCCESS -Component SECURITY -Message "Firewall $fwProfile -> Enabled=$enabled"
                     $changed = $true
                 }
                 'service' {

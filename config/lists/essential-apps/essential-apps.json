@@ -63,7 +63,6 @@
     "name": "PDF24 Creator",
     "winget": "geeksoftwareGmbH.PDF24Creator",
     "choco": "pdf24",
-    "scope": "user",
     "category": "Document",
     "description": "Free PDF creator and editor"
   },

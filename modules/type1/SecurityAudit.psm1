@@ -148,18 +148,18 @@ function Invoke-SecurityAudit {
         if ($baseline.firewall) {
             try {
                 $fwProfiles = Get-NetFirewallProfile -ErrorAction Stop
-                foreach ($profile in $fwProfiles) {
-                    $desiredEnabled = $baseline.firewall.enabled.($profile.Name.ToLower())
-                    if ($null -ne $desiredEnabled -and $profile.Enabled -ne $desiredEnabled) {
+                foreach ($fwProfile in $fwProfiles) {
+                    $desiredEnabled = $baseline.firewall.enabled.($fwProfile.Name.ToLower())
+                    if ($null -ne $desiredEnabled -and $fwProfile.Enabled -ne $desiredEnabled) {
                         $diff.Add(@{
                                 Type         = 'firewall'
-                                Name         = "Firewall-$($profile.Name)"
-                                Profile      = $profile.Name
-                                Description  = "Windows Firewall $($profile.Name) profile"
-                                CurrentState = $profile.Enabled
+                                Name         = "Firewall-$($fwProfile.Name)"
+                                Profile      = $fwProfile.Name
+                                Description  = "Windows Firewall $($fwProfile.Name) profile"
+                                CurrentState = $fwProfile.Enabled
                                 DesiredState = $desiredEnabled
                             })
-                        Write-Log -Level WARN -Component SEC-AUDIT -Message "Firewall $($profile.Name) profile mismatch"
+                        Write-Log -Level WARN -Component SEC-AUDIT -Message "Firewall $($fwProfile.Name) profile mismatch"
                     }
                 }
             }

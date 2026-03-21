@@ -93,7 +93,7 @@ function Invoke-SystemInventory {
             $appCount      = @(Get-InstalledApp).Count
             $inv.Software  = @{ InstalledAppCount = $appCount }
         }
-        catch { }
+        catch { Write-Log -Level WARN -Component INVENTORY -Message "Installed apps count failed: $_" }
 
         # User info
         $inv.Session = @{
