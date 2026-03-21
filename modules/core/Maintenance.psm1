@@ -169,7 +169,7 @@ function Get-MainConfig {
     if (-not (Test-Path $path)) {
         Write-Log -Level WARN -Component CORE -Message "main-config.json not found at $path. Using built-in defaults."
         return @{
-            execution = @{ countdownSeconds = 30; enableDryRun = $false; autoSelectDefault = $true
+            execution = @{ countdownSeconds = 30; autoSelectDefault = $true
                 shutdown = @{ countdownSeconds = 120; rebootOnTimeout = $true; cleanupOnTimeout = $true }
             }
             modules   = @{}
@@ -398,7 +398,7 @@ function Get-DiffList {
     Creates a standardized module result hashtable used by the orchestrator.
 #>
 function New-ModuleResult {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding()]
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)] [string]$ModuleName,
@@ -411,8 +411,6 @@ function New-ModuleResult {
         [Parameter()] [object[]]$Errors = @(),
         [Parameter()] [hashtable]$ExtraData = @{}
     )
-    # SupportsShouldProcess satisfies PSUseShouldProcessForStateChangingFunctions for the New-* verb.
-    # New-ModuleResult only creates an in-memory hashtable; no system state is changed.
     return @{
         ModuleName     = $ModuleName
         Status         = $Status
@@ -585,7 +583,7 @@ function Get-RegistryValue {
     bool - $true if a change was made.
 #>
 function Set-RegistryValue {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding()]
     [OutputType([bool])]
     param(
         [Parameter(Mandatory)] [string]$Path,
@@ -597,14 +595,11 @@ function Set-RegistryValue {
     $current = Get-RegistryValue -Path $Path -Name $Name
     if ($current -eq $Value) { return $false }
 
-    if ($PSCmdlet.ShouldProcess("$Path\$Name", "Set to $Value")) {
-        if (-not (Test-Path $Path)) {
-            New-Item -Path $Path -Force | Out-Null
-        }
-        Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force
-        return $true
+    if (-not (Test-Path $Path)) {
+        New-Item -Path $Path -Force | Out-Null
     }
-    return $false
+    Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force
+    return $true
 }
 
 #endregion

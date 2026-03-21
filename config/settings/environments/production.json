@@ -5,7 +5,6 @@
     "execution": {
         "defaultMode": "unattended",
         "countdownSeconds": 30,
-        "enableDryRun": false,
         "autoSelectDefault": true,
         "showProgressBars": false
     },
@@ -15,7 +14,6 @@
         "skipWindowsUpdates": false,
         "skipTelemetryDisable": false,
         "skipSystemOptimization": false,
-        "skipSecurityAudit": false,
         "skipSecurityEnhancement": false,
         "skipAppUpgrade": false
     },

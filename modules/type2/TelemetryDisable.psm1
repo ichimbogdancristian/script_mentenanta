@@ -12,7 +12,7 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
 }
 
 function Invoke-TelemetryDisable {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding()]
     [OutputType([hashtable])]
     param(
         [Parameter()][hashtable]$OSContext
@@ -38,12 +38,10 @@ function Invoke-TelemetryDisable {
             switch ($type) {
                 'service' {
                     $svc = $item.ServiceName ?? $item.Name
-                    if ($PSCmdlet.ShouldProcess($svc, 'Stop and disable service')) {
-                        Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
-                        Set-Service -Name $svc -StartupType Disabled -ErrorAction Stop
-                        Write-Log -Level SUCCESS -Component TELEMETRY -Message "Disabled service: $svc"
-                        $changed = $true
-                    }
+                    Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+                    Set-Service -Name $svc -StartupType Disabled -ErrorAction Stop
+                    Write-Log -Level SUCCESS -Component TELEMETRY -Message "Disabled service: $svc"
+                    $changed = $true
                 }
                 'registry' {
                     $path  = $item.Path ?? $item.RegistryPath
@@ -51,21 +49,17 @@ function Invoke-TelemetryDisable {
                     $val   = $item.DesiredValue ?? 0
                     $vtype = $item.ValueType ?? 'DWord'
                     if ($path -and $vname) {
-                        if ($PSCmdlet.ShouldProcess("$path\$vname", "Set $val")) {
-                            $null = Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
-                            Write-Log -Level SUCCESS -Component TELEMETRY -Message "Registry: $path\$vname = $val"
-                            $changed = $true
-                        }
+                        $null = Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
+                        Write-Log -Level SUCCESS -Component TELEMETRY -Message "Registry: $path\$vname = $val"
+                        $changed = $true
                     }
                 }
                 'scheduledtask' {
                     $taskPath = $item.TaskPath ?? '\Microsoft\Windows\'
                     $taskName = $item.TaskName ?? $item.Name
-                    if ($PSCmdlet.ShouldProcess("$taskPath$taskName", 'Disable-ScheduledTask')) {
-                        $null = Disable-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction Stop
-                        Write-Log -Level SUCCESS -Component TELEMETRY -Message "Disabled task: $taskPath$taskName"
-                        $changed = $true
-                    }
+                    $null = Disable-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction Stop
+                    Write-Log -Level SUCCESS -Component TELEMETRY -Message "Disabled task: $taskPath$taskName"
+                    $changed = $true
                 }
                 default {
                     Write-Log -Level WARN -Component TELEMETRY -Message "Unknown type '$type' for $name"

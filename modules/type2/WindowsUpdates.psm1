@@ -12,7 +12,7 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
 }
 
 function Invoke-WindowsUpdate {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding()]
     [OutputType([hashtable])]
     param(
         [Parameter()][hashtable]$OSContext
@@ -30,53 +30,52 @@ function Invoke-WindowsUpdate {
 
     Write-Log -Level INFO -Component WINUPDATE -Message "Installing $($diff.Count) update(s)"
 
-    if ($PSCmdlet.ShouldProcess('Windows Updates', 'Install pending updates')) {
-        # Primary: PSWindowsUpdate — installs by KB ID and confirms result
-        $pswuAvailable = $null -ne (Get-Module -ListAvailable -Name 'PSWindowsUpdate' -ErrorAction SilentlyContinue)
-        if ($pswuAvailable) {
-            try {
-                Import-Module PSWindowsUpdate -SkipEditionCheck -ErrorAction Stop
-                foreach ($update in $diff) {
-                    $title = $update.Title ?? $update.Name ?? "$update"
-                    Write-Log -Level INFO -Component WINUPDATE -Message "Processing: $title"
-                    try {
-                        $kb = if ($title -match 'KB(\d+)') { $Matches[1] } else { $null }
-                        $updateId = $update.Identity ?? ''
-                        if ($kb) {
-                            $result = Install-WindowsUpdate -KBArticleID $kb -AcceptAll -AutoReboot:$false -IgnoreReboot -Confirm:$false -ErrorAction Stop
-                        }
-                        elseif ($updateId) {
-                            $result = Install-WindowsUpdate -UpdateID $updateId -AcceptAll -AutoReboot:$false -IgnoreReboot -Confirm:$false -ErrorAction Stop
-                        }
-                        else {
-                            Write-Log -Level WARN -Component WINUPDATE -Message "No KB number or update ID — skipping: $title"
-                            $failed++; $errors += "[No ID] $title"; continue
-                        }
-                        Write-Log -Level SUCCESS -Component WINUPDATE -Message "Installed: $title"
-                        if ($result | Where-Object { $_.RebootRequired }) { $rebootRequired = $true }
-                        $processed++
+    # Primary: PSWindowsUpdate — installs by KB ID and confirms result
+    $pswuAvailable = $null -ne (Get-Module -ListAvailable -Name 'PSWindowsUpdate' -ErrorAction SilentlyContinue)
+    if ($pswuAvailable) {
+        try {
+            Import-Module PSWindowsUpdate -SkipEditionCheck -ErrorAction Stop
+            foreach ($update in $diff) {
+                $title = $update.Title ?? $update.Name ?? "$update"
+                Write-Log -Level INFO -Component WINUPDATE -Message "Processing: $title"
+                try {
+                    $kb = if ($title -match 'KB(\d+)') { $Matches[1] } else { $null }
+                    $updateId = $update.Identity ?? ''
+                    if ($kb) {
+                        $result = Install-WindowsUpdate -KBArticleID $kb -AcceptAll -AutoReboot:$false -IgnoreReboot -Confirm:$false -ErrorAction Stop
                     }
-                    catch {
-                        Write-Log -Level ERROR -Component WINUPDATE -Message "PSWindowsUpdate failed [$title]: $_"
-                        $errors += "[$title] $_"; $failed++
+                    elseif ($updateId) {
+                        $result = Install-WindowsUpdate -UpdateID $updateId -AcceptAll -AutoReboot:$false -IgnoreReboot -Confirm:$false -ErrorAction Stop
                     }
+                    else {
+                        Write-Log -Level WARN -Component WINUPDATE -Message "No KB number or update ID — skipping: $title"
+                        $failed++; $errors += "[No ID] $title"; continue
+                    }
+                    Write-Log -Level SUCCESS -Component WINUPDATE -Message "Installed: $title"
+                    if ($result | Where-Object { $_.RebootRequired }) { $rebootRequired = $true }
+                    $processed++
+                }
+                catch {
+                    Write-Log -Level ERROR -Component WINUPDATE -Message "PSWindowsUpdate failed [$title]: $_"
+                    $errors += "[$title] $_"; $failed++
                 }
             }
-            catch {
-                Write-Log -Level WARN -Component WINUPDATE -Message "PSWindowsUpdate module error: $_. Falling back to usoclient."
-                $pswuAvailable = $false
-            }
         }
+        catch {
+            Write-Log -Level WARN -Component WINUPDATE -Message "PSWindowsUpdate module error: $_. Falling back to usoclient."
+            $pswuAvailable = $false
+        }
+    }
 
-        if (-not $pswuAvailable) {
-            # Fallback: usoclient — async, triggers WU service to scan+install all pending at once
-            Write-Log -Level INFO -Component WINUPDATE -Message "Triggering usoclient to install $($diff.Count) update(s) (async — reboot may be required)"
-            $usoClient = Join-Path $env:SystemRoot 'System32\usoclient.exe'
-            $null = & $usoClient StartScan 2>&1
-            Start-Sleep -Seconds 2
-            $null = & $usoClient StartInstall 2>&1
-            $processed = $diff.Count
-        }
+    if (-not $pswuAvailable) {
+        # Fallback: usoclient — async, triggers WU service to scan+install all pending at once
+        Write-Log -Level WARN -Component WINUPDATE -Message "Triggering usoclient to install $($diff.Count) update(s) (async — results unverifiable)"
+        $usoClient = Join-Path $env:SystemRoot 'System32\usoclient.exe'
+        $null = & $usoClient StartScan 2>&1
+        Start-Sleep -Seconds 2
+        $null = & $usoClient StartInstall 2>&1
+        # usoclient is async; we cannot confirm results. Mark as triggered, not verified.
+        $rebootRequired = $true
     }
 
     $extraData = @{ RebootRequired = $rebootRequired }

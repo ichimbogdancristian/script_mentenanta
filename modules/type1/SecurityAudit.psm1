@@ -121,7 +121,7 @@ function Invoke-SecurityAudit {
         }
 
         # 4. Firewall status
-        if ($baseline.firewall.enabled.private) {
+        if ($baseline.firewall) {
             try {
                 $fwProfiles = Get-NetFirewallProfile -ErrorAction Stop
                 foreach ($profile in $fwProfiles) {

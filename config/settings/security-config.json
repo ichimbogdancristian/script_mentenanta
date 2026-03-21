@@ -163,10 +163,5 @@
         "notificationLevel": "Important",
         "emailNotifications": false,
         "emailAddress": ""
-    },
-    "dryRunDefaults": {
-        "simulateChanges": true,
-        "verboseLogging": true,
-        "skipDangerousOperations": true
     }
 }

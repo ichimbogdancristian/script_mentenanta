@@ -43,7 +43,7 @@ function Invoke-EssentialAppsAudit {
         }
 
         # 4. Detect if Microsoft Office is installed (skip LibreOffice if so)
-        $hasMsOffice = $installedNames | Where-Object { $_ -match 'microsoft.*(office|word|excel|outlook)' }
+        $hasMsOffice = [bool]($installedNames | Where-Object { $_ -match 'microsoft.*(office|word|excel|outlook)' })
 
         # 5. Build diff: apps NOT installed
         $missing = [System.Collections.Generic.List[object]]::new()

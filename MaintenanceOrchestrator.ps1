@@ -100,7 +100,6 @@ $global:OSContext = Get-OSContext
 $Config = Get-MainConfig
 
 Write-Log -Level SUCCESS -Component ORCH -Message "OS: $($global:OSContext.DisplayText)"
-Write-Log -Level INFO    -Component ORCH -Message "Config loaded. DryRun: $($Config.execution.enableDryRun)"
 
 #endregion
 
@@ -442,8 +441,8 @@ try {
 
     # Copy report to the folder where script.bat was launched from (e.g. USB drive / Desktop)
     $launcherDir = $env:ORIGINAL_SCRIPT_DIR
-    $copyTarget  = if ($launcherDir -and (Test-Path $launcherDir)) { $launcherDir } else { $ProjectRoot }
-    $destReport  = Join-Path $copyTarget (Split-Path $reportFile -Leaf)
+    $copyTarget = if ($launcherDir -and (Test-Path $launcherDir)) { $launcherDir } else { $ProjectRoot }
+    $destReport = Join-Path $copyTarget (Split-Path $reportFile -Leaf)
     Copy-Item -Path $reportFile -Destination $destReport -Force
     Write-Host "  ✔  Report also saved to: $destReport" -ForegroundColor Green
 }
@@ -474,7 +473,18 @@ Write-Host ""
 $rebootSeconds = [int]($Config.execution.shutdown.countdownSeconds ?? 120)
 $doReboot = [bool]($Config.execution.shutdown.rebootOnTimeout ?? $true)
 $doCleanup = [bool]($Config.execution.shutdown.cleanupOnTimeout ?? $true)
+$rebootOnlyForUpdates = [bool]($Config.execution.shutdown.rebootOnlyForWindowsUpdates ?? $false)
 $aborted = $false
+
+# If reboot is conditional on Windows Updates requiring it, check session results
+if ($doReboot -and $rebootOnlyForUpdates) {
+    $wuResult = $SessionResults | Where-Object { $_.ModuleName -eq 'WindowsUpdates' }
+    $needsReboot = $wuResult -and $wuResult.ExtraData.RebootRequired
+    if (-not $needsReboot) {
+        Write-Host "  [INFO] Reboot skipped — no Windows Updates required a reboot." -ForegroundColor Cyan
+        $doReboot = $false
+    }
+}
 $deadline = (Get-Date).AddSeconds($rebootSeconds)
 
 if ($NonInteractive -and -not $doReboot) {

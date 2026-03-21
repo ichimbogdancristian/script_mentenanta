@@ -12,7 +12,7 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
 }
 
 function Invoke-SystemOptimization {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding()]
     [OutputType([hashtable])]
     param(
         [Parameter()][hashtable]$OSContext
@@ -40,21 +40,17 @@ function Invoke-SystemOptimization {
                 'service' {
                     $svc   = $item.ServiceName ?? $item.Name
                     $start = $item.DesiredStartType ?? $item.DesiredState ?? 'Disabled'
-                    if ($PSCmdlet.ShouldProcess($svc, "Set-Service -StartupType $start")) {
-                        Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
-                        Set-Service -Name $svc -StartupType $start -ErrorAction Stop
-                        Write-Log -Level SUCCESS -Component SYSOPT -Message "Service '$svc' -> $start"
-                        $changed = $true
-                    }
+                    Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+                    Set-Service -Name $svc -StartupType $start -ErrorAction Stop
+                    Write-Log -Level SUCCESS -Component SYSOPT -Message "Service '$svc' -> $start"
+                    $changed = $true
                 }
                 'powerplan' {
                     $planGuid = $item.GUID ?? '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'  # High performance
-                    if ($PSCmdlet.ShouldProcess("Power plan $planGuid", 'powercfg')) {
-                        $powercfg = Join-Path $env:SystemRoot 'System32\powercfg.exe'
-                        $null = & $powercfg /setactive $planGuid 2>&1
-                        Write-Log -Level SUCCESS -Component SYSOPT -Message "Power plan set to GUID $planGuid"
-                        $changed = $true
-                    }
+                    $powercfg = Join-Path $env:SystemRoot 'System32\powercfg.exe'
+                    $null = & $powercfg /setactive $planGuid 2>&1
+                    Write-Log -Level SUCCESS -Component SYSOPT -Message "Power plan set to GUID $planGuid"
+                    $changed = $true
                 }
                 'registry' {
                     $path  = $item.Path ?? $item.RegistryPath
@@ -62,21 +58,17 @@ function Invoke-SystemOptimization {
                     $val   = $item.DesiredValue
                     $vtype = $item.ValueType ?? 'DWord'
                     if ($path -and $null -ne $val) {
-                        if ($PSCmdlet.ShouldProcess("$path\$vname", "Set $val")) {
-                            $null = Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
-                            Write-Log -Level SUCCESS -Component SYSOPT -Message "Registry set: $path\$vname = $val"
-                            $changed = $true
-                        }
+                        $null = Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
+                        Write-Log -Level SUCCESS -Component SYSOPT -Message "Registry set: $path\$vname = $val"
+                        $changed = $true
                     }
                 }
                 'visualfx' {
                     # Set to best performance visual effects (UserPreferencesMask)
-                    if ($PSCmdlet.ShouldProcess('VisualFX', 'Set best performance')) {
-                        $regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects'
-                        $null = Set-RegistryValue -Path $regPath -Name 'VisualFXSetting' -Value 2 -Type DWord
-                        Write-Log -Level SUCCESS -Component SYSOPT -Message 'Visual effects set to best performance'
-                        $changed = $true
-                    }
+                    $regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects'
+                    $null = Set-RegistryValue -Path $regPath -Name 'VisualFXSetting' -Value 2 -Type DWord
+                    Write-Log -Level SUCCESS -Component SYSOPT -Message 'Visual effects set to best performance'
+                    $changed = $true
                 }
                 default {
                     Write-Log -Level WARN -Component SYSOPT -Message "Unknown optimization type '$type' for $name"

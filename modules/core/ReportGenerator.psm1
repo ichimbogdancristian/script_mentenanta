@@ -37,7 +37,7 @@ Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
     [string] Full path of the created HTML file.
 #>
 function New-MaintenanceReport {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding()]
     [OutputType([string])]
     param(
         [Parameter(Mandatory)] [array]$SessionResults,
@@ -57,10 +57,8 @@ function New-MaintenanceReport {
         -Title          $ReportTitle `
         -Timestamp      $timestamp
 
-    if ($PSCmdlet.ShouldProcess($reportPath, 'Write HTML report')) {
-        $html | Set-Content -Path $reportPath -Encoding UTF8 -Force
-        Write-Log -Level SUCCESS -Component REPORT -Message "Report saved: $reportPath"
-    }
+    $html | Set-Content -Path $reportPath -Encoding UTF8 -Force
+    Write-Log -Level SUCCESS -Component REPORT -Message "Report saved: $reportPath"
     return $reportPath
 }
 

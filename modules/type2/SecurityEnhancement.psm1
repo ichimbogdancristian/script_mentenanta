@@ -12,7 +12,7 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
 }
 
 function Invoke-SecurityEnhancement {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding()]
     [OutputType([hashtable])]
     param(
         [Parameter()][hashtable]$OSContext
@@ -42,19 +42,16 @@ function Invoke-SecurityEnhancement {
                     $val = $item.DesiredValue
                     $vtype = $item.ValueType ?? 'DWord'
                     if ($path -and $vname -and $null -ne $val) {
-                        if ($PSCmdlet.ShouldProcess("$path\$vname", "Set $val")) {
-                            $null = Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
-                            Write-Log -Level SUCCESS -Component SECURITY -Message "Registry: $path\$vname = $val"
-                            $changed = $true
-                        }
+                        $null = Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
+                        Write-Log -Level SUCCESS -Component SECURITY -Message "Registry: $path\$vname = $val"
+                        $changed = $true
                     }
                 }
                 'defender' {
                     $feature = $item.Feature ?? $item.Name
                     $enable = $item.ShouldEnable ?? $true
-                    if ($PSCmdlet.ShouldProcess("Defender.$feature", ($enable ? 'Enable' : 'Disable'))) {
-                        $defChanged = $true
-                        switch ($feature) {
+                    $defChanged = $true
+                    switch ($feature) {
                             'RealTimeProtection' { Set-MpPreference -DisableRealtimeMonitoring (-not $enable) -ErrorAction Stop }
                             'CloudProtection'    { Set-MpPreference -MAPSReporting (if ($enable) { 2 } else { 0 }) -ErrorAction Stop }
                             'NetworkProtection'  { Set-MpPreference -EnableNetworkProtection (if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
@@ -71,36 +68,31 @@ function Invoke-SecurityEnhancement {
                                 $defChanged = $false
                             }
                         }
-                        if ($defChanged) {
-                            Write-Log -Level SUCCESS -Component SECURITY -Message "Defender.$feature -> $enable"
-                            $changed = $true
-                        }
+                    if ($defChanged) {
+                        Write-Log -Level SUCCESS -Component SECURITY -Message "Defender.$feature -> $enable"
+                        $changed = $true
                     }
                 }
                 'firewall' {
                     $profile = $item.Profile ?? 'Domain,Private,Public'
-                    if ($PSCmdlet.ShouldProcess("Firewall ($profile)", 'Enable')) {
-                        Set-NetFirewallProfile -Profile $profile.Split(',') -Enabled True -ErrorAction Stop
-                        Write-Log -Level SUCCESS -Component SECURITY -Message "Firewall enabled: $profile"
-                        $changed = $true
-                    }
+                    Set-NetFirewallProfile -Profile $profile.Split(',') -Enabled True -ErrorAction Stop
+                    Write-Log -Level SUCCESS -Component SECURITY -Message "Firewall enabled: $profile"
+                    $changed = $true
                 }
                 'service' {
                     $svc = $item.ServiceName ?? $item.Name
                     $action = $item.Action ?? 'EnsureRunning'
-                    if ($PSCmdlet.ShouldProcess($svc, $action)) {
-                        if ($action -eq 'EnsureRunning') {
-                            Set-Service -Name $svc -StartupType Automatic -ErrorAction Stop
-                            Start-Service -Name $svc -ErrorAction Stop
-                            Write-Log -Level SUCCESS -Component SECURITY -Message "Service started: $svc"
-                            $changed = $true
-                        }
-                        elseif ($action -eq 'EnsureDisabled') {
-                            Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
-                            Set-Service -Name $svc -StartupType Disabled -ErrorAction Stop
-                            Write-Log -Level SUCCESS -Component SECURITY -Message "Service disabled: $svc"
-                            $changed = $true
-                        }
+                    if ($action -eq 'EnsureRunning') {
+                        Set-Service -Name $svc -StartupType Automatic -ErrorAction Stop
+                        Start-Service -Name $svc -ErrorAction Stop
+                        Write-Log -Level SUCCESS -Component SECURITY -Message "Service started: $svc"
+                        $changed = $true
+                    }
+                    elseif ($action -eq 'EnsureDisabled') {
+                        Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+                        Set-Service -Name $svc -StartupType Disabled -ErrorAction Stop
+                        Write-Log -Level SUCCESS -Component SECURITY -Message "Service disabled: $svc"
+                        $changed = $true
                     }
                 }
                 default {

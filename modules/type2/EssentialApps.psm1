@@ -29,13 +29,15 @@ function Invoke-Install {
     $proc = [System.Diagnostics.Process]::new()
     $proc.StartInfo = $psi
     $null = $proc.Start()
+    $null = $proc.StandardOutput.ReadToEnd()
+    $null = $proc.StandardError.ReadToEnd()
     $proc.WaitForExit()
     return $proc.ExitCode
 }
 #endregion
 
 function Invoke-EssentialApp {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding()]
     [OutputType([hashtable])]
     param(
         [Parameter()][hashtable]$OSContext
@@ -81,38 +83,34 @@ function Invoke-EssentialApp {
         try {
             # 1. winget
             if (-not $installed -and $wingetId -and $hasWinget) {
-                if ($PSCmdlet.ShouldProcess($wingetId, 'winget install')) {
-                    $scopeArgs = if ($scope -eq 'user') { @('--scope', 'user') } else { @('--scope', 'machine') }
-                    $wingetArgs = @(
-                        'install',
-                        '--id', $wingetId,
-                        '--source', 'winget',
-                        '--silent',
-                        '--disable-interactivity',
-                        '--accept-package-agreements',
-                        '--accept-source-agreements'
-                    ) + $scopeArgs
-                    $exitCode = Invoke-Install -FilePath 'winget' -ArgumentList $wingetArgs
-                    if ($exitCode -in 0, -1978335189) {
-                        # 0=success, -1978335189=already installed
-                        Write-Log -Level SUCCESS -Component ESSAPPS -Message "winget installed: $name"
-                        $installed = $true
-                    }
-                    else {
-                        Write-Log -Level WARN -Component ESSAPPS -Message "winget exit $exitCode for $name"
-                    }
+                $scopeArgs = if ($scope -eq 'user') { @('--scope', 'user') } else { @('--scope', 'machine') }
+                $wingetArgs = @(
+                    'install',
+                    '--id', $wingetId,
+                    '--source', 'winget',
+                    '--silent',
+                    '--disable-interactivity',
+                    '--accept-package-agreements',
+                    '--accept-source-agreements'
+                ) + $scopeArgs
+                $exitCode = Invoke-Install -FilePath 'winget' -ArgumentList $wingetArgs
+                if ($exitCode -in 0, -1978335189) {
+                    # 0=success, -1978335189=already installed
+                    Write-Log -Level SUCCESS -Component ESSAPPS -Message "winget installed: $name"
+                    $installed = $true
+                }
+                else {
+                    Write-Log -Level WARN -Component ESSAPPS -Message "winget exit $exitCode for $name"
                 }
             }
 
             # 2. chocolatey fallback
             if (-not $installed -and $chocoId -and $hasChoco) {
-                if ($PSCmdlet.ShouldProcess($chocoId, 'choco install')) {
-                    $exitCode = Invoke-Install -FilePath 'choco' `
-                        -ArgumentList @('install', $chocoId, '--yes', '--no-progress')
-                    if ($exitCode -eq 0) {
-                        Write-Log -Level SUCCESS -Component ESSAPPS -Message "choco installed: $name"
-                        $installed = $true
-                    }
+                $exitCode = Invoke-Install -FilePath 'choco' `
+                    -ArgumentList @('install', $chocoId, '--yes', '--no-progress')
+                if ($exitCode -eq 0) {
+                    Write-Log -Level SUCCESS -Component ESSAPPS -Message "choco installed: $name"
+                    $installed = $true
                 }
             }
 

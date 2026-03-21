@@ -12,7 +12,7 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
 }
 
 function Invoke-AppUpgrade {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding()]
     [OutputType([hashtable])]
     param(
         [Parameter()][hashtable]$OSContext
@@ -41,6 +41,8 @@ function Invoke-AppUpgrade {
         $p = [System.Diagnostics.Process]::new()
         $p.StartInfo = $psi
         $p.Start() | Out-Null
+        $null = $p.StandardOutput.ReadToEnd()
+        $null = $p.StandardError.ReadToEnd()
         $p.WaitForExit()
         return $p.ExitCode
     }
@@ -61,30 +63,26 @@ function Invoke-AppUpgrade {
 
             # 1. winget — disable-interactivity prevents interactive prompts
             if ($source -eq 'winget' -and $id -and $hasWinget) {
-                if ($PSCmdlet.ShouldProcess($id, 'winget upgrade')) {
-                    $wingetArgs = @('upgrade', '--id', $id, '--silent',
-                        '--accept-package-agreements', '--accept-source-agreements',
-                        '--disable-interactivity')
-                    $exitCode = Invoke-Install -Exe 'winget' -Args $wingetArgs
-                    if ($exitCode -in 0, -1978335189) {
-                        Write-Log -Level SUCCESS -Component APPUPGR -Message "Upgraded (winget): $name"
-                        $upgraded = $true
-                    }
-                    else {
-                        Write-Log -Level WARN -Component APPUPGR -Message "winget exit $exitCode for $name"
-                    }
+                $wingetArgs = @('upgrade', '--id', $id, '--silent',
+                    '--accept-package-agreements', '--accept-source-agreements',
+                    '--disable-interactivity')
+                $exitCode = Invoke-Install -Exe 'winget' -Args $wingetArgs
+                if ($exitCode -in 0, -1978335189) {
+                    Write-Log -Level SUCCESS -Component APPUPGR -Message "Upgraded (winget): $name"
+                    $upgraded = $true
+                }
+                else {
+                    Write-Log -Level WARN -Component APPUPGR -Message "winget exit $exitCode for $name"
                 }
             }
 
             # 2. chocolatey
             if (-not $upgraded -and $source -eq 'choco' -and $id -and $hasChoco) {
-                if ($PSCmdlet.ShouldProcess($id, 'choco upgrade')) {
-                    $chocoArgs = @('upgrade', $id, '--yes', '--no-progress')
-                    $exitCode = Invoke-Install -Exe 'choco' -Args $chocoArgs
-                    if ($exitCode -eq 0) {
-                        Write-Log -Level SUCCESS -Component APPUPGR -Message "Upgraded (choco): $name"
-                        $upgraded = $true
-                    }
+                $chocoArgs = @('upgrade', $id, '--yes', '--no-progress')
+                $exitCode = Invoke-Install -Exe 'choco' -Args $chocoArgs
+                if ($exitCode -eq 0) {
+                    Write-Log -Level SUCCESS -Component APPUPGR -Message "Upgraded (choco): $name"
+                    $upgraded = $true
                 }
             }
 

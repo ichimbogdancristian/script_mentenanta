@@ -23,7 +23,7 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     [hashtable] Standard module result from New-ModuleResult.
 #>
 function Invoke-BloatwareRemoval {
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding()]
     [OutputType([hashtable])]
     param(
         [Parameter()][hashtable]$OSContext
@@ -72,17 +72,15 @@ function Invoke-BloatwareRemoval {
                     $pkg = Get-AppxPackage -AllUsers -Name "*$pkgName*" -ErrorAction SilentlyContinue
                     if (-not $pkg) { $pkg = Get-AppxPackage -Name "*$pkgName*" -ErrorAction SilentlyContinue }
                     if ($pkg) {
-                        if ($PSCmdlet.ShouldProcess($pkgName, 'Remove-AppxPackage')) {
-                            $pkg | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
-                            $pkg | Remove-AppxPackage -ErrorAction SilentlyContinue
-                            Write-Log -Level SUCCESS -Component BLOATWARE -Message "Removed AppX: $pkgName"
-                            $removed = $true
-                        }
+                        $pkg | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+                        $pkg | Remove-AppxPackage -ErrorAction SilentlyContinue
+                        Write-Log -Level SUCCESS -Component BLOATWARE -Message "Removed AppX: $pkgName"
+                        $removed = $true
                     }
                     try {
                         $prov = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
                         Where-Object { $_.PackageName -like "*$pkgName*" }
-                        if ($prov -and $PSCmdlet.ShouldProcess($pkgName, 'Remove provisioned')) {
+                        if ($prov) {
                             $prov | ForEach-Object {
                                 $null = Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue
                             }
@@ -92,8 +90,7 @@ function Invoke-BloatwareRemoval {
                 }
                 else {
                     # Fallback: delegate AppX removal to Windows PowerShell 5.1
-                    if ($PSCmdlet.ShouldProcess($pkgName, 'Remove-AppxPackage (WinPS fallback)')) {
-                        $fallbackScript = @"
+                    $fallbackScript = @"
 `$pkg = Get-AppxPackage -AllUsers -Name '*$pkgName*' -ErrorAction SilentlyContinue
 if (-not `$pkg) { `$pkg = Get-AppxPackage -Name '*$pkgName*' -ErrorAction SilentlyContinue }
 if (`$pkg) {
@@ -105,28 +102,28 @@ Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
     Where-Object { `$_.PackageName -like '*$pkgName*' } |
     ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName `$_.PackageName -ErrorAction SilentlyContinue }
 "@
-                        $result = & powershell.exe -NoProfile -Command $fallbackScript 2>$null
-                        if ($result -contains 'REMOVED') {
-                            Write-Log -Level SUCCESS -Component BLOATWARE -Message "Removed AppX (WinPS fallback): $pkgName"
-                            $removed = $true
-                        }
+                    $result = & powershell.exe -NoProfile -Command $fallbackScript 2>$null
+                    if ($result -contains 'REMOVED') {
+                        Write-Log -Level SUCCESS -Component BLOATWARE -Message "Removed AppX (WinPS fallback): $pkgName"
+                        $removed = $true
                     }
                 }
             }
 
             # 2. Winget fallback
             if (-not $removed -and $wingetId -and (Test-CommandAvailable 'winget')) {
-                if ($PSCmdlet.ShouldProcess($wingetId, 'winget uninstall')) {
-                    $null = & winget uninstall --id $wingetId --silent --accept-source-agreements 2>&1
-                    if ($LASTEXITCODE -eq 0) {
-                        Write-Log -Level SUCCESS -Component BLOATWARE -Message "Winget removed: $wingetId"
-                        $removed = $true
-                    }
+                $null = & winget uninstall --id $wingetId --silent --accept-source-agreements 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Log -Level SUCCESS -Component BLOATWARE -Message "Winget removed: $wingetId"
+                    $removed = $true
                 }
             }
 
             if ($removed) { $processed++ }
-            else { Write-Log -Level WARN -Component BLOATWARE -Message "Not found to remove: $name" }
+            else {
+                Write-Log -Level WARN -Component BLOATWARE -Message "Not found to remove: $name"
+                $failed++; $errors += "Not found: $name"
+            }
         }
         catch {
             Write-Log -Level ERROR -Component BLOATWARE -Message "Failed [$name]: $_"

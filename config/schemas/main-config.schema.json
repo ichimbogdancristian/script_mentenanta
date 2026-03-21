@@ -16,8 +16,7 @@
       "description": "Execution behavior and UI settings",
       "required": [
         "defaultMode",
-        "countdownSeconds",
-        "enableDryRun"
+        "countdownSeconds"
       ],
       "properties": {
         "defaultMode": {
@@ -33,10 +32,6 @@
           "minimum": 0,
           "maximum": 300,
           "description": "Countdown duration before starting maintenance tasks (0-300 seconds)"
-        },
-        "enableDryRun": {
-          "type": "boolean",
-          "description": "Enable dry-run simulation mode (no actual system changes)"
         },
         "autoSelectDefault": {
           "type": "boolean",
@@ -96,10 +91,6 @@
         "skipSystemOptimization": {
           "type": "boolean",
           "description": "Skip system optimization module"
-        },
-        "skipSecurityAudit": {
-          "type": "boolean",
-          "description": "Skip security audit module"
         },
         "skipSecurityEnhancement": {
           "type": "boolean",
