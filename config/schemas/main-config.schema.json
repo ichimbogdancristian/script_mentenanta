@@ -59,9 +59,9 @@
               "type": "boolean",
               "description": "Reboot system when countdown expires"
             },
-            "rebootOnlyForWindowsUpdates": {
+            "rebootOnlyWhenRequired": {
               "type": "boolean",
-              "description": "Only reboot if Windows Update specifically requires it (ignores other pending reboot signals)",
+              "description": "Only reboot at the end of the run if any module flagged RebootRequired (e.g. WindowsUpdates, SecurityEnhancement). If false, always reboot when rebootOnTimeout is true.",
               "default": true
             }
           }

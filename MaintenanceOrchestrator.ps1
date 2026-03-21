@@ -473,16 +473,22 @@ Write-Host ""
 $rebootSeconds = [int]($Config.execution.shutdown.countdownSeconds ?? 120)
 $doReboot = [bool]($Config.execution.shutdown.rebootOnTimeout ?? $true)
 $doCleanup = [bool]($Config.execution.shutdown.cleanupOnTimeout ?? $true)
-$rebootOnlyForUpdates = [bool]($Config.execution.shutdown.rebootOnlyForWindowsUpdates ?? $false)
+$rebootOnlyWhenRequired = [bool]($Config.execution.shutdown.rebootOnlyWhenRequired ??
+    $Config.execution.shutdown.rebootOnlyForWindowsUpdates ?? $false)
 $aborted = $false
 
-# If reboot is conditional on Windows Updates requiring it, check session results
-if ($doReboot -and $rebootOnlyForUpdates) {
-    $wuResult = $SessionResults | Where-Object { $_.ModuleName -eq 'WindowsUpdates' }
-    $needsReboot = $wuResult -and $wuResult.ExtraData.RebootRequired
+# If reboot is conditional, check ALL module results for a RebootRequired flag
+if ($doReboot -and $rebootOnlyWhenRequired) {
+    $needsReboot = $SessionResults | Where-Object {
+        $_.RebootRequired -eq $true -or $_.ExtraData.RebootRequired -eq $true
+    }
     if (-not $needsReboot) {
-        Write-Host "  [INFO] Reboot skipped — no Windows Updates required a reboot." -ForegroundColor Cyan
+        Write-Host "  [INFO] Reboot skipped — no module flagged a reboot requirement." -ForegroundColor Cyan
         $doReboot = $false
+    }
+    else {
+        $rebootModules = ($needsReboot | ForEach-Object { $_.ModuleName }) -join ', '
+        Write-Host "  [INFO] Reboot required by: $rebootModules" -ForegroundColor Yellow
     }
 }
 $deadline = (Get-Date).AddSeconds($rebootSeconds)
