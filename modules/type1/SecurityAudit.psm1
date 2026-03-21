@@ -75,7 +75,18 @@ function Invoke-SecurityAudit {
                         })
                 }
             }
-            catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Defender status query failed: $_" }
+            catch {
+                Write-Log -Level WARN -Component SEC-AUDIT -Message "Defender status query failed: $_"
+                $diff.Add(@{
+                        Type         = 'defender'
+                        Name         = 'DefenderStatusUnknown'
+                        Feature      = 'RealTimeProtection'
+                        ShouldEnable = $true
+                        Description  = 'Windows Defender status could not be verified'
+                        CurrentState = 'Unknown'
+                        DesiredState = $true
+                    })
+            }
 
             # Check cloud protection, network protection, and PUA via Get-MpPreference
             try {
@@ -117,7 +128,20 @@ function Invoke-SecurityAudit {
                     Write-Log -Level WARN -Component SEC-AUDIT -Message 'Defender PUA protection is DISABLED'
                 }
             }
-            catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Defender preference query failed: $_" }
+            catch {
+                Write-Log -Level WARN -Component SEC-AUDIT -Message "Defender preference query failed: $_"
+                foreach ($feat in @('CloudProtection', 'NetworkProtection', 'PUAProtection')) {
+                    $diff.Add(@{
+                            Type         = 'defender'
+                            Name         = $feat
+                            Feature      = $feat
+                            ShouldEnable = $true
+                            Description  = "Defender $feat status could not be verified"
+                            CurrentState = 'Unknown'
+                            DesiredState = $true
+                        })
+                }
+            }
         }
 
         # 4. Firewall status
@@ -139,7 +163,17 @@ function Invoke-SecurityAudit {
                     }
                 }
             }
-            catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Firewall query failed: $_" }
+            catch {
+                Write-Log -Level WARN -Component SEC-AUDIT -Message "Firewall query failed: $_"
+                $diff.Add(@{
+                        Type         = 'firewall'
+                        Name         = 'FirewallStatusUnknown'
+                        Profile      = 'Domain,Private,Public'
+                        Description  = 'Firewall status could not be verified'
+                        CurrentState = 'Unknown'
+                        DesiredState = $true
+                    })
+            }
         }
 
         # 5. Services that must be running

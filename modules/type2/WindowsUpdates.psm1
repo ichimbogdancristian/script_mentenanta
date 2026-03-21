@@ -51,9 +51,15 @@ function Invoke-WindowsUpdate {
                         Write-Log -Level WARN -Component WINUPDATE -Message "No KB number or update ID — skipping: $title"
                         $failed++; $errors += "[No ID] $title"; continue
                     }
-                    Write-Log -Level SUCCESS -Component WINUPDATE -Message "Installed: $title"
-                    if ($result | Where-Object { $_.RebootRequired }) { $rebootRequired = $true }
-                    $processed++
+                    if ($result -and ($result | Where-Object { $_.Result -eq 'Failed' })) {
+                        Write-Log -Level ERROR -Component WINUPDATE -Message "Install reported failure: $title"
+                        $errors += "[Failed] $title"; $failed++
+                    }
+                    else {
+                        Write-Log -Level SUCCESS -Component WINUPDATE -Message "Installed: $title"
+                        $processed++
+                    }
+                    if ($result -and ($result | Where-Object { $_.RebootRequired })) { $rebootRequired = $true }
                 }
                 catch {
                     Write-Log -Level ERROR -Component WINUPDATE -Message "PSWindowsUpdate failed [$title]: $_"
@@ -74,16 +80,17 @@ function Invoke-WindowsUpdate {
         $null = & $usoClient StartScan 2>&1
         Start-Sleep -Seconds 2
         $null = & $usoClient StartInstall 2>&1
-        # usoclient is async; we cannot confirm results. Mark as triggered, not verified.
+        $processed = $diff.Count
         $rebootRequired = $true
+        Write-Log -Level INFO -Component WINUPDATE -Message "usoclient triggered $processed update(s) — reboot expected"
     }
 
-    $extraData = @{ RebootRequired = $rebootRequired }
+    $extraData = @{ RebootRequired = $rebootRequired; UsedUsoclient = (-not $pswuAvailable) }
     if ($rebootRequired) {
         Write-Log -Level WARN -Component WINUPDATE -Message 'One or more updates require a reboot'
     }
 
-    $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
+    $status = if (-not $pswuAvailable) { 'Warning' } elseif ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
     Write-Log -Level INFO -Component WINUPDATE -Message "Done: $processed triggered/installed, $failed failed"
     return New-ModuleResult -ModuleName 'WindowsUpdates' -Status $status -ItemsDetected $diff.Count `
         -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors -ExtraData $extraData

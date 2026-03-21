@@ -25,17 +25,18 @@ function Invoke-WindowsUpdatesAudit {
             Write-Log -Level INFO -Component WU-AUDIT -Message 'Windows Updates disabled in config - skipping'
             Save-DiffList -ModuleName 'WindowsUpdates' -DiffList @()
             return New-ModuleResult -ModuleName 'WindowsUpdatesAudit' -Status 'Skipped' `
-                                    -Message 'Disabled in configuration'
+                -Message 'Disabled in configuration'
         }
 
         $pendingUpdates = [System.Collections.Generic.List[hashtable]]::new()
+        $comFailed = $false
 
         # 2. Query Windows Update via COM
         Write-Log -Level INFO -Component WU-AUDIT -Message 'Querying Windows Update service...'
         try {
-            $updateSession   = New-Object -ComObject Microsoft.Update.Session
-            $updateSearcher  = $updateSession.CreateUpdateSearcher()
-            $searchResult    = $updateSearcher.Search('IsInstalled=0 and IsHidden=0')
+            $updateSession = New-Object -ComObject Microsoft.Update.Session
+            $updateSearcher = $updateSession.CreateUpdateSearcher()
+            $searchResult = $updateSearcher.Search('IsInstalled=0 and IsHidden=0')
 
             foreach ($update in $searchResult.Updates) {
                 $title = $update.Title
@@ -47,33 +48,34 @@ function Invoke-WindowsUpdatesAudit {
                 }
                 if ($excluded) { continue }
 
-                # Categorise (simplified — MsrcSeverity helps for Security)
-                $isSecurityCritical = ($update.MsrcSeverity -in 'Critical','Important') -or
-                                      ($title -match 'Security|Cumulative')
-                $isCritical  = $update.MsrcSeverity -eq 'Critical'
-                $isImportant = $update.MsrcSeverity -in 'Critical','Important'
-                $isOptional  = -not $isCritical -and -not $isImportant
+                # Classify by severity (mutually exclusive categories)
+                $severity = $update.MsrcSeverity
+                $isSecurity = [bool]$severity -or ($title -match 'Security|Cumulative')
+                $isCritical = $severity -eq 'Critical'
+                $isImportant = $severity -eq 'Important'
+                $isOptional = -not $isSecurity -and -not $isCritical -and -not $isImportant
 
                 # Apply category filters from config
-                $include = ($config.categories.security   -and $isSecurityCritical) `
-                        -or ($config.categories.critical  -and $isCritical) `
-                        -or ($config.categories.important -and $isImportant) `
-                        -or ($config.categories.optional  -and $isOptional)
+                $include = ($config.categories.security -and $isSecurity)  `
+                    -or ($config.categories.critical -and $isCritical)  `
+                    -or ($config.categories.important -and $isImportant) `
+                    -or ($config.categories.optional -and $isOptional)
 
                 if ($include) {
                     $pendingUpdates.Add(@{
-                        Title       = $title
-                        Identity    = $update.Identity.UpdateID
-                        Severity    = $update.MsrcSeverity
-                        SizeMB      = [math]::Round($update.MaxDownloadSize / 1MB, 1)
-                        IsMandatory = $update.IsMandatory
-                    })
+                            Title       = $title
+                            Identity    = $update.Identity.UpdateID
+                            Severity    = $severity
+                            SizeMB      = [math]::Round($update.MaxDownloadSize / 1MB, 1)
+                            IsMandatory = $update.IsMandatory
+                        })
                     Write-Log -Level DEBUG -Component WU-AUDIT -Message "Pending: $title"
                 }
             }
         }
         catch {
-            Write-Log -Level WARN -Component WU-AUDIT -Message "COM WU query failed — pending updates will not be detected: $_"
+            $comFailed = $true
+            Write-Log -Level ERROR -Component WU-AUDIT -Message "COM WU query failed — pending updates will not be detected: $_"
         }
 
         Write-Log -Level INFO -Component WU-AUDIT -Message "Pending updates: $($pendingUpdates.Count)"
@@ -84,12 +86,20 @@ function Invoke-WindowsUpdatesAudit {
         # 4. Persist audit data
         $auditPath = Get-TempPath -Category 'data' -FileName 'wu-audit.json'
         @{ Timestamp = (Get-Date -Format 'o'); Pending = $pendingUpdates.ToArray() } `
-            | ConvertTo-Json -Depth 8 | Set-Content -Path $auditPath -Encoding UTF8 -Force
+        | ConvertTo-Json -Depth 8 | Set-Content -Path $auditPath -Encoding UTF8 -Force
+
+        if ($comFailed) {
+            Write-Log -Level WARN -Component WU-AUDIT -Message 'Audit completed with errors — COM query failed'
+            return New-ModuleResult -ModuleName 'WindowsUpdatesAudit' -Status 'Warning' `
+                -ItemsDetected $pendingUpdates.Count `
+                -Message 'COM WU query failed — results may be incomplete' `
+                -Errors @('Windows Update COM query failed')
+        }
 
         Write-Log -Level SUCCESS -Component WU-AUDIT -Message "Windows Updates audit complete: $($pendingUpdates.Count) pending"
         return New-ModuleResult -ModuleName 'WindowsUpdatesAudit' -Status 'Success' `
-                                -ItemsDetected $pendingUpdates.Count `
-                                -Message "$($pendingUpdates.Count) updates pending"
+            -ItemsDetected $pendingUpdates.Count `
+            -Message "$($pendingUpdates.Count) updates pending"
     }
     catch {
         Write-Log -Level ERROR -Component WU-AUDIT -Message "Audit failed: $_"
