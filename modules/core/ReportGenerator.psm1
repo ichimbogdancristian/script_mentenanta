@@ -100,6 +100,43 @@ function Build-ReportHtml {
 
     $moduleCards = ($SessionResults | ForEach-Object { Build-ModuleCard -Result $_ }) -join "`n"
 
+    # Error aggregation across all modules
+    $allErrors = [System.Collections.Generic.List[string]]::new()
+    foreach ($r in $SessionResults) {
+        if ($r.Errors -and @($r.Errors).Count -gt 0) {
+            foreach ($e in $r.Errors) {
+                $allErrors.Add("[" + $r.ModuleName + "] " + $e)
+            }
+        }
+    }
+
+    $errorSummaryHtml = ''
+    if ($allErrors.Count -gt 0) {
+        $errItems = ($allErrors | ForEach-Object {
+                $escaped = $_ -replace '<', '&lt;' -replace '>', '&gt;'
+                "<div class='err-mod'><span class='err-msg'>$escaped</span></div>"
+            }) -join "`n"
+        $errorSummaryHtml = @"
+<div class="err-summary">
+  <h3>&#9888; $($allErrors.Count) Error(s) Across All Modules</h3>
+  $errItems
+</div>
+"@
+    }
+
+    # Group module cards by Type1 (Audits) and Type2 (Actions)
+    $type1Results = @($SessionResults | Where-Object { $_.ModuleType -eq 'Type1' })
+    $type2Results = @($SessionResults | Where-Object { $_.ModuleType -eq 'Type2' })
+    $type1Cards = ($type1Results | ForEach-Object { Build-ModuleCard -Result $_ }) -join "`n"
+    $type2Cards = ($type2Results | ForEach-Object { Build-ModuleCard -Result $_ }) -join "`n"
+
+    # Reboot status
+    $rebootNeeded = [bool]($SessionResults | Where-Object { $_.RebootRequired -eq $true })
+    $rebootBanner = if ($rebootNeeded) {
+        '<div class="banner danger">&#9888; One or more modules require a system reboot</div>'
+    }
+    else { '' }
+
     $rawTranscript = '(transcript not available)'
     if ($TranscriptPath -and (Test-Path $TranscriptPath)) {
         $rawContent = Get-Content -Path $TranscriptPath -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
@@ -164,6 +201,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .mod-bd .r{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px}
 .mod-bd .r:last-child{border-bottom:none}
 .mod-bd .r .k{color:var(--muted)}
+.mod-type{font-size:10px;color:var(--muted);margin-left:6px;text-transform:uppercase;letter-spacing:.5px}
+.reboot-tag{display:inline-block;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:600;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);margin-left:6px}
 /* BADGES */
 .badge{display:inline-block;padding:2px 9px;border-radius:12px;font-size:11px;font-weight:600}
 .bs{background:rgba(34,197,94,.15);color:var(--success);border:1px solid rgba(34,197,94,.3)}
@@ -174,6 +213,27 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .errs{margin-top:6px;list-style:none}
 .errs li{font-size:11px;color:var(--danger);padding:2px 0 2px 12px;position:relative}
 .errs li::before{content:'✕';position:absolute;left:0}
+/* ERROR AGGREGATION */
+.err-summary{background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:14px 18px;margin-bottom:22px}
+.err-summary h3{font-size:14px;color:var(--danger);margin-bottom:8px}
+.err-summary .err-mod{font-size:12px;margin-bottom:6px}
+.err-summary .err-mod .mod-name{font-weight:600;color:var(--text)}
+.err-summary .err-mod .err-msg{color:var(--muted);font-size:11px;padding-left:12px}
+/* DETAIL ITEMS */
+.mod-details{margin-top:8px}
+.mod-details summary{font-size:12px;font-weight:600;padding:6px 10px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:6px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px}
+.mod-details summary::-webkit-details-marker{display:none}
+.mod-details summary::before{content:'▶';font-size:8px;transition:transform .2s}
+.mod-details[open] summary::before{transform:rotate(90deg)}
+.item-list{margin-top:6px;font-size:11px}
+.item-list .item{padding:4px 8px;border-left:2px solid var(--accent);margin-bottom:3px;background:rgba(124,58,237,.04);border-radius:0 4px 4px 0}
+.item-list .item .item-name{font-weight:600;color:var(--text)}
+.item-list .item .item-detail{color:var(--muted)}
+/* EXTRA DATA */
+.extra{margin-top:6px}
+.extra .ex-row{display:flex;justify-content:space-between;padding:3px 0;font-size:11px;border-bottom:1px solid rgba(46,51,72,.5)}
+.extra .ex-row .k{color:var(--muted)}
+.extra .ex-row .v{color:var(--info)}
 /* TRANSCRIPT */
 details summary{cursor:pointer;font-size:15px;font-weight:600;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;list-style:none;display:flex;align-items:center;gap:8px}
 details summary::-webkit-details-marker{display:none}
@@ -200,6 +260,8 @@ details[open] summary{border-radius:8px 8px 0 0;border-bottom:none}
 </div>
 
 <div class="banner $overallStatus">$overallLabel</div>
+$rebootBanner
+$errorSummaryHtml
 
 <div class="summary-grid">
   <div class="stat">   <div class="val">$totalModules</div><div class="lbl">Modules Run</div></div>
@@ -217,8 +279,11 @@ details[open] summary{border-radius:8px 8px 0 0;border-bottom:none}
   <div class="inf"><div class="k">Generated</div><div class="v">$genTime</div></div>
 </div>
 
-<div class="sec">Module Results</div>
-<div class="mod-grid">$moduleCards</div>
+<div class="sec">Stage 1 &mdash; System Audit Results</div>
+<div class="mod-grid">$type1Cards</div>
+
+<div class="sec">Stage 3 &mdash; Maintenance Action Results</div>
+<div class="mod-grid">$type2Cards</div>
 
 <div class="sec">Maintenance Log (Full Transcript)</div>
 <details>
@@ -254,6 +319,9 @@ function Build-ModuleCard {
         default { 'bm' }
     }
 
+    $typeLabel = if ($Result.ModuleType) { "<span class='mod-type'>$($Result.ModuleType)</span>" } else { '' }
+    $rebootTag = if ($Result.RebootRequired) { "<span class='reboot-tag'>Reboot Required</span>" } else { '' }
+
     $errHtml = ''
     if ($Result.Errors -and @($Result.Errors).Count -gt 0) {
         $items = ($Result.Errors | ForEach-Object {
@@ -270,9 +338,74 @@ function Build-ModuleCard {
     else { '' }
     $msgRow = if ($msg) { "<div class='r'><span class='k'>Note</span><span>$msg</span></div>" } else { '' }
 
+    # ExtraData rendering
+    $extraHtml = ''
+    if ($Result.ExtraData -and $Result.ExtraData.Count -gt 0) {
+        $exRows = ($Result.ExtraData.GetEnumerator() | ForEach-Object {
+                $ek = $_.Key -replace '<', '&lt;' -replace '>', '&gt;'
+                $ev = "$($_.Value)" -replace '<', '&lt;' -replace '>', '&gt;'
+                "<div class='ex-row'><span class='k'>$ek</span><span class='v'>$ev</span></div>"
+            }) -join ''
+        $extraHtml = "<div class='extra'>$exRows</div>"
+    }
+
+    # Detailed items from diff list (what was audited/changed)
+    $detailHtml = ''
+    $moduleName = $Result.ModuleName
+    $diffKey = $moduleName  # Try to load diff data for this module
+    try {
+        $diffData = Get-DiffList -ModuleName $diffKey -ErrorAction SilentlyContinue
+        if (-not $diffData -or $diffData.Count -eq 0) {
+            # Try common key mappings
+            $keyMap = @{
+                'BloatwareDetectionAudit' = 'BloatwareRemoval'
+                'BloatwareRemoval'        = 'BloatwareRemoval'
+                'EssentialAppsAudit'      = 'EssentialApps'
+                'EssentialApps'           = 'EssentialApps'
+                'SecurityAudit'           = 'SecurityEnhancement'
+                'SecurityEnhancement'     = 'SecurityEnhancement'
+                'TelemetryAudit'          = 'TelemetryDisable'
+                'TelemetryDisable'        = 'TelemetryDisable'
+                'SystemOptimizationAudit' = 'SystemOptimization'
+                'SystemOptimization'      = 'SystemOptimization'
+                'WindowsUpdatesAudit'     = 'WindowsUpdates'
+                'WindowsUpdates'          = 'WindowsUpdates'
+                'AppUpgradeAudit'         = 'AppUpgrade'
+                'AppUpgrade'              = 'AppUpgrade'
+            }
+            if ($keyMap[$moduleName]) {
+                $diffData = Get-DiffList -ModuleName $keyMap[$moduleName] -ErrorAction SilentlyContinue
+            }
+        }
+        if ($diffData -and $diffData.Count -gt 0) {
+            $maxItems = [Math]::Min($diffData.Count, 20)  # Cap at 20 items to keep report readable
+            $itemRows = ($diffData[0..($maxItems - 1)] | ForEach-Object {
+                    $itemName = ($_.Name ?? $_.name ?? 'Unknown') -replace '<', '&lt;' -replace '>', '&gt;'
+                    $itemType = ($_.Type ?? $_.type ?? '') -replace '<', '&lt;' -replace '>', '&gt;'
+                    $currentSt = ($_.CurrentState ?? '') -replace '<', '&lt;' -replace '>', '&gt;'
+                    $desiredSt = ($_.DesiredState ?? '') -replace '<', '&lt;' -replace '>', '&gt;'
+                    $desc = ($_.Description ?? '') -replace '<', '&lt;' -replace '>', '&gt;'
+                    $detailText = if ($desc) { $desc }
+                    elseif ($currentSt -and $desiredSt) { "$currentSt &#8594; $desiredSt" }
+                    else { $itemType }
+                    "<div class='item'><span class='item-name'>$itemName</span> <span class='item-detail'>$detailText</span></div>"
+                }) -join ''
+            $moreText = if ($diffData.Count -gt 20) { " <span style='color:var(--muted);font-size:10px'>(+$($diffData.Count - 20) more)</span>" } else { '' }
+            $detailHtml = @"
+<details class="mod-details">
+  <summary>$($diffData.Count) item(s) detailed$moreText</summary>
+  <div class="item-list">$itemRows</div>
+</details>
+"@
+        }
+    }
+    catch {
+        # Diff data not available — that's fine, skip detail section
+    }
+
     return @"
 <div class="mod">
-  <div class="mod-hd"><span class="nm">$($Result.ModuleName)</span><span class="badge $badgeClass">$($Result.Status)</span></div>
+  <div class="mod-hd"><span class="nm">$($Result.ModuleName)$typeLabel$rebootTag</span><span class="badge $badgeClass">$($Result.Status)</span></div>
   <div class="mod-bd">
     <div class="r"><span class="k">Timestamp</span><span>$($Result.Timestamp)</span></div>
     <div class="r"><span class="k">Detected</span><span>$($Result.ItemsDetected)</span></div>
@@ -280,7 +413,9 @@ function Build-ModuleCard {
     <div class="r"><span class="k">Skipped</span><span>$($Result.ItemsSkipped)</span></div>
     <div class="r"><span class="k">Failed</span><span>$($Result.ItemsFailed)</span></div>
     $msgRow
+    $extraHtml
     $errHtml
+    $detailHtml
   </div>
 </div>
 "@

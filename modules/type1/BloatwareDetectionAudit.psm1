@@ -25,6 +25,10 @@ function Invoke-BloatwareAudit {
             return New-ModuleResult -ModuleName 'BloatwareDetectionAudit' -Status 'Failed' `
                 -Message 'Bloatware baseline list not found'
         }
+        if (-not $baseline.common) {
+            return New-ModuleResult -ModuleName 'BloatwareDetectionAudit' -Status 'Failed' `
+                -Message 'Invalid bloatware baseline structure (missing common section)'
+        }
 
         # 2. OS-aware baseline (common + OS-specific entries)
         $osCtx = if ($global:OSContext) { $global:OSContext } else { Get-OSContext }
@@ -75,11 +79,6 @@ function Invoke-BloatwareAudit {
 
         # 6. Save diff
         Save-DiffList -ModuleName 'BloatwareRemoval' -DiffList @($combined)
-
-        # 7. Persist audit data
-        $auditPath = Get-TempPath -Category 'data' -FileName 'bloatware-audit.json'
-        @{ Timestamp = (Get-Date -Format 'o'); Found = @($combined); BaselineCount = $allBaseline.Count } `
-        | ConvertTo-Json -Depth 5 | Set-Content -Path $auditPath -Encoding UTF8 -Force
 
         Write-Log -Level SUCCESS -Component BLOAT-AUDIT -Message "Bloatware detection complete: $($combined.Count) found"
         return New-ModuleResult -ModuleName 'BloatwareDetectionAudit' -Status 'Success' `

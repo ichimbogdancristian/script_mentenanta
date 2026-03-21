@@ -30,28 +30,5 @@
     "JetBrains*",
     "IntelliJ*",
     "Android Studio*"
-  ],
-  "safety": {
-    "createRestorePoint": true,
-    "backupConfigs": false,
-    "testMode": false,
-    "maxConcurrentUpgrades": 5,
-    "stopOnFirstFailure": false
-  },
-  "ExecutionSettings": {
-    "UpgradeTimeout": 300,
-    "RetryAttempts": 2,
-    "RetryDelay": 5,
-    "ContinueOnError": true
-  },
-  "LoggingSettings": {
-    "LogLevel": "Info",
-    "DetailedOutput": true,
-    "CaptureVersionHistory": true
-  },
-  "ReportingSettings": {
-    "IncludeBeforeAfterVersions": true,
-    "TrackSizeChanges": false,
-    "GenerateUpgradeHistory": true
-  }
+  ]
 }

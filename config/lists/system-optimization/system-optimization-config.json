@@ -31,13 +31,16 @@
       "_note": "DiagTrack and dmwappushservice moved to telemetry-list.json to avoid duplication"
     },
     "visualEffects": {
-      "performance": {
-        "animations": false,
-        "shadows": false,
-        "transparency": false,
-        "smoothEdges": false,
-        "showWindowContents": true
-      }
+      "preset": "balanced",
+      "disableAnimations": true,
+      "disableShadows": true,
+      "enableSmoothEdges": true,
+      "enableShowWindowContents": true,
+      "disableTransparency": true
+    },
+    "background": {
+      "type": "Picture",
+      "_comment": "Change from Windows Spotlight to Picture"
     },
     "powerPlan": {
       "defaultPlan": "High Performance"

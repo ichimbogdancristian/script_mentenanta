@@ -93,7 +93,8 @@ function Invoke-WindowsUpdate {
     $status = if (-not $pswuAvailable) { 'Warning' } elseif ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
     Write-Log -Level INFO -Component WINUPDATE -Message "Done: $processed triggered/installed, $failed failed"
     return New-ModuleResult -ModuleName 'WindowsUpdates' -Status $status -ItemsDetected $diff.Count `
-        -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors -ExtraData $extraData
+        -ItemsProcessed $processed -ItemsFailed $failed -RebootRequired $rebootRequired `
+        -Errors $errors -ExtraData $extraData
 }
 
 Export-ModuleMember -Function 'Invoke-WindowsUpdate'

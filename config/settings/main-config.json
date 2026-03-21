@@ -1,9 +1,5 @@
 {
   "execution": {
-    "defaultMode": "unattended",
-    "countdownSeconds": 30,
-    "autoSelectDefault": true,
-    "showProgressBars": true,
     "shutdown": {
       "countdownSeconds": 120,
       "cleanupOnTimeout": true,
@@ -18,41 +14,9 @@
     "skipTelemetryDisable": false,
     "skipSystemOptimization": false,
     "skipSecurityEnhancement": false,
-    "skipAppUpgrade": false,
-    "customModulesPath": ""
-  },
-  "bloatware": {
-    "enableDiffBasedProcessing": true,
-    "parallelRemoval": true,
-    "createBackups": true,
-    "customBloatwareList": []
-  },
-  "essentialApps": {
-    "enableParallelInstallation": true,
-    "fallbackToLibreOffice": true,
-    "customEssentialApps": [],
-    "skipConflictResolution": false,
-    "skipIfPackageManagerMissing": true
-  },
-  "system": {
-    "createSystemRestorePoint": true,
-    "restorePointMaxSizeGB": 10,
-    "enableVerboseLogging": false,
-    "maxLogSizeMB": 10,
-    "enablePerformanceOptimizations": true,
-    "warnOnPendingReboot": true,
-    "enableSystemProtectionIfDisabled": true
+    "skipAppUpgrade": false
   },
   "reporting": {
-    "enableHtmlReport": true,
-    "enableDetailedAudit": true,
-    "includeSystemInventory": true,
-    "generateBeforeAfterComparison": true
-  },
-  "paths": {
-    "tempFolder": "temp_files",
-    "reportsFolder": "temp_files/reports",
-    "logsFolder": "temp_files/logs",
-    "inventoryFolder": "temp_files/inventory"
+    "enableHtmlReport": true
   }
 }

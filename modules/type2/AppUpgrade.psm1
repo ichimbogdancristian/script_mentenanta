@@ -30,23 +30,6 @@ function Invoke-AppUpgrade {
     $hasChoco = Test-CommandAvailable 'choco'
     $processed = 0; $failed = 0; $errors = @()
 
-    # Helper: run an executable and wait for completion; returns exit code
-    function Invoke-Install {
-        param([string]$Exe, [string[]]$ArgumentList)
-        $psi = [System.Diagnostics.ProcessStartInfo]::new($Exe)
-        $psi.Arguments = $ArgumentList -join ' '
-        $psi.UseShellExecute = $false
-        $psi.RedirectStandardOutput = $true
-        $psi.RedirectStandardError = $true
-        $p = [System.Diagnostics.Process]::new()
-        $p.StartInfo = $psi
-        $p.Start() | Out-Null
-        $null = $p.StandardOutput.ReadToEnd()
-        $null = $p.StandardError.ReadToEnd()
-        $p.WaitForExit()
-        return $p.ExitCode
-    }
-
     Write-Log -Level INFO -Component APPUPGR -Message "Upgrading $($diff.Count) app(s)"
 
     foreach ($item in $diff) {
@@ -66,7 +49,7 @@ function Invoke-AppUpgrade {
                 $wingetArgs = @('upgrade', '--id', $id, '--silent',
                     '--accept-package-agreements', '--accept-source-agreements',
                     '--disable-interactivity')
-                $exitCode = Invoke-Install -Exe 'winget' -ArgumentList $wingetArgs
+                $exitCode = Invoke-ExternalPackageCommand -FilePath 'winget' -ArgumentList $wingetArgs
                 if ($exitCode -in 0, -1978335189) {
                     Write-Log -Level SUCCESS -Component APPUPGR -Message "Upgraded (winget): $name"
                     $upgraded = $true
@@ -79,7 +62,7 @@ function Invoke-AppUpgrade {
             # 2. chocolatey
             if (-not $upgraded -and $source -eq 'choco' -and $id -and $hasChoco) {
                 $chocoArgs = @('upgrade', $id, '--yes', '--no-progress')
-                $exitCode = Invoke-Install -Exe 'choco' -ArgumentList $chocoArgs
+                $exitCode = Invoke-ExternalPackageCommand -FilePath 'choco' -ArgumentList $chocoArgs
                 if ($exitCode -eq 0) {
                     Write-Log -Level SUCCESS -Component APPUPGR -Message "Upgraded (choco): $name"
                     $upgraded = $true

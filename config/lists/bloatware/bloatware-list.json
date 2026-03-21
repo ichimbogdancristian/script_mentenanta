@@ -238,10 +238,7 @@
     "Yontoo.Yontoo",
     "Zugo.Zugo"
   ],
-  "windows10": [
-    "Microsoft.3DBuilder",
-    "Microsoft.WindowsReadingList"
-  ],
+  "windows10": [],
   "windows11": [
     "MicrosoftWindows.Client.WebExperience",
     "MicrosoftTeams",

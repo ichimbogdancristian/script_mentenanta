@@ -25,7 +25,7 @@
 #>
 
 using namespace System.Collections.Generic
-Set-StrictMode -Off
+Set-StrictMode -Version 1.0
 
 #region ─── INITIALIZATION ────────────────────────────────────────────────────
 
@@ -169,8 +169,8 @@ function Get-MainConfig {
     if (-not (Test-Path $path)) {
         Write-Log -Level WARN -Component CORE -Message "main-config.json not found at $path. Using built-in defaults."
         return @{
-            execution = @{ countdownSeconds = 30; autoSelectDefault = $true
-                shutdown = @{ countdownSeconds = 120; rebootOnTimeout = $true; cleanupOnTimeout = $true }
+            execution = @{
+                shutdown = @{ countdownSeconds = 120; rebootOnTimeout = $true; cleanupOnTimeout = $true; rebootOnlyWhenRequired = $true }
             }
             modules   = @{}
             reporting = @{ enableHtmlReport = $true }
@@ -192,10 +192,17 @@ function Get-MainConfig {
 <#
 .SYNOPSIS
     Loads a preexisting baseline list for a module from config/lists/[folder]/[file].
+.DESCRIPTION
+    Returns the baseline data as a nested [hashtable] (using -AsHashtable) so that
+    all JSON objects become case-insensitive hashtables — consistent with
+    Get-MainConfig.  This ensures uniform dot-access, index-access, and
+    .ContainsKey() behaviour throughout the project.
 .PARAMETER ModuleFolder
     Subfolder name under config/lists/ (e.g. 'bloatware').
 .PARAMETER FileName
     JSON filename (e.g. 'bloatware-list.json').
+.OUTPUTS
+    [hashtable] or $null on failure.  Arrays in the JSON become [object[]].
 #>
 function Get-BaselineList {
     [CmdletBinding()]
@@ -210,7 +217,11 @@ function Get-BaselineList {
         return $null
     }
     try {
-        $obj = Get-Content -Path $path -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 20
+        # -AsHashtable: returns [hashtable] instead of [PSCustomObject].
+        # This keeps return types consistent with Get-MainConfig and allows
+        # callers to use .ContainsKey(), case-insensitive key lookup, and
+        # index-access ($obj['key']) uniformly.
+        $obj = Get-Content -Path $path -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 20 -AsHashtable
         Write-Log -Level DEBUG -Component CORE -Message "Loaded baseline: $path"
         return $obj
     }
@@ -371,6 +382,15 @@ function Save-DiffList {
 <#
 .SYNOPSIS
     Loads a previously saved diff list. Returns empty array if not found.
+.DESCRIPTION
+    Reads the diff JSON produced by a Type1 module (via Save-DiffList) and
+    returns it as an array of hashtables.  Using -AsHashtable ensures each
+    diff item is a [hashtable] — matching the format originally saved —
+    so Type2 modules get consistent key access (case-insensitive, indexable).
+.PARAMETER ModuleName
+    DiffKey identifier (e.g. 'BloatwareRemoval', 'EssentialApps').
+.OUTPUTS
+    [hashtable[]] — array of diff items, or empty array on failure / not found.
 #>
 function Get-DiffList {
     [CmdletBinding()]
@@ -382,7 +402,10 @@ function Get-DiffList {
     $path = Get-TempPath -Category 'diff' -FileName "$ModuleName-diff.json"
     if (-not (Test-Path $path)) { return @() }
     try {
-        $items = Get-Content -Path $path -Raw | ConvertFrom-Json -Depth 10
+        # -AsHashtable: keeps diff items as [hashtable] for uniform access.
+        # Type1 modules save hashtable arrays via Save-DiffList;
+        # Type2 modules consume them — both sides now use the same type.
+        $items = Get-Content -Path $path -Raw | ConvertFrom-Json -Depth 10 -AsHashtable
         if ($null -eq $items) { return @() }
         return @($items)
     }
@@ -396,6 +419,9 @@ function Get-DiffList {
 <#
 .SYNOPSIS
     Creates a standardized module result hashtable used by the orchestrator.
+.PARAMETER ModuleType
+    'Type1' for audit/scan modules, 'Type2' for action/modification modules.
+    Used by the report generator to group results by phase.
 #>
 function New-ModuleResult {
     [CmdletBinding()]
@@ -403,6 +429,7 @@ function New-ModuleResult {
     param(
         [Parameter(Mandatory)] [string]$ModuleName,
         [Parameter(Mandatory)] [ValidateSet('Success', 'Failed', 'Skipped', 'Warning')] [string]$Status,
+        [Parameter()] [ValidateSet('Type1', 'Type2')] [string]$ModuleType = 'Type1',
         [Parameter()] [int]$ItemsDetected = 0,
         [Parameter()] [int]$ItemsProcessed = 0,
         [Parameter()] [int]$ItemsSkipped = 0,
@@ -414,6 +441,7 @@ function New-ModuleResult {
     )
     return @{
         ModuleName     = $ModuleName
+        ModuleType     = $ModuleType
         Status         = $Status
         Timestamp      = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
         ItemsDetected  = $ItemsDetected
@@ -606,6 +634,51 @@ function Set-RegistryValue {
 
 #endregion
 
+#region ─── EXTERNAL PROCESS HELPER ───────────────────────────────────────────
+
+<#
+.SYNOPSIS
+    Runs an external executable (e.g. winget, choco) and returns its exit code.
+.DESCRIPTION
+    Wraps System.Diagnostics.Process for silent, non-interactive external
+    command execution.  Captures stdout/stderr so they don't pollute the
+    console and returns only the integer exit code.
+    Used by Type2 modules (EssentialApps, AppUpgrade) that invoke package
+    managers to install or upgrade software.
+.PARAMETER FilePath
+    Full path or name of the executable (resolved by the OS PATH).
+.PARAMETER ArgumentList
+    Array of arguments passed to the executable.
+.OUTPUTS
+    [int] — process exit code (0 typically means success).
+#>
+function Invoke-ExternalPackageCommand {
+    [CmdletBinding()]
+    [OutputType([int])]
+    param(
+        [Parameter(Mandatory)] [string]$FilePath,
+        [Parameter(Mandatory)] [string[]]$ArgumentList
+    )
+
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName  = $FilePath
+    $psi.Arguments = $ArgumentList -join ' '
+    $psi.UseShellExecute        = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError  = $true
+    $psi.CreateNoWindow         = $true
+
+    $proc = [System.Diagnostics.Process]::new()
+    $proc.StartInfo = $psi
+    $null = $proc.Start()
+    $null = $proc.StandardOutput.ReadToEnd()
+    $null = $proc.StandardError.ReadToEnd()
+    $proc.WaitForExit()
+    return $proc.ExitCode
+}
+
+#endregion
+
 #region ─── EXPORTS ───────────────────────────────────────────────────────────
 
 Export-ModuleMember -Function @(
@@ -623,7 +696,8 @@ Export-ModuleMember -Function @(
     'Get-WingetUpgrade',
     'Test-CommandAvailable',
     'Get-RegistryValue',
-    'Set-RegistryValue'
+    'Set-RegistryValue',
+    'Invoke-ExternalPackageCommand'
 )
 
 #endregion

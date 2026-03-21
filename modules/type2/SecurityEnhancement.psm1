@@ -56,6 +56,8 @@ function Invoke-SecurityEnhancement {
                         'CloudProtection' { Set-MpPreference -MAPSReporting $(if ($enable) { 2 } else { 0 }) -ErrorAction Stop }
                         'NetworkProtection' { Set-MpPreference -EnableNetworkProtection $(if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
                         'PUAProtection' { Set-MpPreference -PUAProtection $(if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
+                        'ControlledFolderAccess' { Set-MpPreference -EnableControlledFolderAccess $(if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
+                        'AutomaticSampleSubmission' { Set-MpPreference -SubmitSamplesConsent $(if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
                         'AntivirusEnabled' {
                             # Remove policy key that prevents AV from running, then ensure service is started
                             $null = Set-RegistryValue -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender' `
@@ -98,6 +100,33 @@ function Invoke-SecurityEnhancement {
                         Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
                         Set-Service -Name $svc -StartupType Disabled -ErrorAction Stop
                         Write-Log -Level SUCCESS -Component SECURITY -Message "Service disabled: $svc"
+                        $changed = $true
+                    }
+                }
+                'passwordpolicy' {
+                    $policyName = $item.Name
+                    $desired = $item.DesiredState
+                    switch ($policyName) {
+                        'MaxPasswordAge' {
+                            & net accounts /maxpwage:$desired 2>&1 | Out-Null
+                            Write-Log -Level SUCCESS -Component SECURITY -Message "Password policy: max age set to $desired days"
+                            $changed = $true
+                        }
+                        'MinPasswordLength' {
+                            & net accounts /minpwlen:$desired 2>&1 | Out-Null
+                            Write-Log -Level SUCCESS -Component SECURITY -Message "Password policy: min length set to $desired"
+                            $changed = $true
+                        }
+                        default {
+                            Write-Log -Level WARN -Component SECURITY -Message "Unknown password policy: $policyName"
+                        }
+                    }
+                }
+                'auditpolicy' {
+                    $subcategory = $item.Subcategory
+                    if ($subcategory) {
+                        & auditpol /set /subcategory:"$subcategory" /success:enable /failure:enable 2>&1 | Out-Null
+                        Write-Log -Level SUCCESS -Component SECURITY -Message "Audit policy enabled: $subcategory"
                         $changed = $true
                     }
                 }

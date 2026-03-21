@@ -13,11 +13,5 @@
         "*Preview*",
         "*Insider*",
         "*Beta*"
-    ],
-    "settings": {
-        "autoRestartIfPending": false,
-        "maxWaitMinutes": 60,
-        "continueOnError": true,
-        "createRestorePointFirst": true
-    }
+    ]
 }

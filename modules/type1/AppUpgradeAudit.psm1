@@ -28,6 +28,10 @@ function Invoke-AppUpgradeAudit {
                                     -Message 'Disabled in configuration'
         }
 
+        if (-not $config.EnabledSources) {
+            return New-ModuleResult -ModuleName 'AppUpgradeAudit' -Status 'Failed' `
+                -Message 'Invalid app upgrade config structure (missing EnabledSources)'
+        }
         $excludePatterns = if ($config.ExcludePatterns) { $config.ExcludePatterns } else { @() }
         $upgradeable = [System.Collections.Generic.List[hashtable]]::new()
 

@@ -25,6 +25,10 @@ function Invoke-SecurityAudit {
             return New-ModuleResult -ModuleName 'SecurityAudit' -Status 'Failed' `
                 -Message 'Security baseline not found'
         }
+        if (-not $baseline.registry -or -not $baseline.windowsDefender) {
+            return New-ModuleResult -ModuleName 'SecurityAudit' -Status 'Failed' `
+                -Message 'Invalid security baseline structure (missing registry or windowsDefender)'
+        }
 
         $diff = [System.Collections.Generic.List[hashtable]]::new()
 
@@ -144,6 +148,46 @@ function Invoke-SecurityAudit {
             }
         }
 
+        # 3b. Controlled Folder Access
+        if ($baseline.windowsDefender.controlledFolderAccess) {
+            try {
+                $mpPrefs = if ($mpPrefs) { $mpPrefs } else { Get-MpPreference -ErrorAction Stop }
+                if ($mpPrefs.EnableControlledFolderAccess -ne 1) {
+                    $diff.Add(@{
+                            Type         = 'defender'
+                            Name         = 'ControlledFolderAccess'
+                            Feature      = 'ControlledFolderAccess'
+                            ShouldEnable = $true
+                            Description  = 'Windows Defender Controlled Folder Access'
+                            CurrentState = $mpPrefs.EnableControlledFolderAccess
+                            DesiredState = 1
+                        })
+                    Write-Log -Level WARN -Component SEC-AUDIT -Message 'Controlled Folder Access is not enabled'
+                }
+            }
+            catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Controlled Folder Access query failed: $_" }
+        }
+
+        # 3c. Automatic Sample Submission
+        if ($baseline.windowsDefender.automaticSampleSubmission) {
+            try {
+                $mpPrefs = if ($mpPrefs) { $mpPrefs } else { Get-MpPreference -ErrorAction Stop }
+                if ($mpPrefs.SubmitSamplesConsent -eq 0) {
+                    $diff.Add(@{
+                            Type         = 'defender'
+                            Name         = 'AutomaticSampleSubmission'
+                            Feature      = 'AutomaticSampleSubmission'
+                            ShouldEnable = $true
+                            Description  = 'Windows Defender automatic sample submission'
+                            CurrentState = $mpPrefs.SubmitSamplesConsent
+                            DesiredState = 1
+                        })
+                    Write-Log -Level WARN -Component SEC-AUDIT -Message 'Automatic sample submission is disabled'
+                }
+            }
+            catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Sample submission query failed: $_" }
+        }
+
         # 4. Firewall status
         if ($baseline.firewall) {
             try {
@@ -214,12 +258,81 @@ function Invoke-SecurityAudit {
             catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Service query failed '$svcName': $_" }
         }
 
+        # 7. Password policy audit
+        if ($baseline.passwordPolicy) {
+            try {
+                $netAccounts = & net accounts 2>&1 | Out-String
+                if ($baseline.passwordPolicy.maxPasswordAge) {
+                    $desired = $baseline.passwordPolicy.maxPasswordAge
+                    if ($netAccounts -match 'Maximum password age.*?:\s*(\d+)') {
+                        $current = [int]$Matches[1]
+                        if ($current -gt $desired -or $current -eq 0) {
+                            $diff.Add(@{
+                                    Type         = 'passwordpolicy'
+                                    Name         = 'MaxPasswordAge'
+                                    Description  = "Max password age should be $desired days or less"
+                                    CurrentState = $current
+                                    DesiredState = $desired
+                                })
+                            Write-Log -Level WARN -Component SEC-AUDIT -Message "Max password age: $current (desired: <= $desired)"
+                        }
+                    }
+                }
+                if ($baseline.passwordPolicy.minPasswordLength) {
+                    $desired = $baseline.passwordPolicy.minPasswordLength
+                    if ($netAccounts -match 'Minimum password length.*?:\s*(\d+)') {
+                        $current = [int]$Matches[1]
+                        if ($current -lt $desired) {
+                            $diff.Add(@{
+                                    Type         = 'passwordpolicy'
+                                    Name         = 'MinPasswordLength'
+                                    Description  = "Min password length should be $desired or more"
+                                    CurrentState = $current
+                                    DesiredState = $desired
+                                })
+                            Write-Log -Level WARN -Component SEC-AUDIT -Message "Min password length: $current (desired: >= $desired)"
+                        }
+                    }
+                }
+            }
+            catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Password policy query failed: $_" }
+        }
+
+        # 8. Audit policy check
+        if ($baseline.auditPolicy) {
+            try {
+                $auditpolOutput = & auditpol /get /category:* 2>&1 | Out-String
+                $policyMap = @{
+                    'logonEvents'  = 'Logon'
+                    'accountLogon' = 'Credential Validation'
+                    'policyChange' = 'Audit Policy Change'
+                }
+                foreach ($key in $policyMap.Keys) {
+                    if ($baseline.auditPolicy.$key -eq $true) {
+                        $subcategory = $policyMap[$key]
+                        if ($auditpolOutput -match "$subcategory\s+(No Auditing|Not Configured)") {
+                            $diff.Add(@{
+                                    Type         = 'auditpolicy'
+                                    Name         = $key
+                                    Subcategory  = $subcategory
+                                    Description  = "Audit policy '$subcategory' should be enabled"
+                                    CurrentState = $Matches[1]
+                                    DesiredState = 'Success and Failure'
+                                })
+                            Write-Log -Level WARN -Component SEC-AUDIT -Message "Audit policy not enabled: $subcategory"
+                        }
+                    }
+                }
+            }
+            catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Audit policy query failed: $_" }
+        }
+
         Write-Log -Level INFO -Component SEC-AUDIT -Message "Security gaps: $($diff.Count)"
 
-        # 7. Save diff
+        # 9. Save diff
         Save-DiffList -ModuleName 'SecurityEnhancement' -DiffList $diff.ToArray()
 
-        # 8. Persist
+        # 10. Persist
         $auditPath = Get-TempPath -Category 'data' -FileName 'security-audit.json'
         @{ Timestamp = (Get-Date -Format 'o'); Gaps = $diff.ToArray() } `
         | ConvertTo-Json -Depth 8 | Set-Content -Path $auditPath -Encoding UTF8 -Force

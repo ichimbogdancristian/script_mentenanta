@@ -29,7 +29,7 @@ param(
     [switch]$NonInteractive
 )
 
-Set-StrictMode -Off
+Set-StrictMode -Version 1.0
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Continue'
 
@@ -254,6 +254,8 @@ function Show-Stage1Menu {
         $line = "  │  $($pair.Num)  - $($pair.Label)"
         Write-Host ($line.PadRight(60) + '│') -ForegroundColor Cyan
     }
+    Write-Host "  ├─────────────────────────────────────────────────────────┤" -ForegroundColor DarkCyan
+    Write-Host "  │  Comma-separated for multiple: e.g. 1,3,5              │" -ForegroundColor DarkGray
     Write-Host "  └─────────────────────────────────────────────────────────┘" -ForegroundColor DarkCyan
     Write-Host ""
 }
@@ -267,20 +269,22 @@ function Get-MenuSelection {
 
     while ((Get-Date) -lt $deadline) {
         $remaining = [int]($deadline - (Get-Date)).TotalSeconds
-        Write-Host "`r  Auto-running option 0 in $remaining second(s)... [enter number to select]  " `
+        Write-Host "`r  Auto-running option 0 in $remaining second(s)... [enter number(s) to select]  " `
             -NoNewline -ForegroundColor Yellow
 
         if ([Console]::KeyAvailable) {
             $null = [Console]::ReadKey($true)   # consume the trigger key-press only
-            $key = Read-Host "`n  Your choice"
-            if ($key -match '^\d+$') { $selected = [int]$key }
+            $key = Read-Host "`n  Your choice (comma-separated)"
+            # Parse comma-separated input: "1,3,5" → @(1, 3, 5)
+            $parsed = @($key -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
+            if ($parsed.Count -gt 0) { $selected = $parsed }
             break
         }
         Start-Sleep -Milliseconds 500
     }
 
     Write-Host ""
-    return $selected   # $null = timeout (run all)
+    return $selected   # $null = timeout (run all); array of ints otherwise
 }
 
 $SessionResults = [System.Collections.Generic.List[hashtable]]::new()
@@ -294,16 +298,23 @@ if (-not $NonInteractive) {
     Show-Stage1Menu
     $choice = Get-MenuSelection -Countdown 10
 
-    if ($null -ne $choice -and $choice -ne 0) {
-        $selectedPairs = $ModulePairs | Where-Object { $_.Num -eq $choice }
+    if ($null -ne $choice -and @($choice) -notcontains 0) {
+        $selectedPairs = $ModulePairs | Where-Object { $_.Num -in $choice }
         if (-not $selectedPairs) {
-            Write-Host "  [WARN] Invalid selection '$choice' - running all modules." -ForegroundColor Yellow
+            Write-Host "  [WARN] Invalid selection '$($choice -join ',')' - running all modules." -ForegroundColor Yellow
             $selectedPairs = $null
+        }
+        else {
+            $names = ($selectedPairs | ForEach-Object { $_.Label }) -join ', '
+            Write-Host "  Selected: $names" -ForegroundColor Green
         }
     }
 }
 
 $pairsToAudit = if ($null -eq $selectedPairs) { $ModulePairs } else { @($selectedPairs) }
+
+$consecutiveFailures = 0
+$maxConsecutiveFailures = 3   # Circuit-breaker: abort stage after N consecutive failures
 
 foreach ($pair in $pairsToAudit) {
     Write-Host ""
@@ -316,17 +327,31 @@ foreach ($pair in $pairsToAudit) {
     $duration = [int]((Get-Date) - $start).TotalSeconds
 
     if ($null -eq $result) {
-        $r = New-ModuleResult -ModuleName $pair.Type1Func -Status 'Failed' -Message 'Module returned null'
+        $r = New-ModuleResult -ModuleName $pair.Type1Func -Status 'Failed' -ModuleType 'Type1' -Message 'Module returned null'
     }
     elseif ($result -is [hashtable]) {
         $r = $result
+        if (-not $r.ContainsKey('ModuleType')) { $r.ModuleType = 'Type1' }
     }
     else {
-        $r = New-ModuleResult -ModuleName $pair.Type1Func -Status 'Success' -Message "Completed in ${duration}s"
+        $r = New-ModuleResult -ModuleName $pair.Type1Func -Status 'Success' -ModuleType 'Type1' -Message "Completed in ${duration}s"
     }
 
     $SessionResults.Add($r)
     Write-Log -Level INFO -Component ORCH -Message "$($pair.Type1Func) → $($r.Status) | Detected:$($r.ItemsDetected)"
+
+    # Circuit-breaker: if too many consecutive failures, likely a systemic issue
+    if ($r.Status -eq 'Failed') {
+        $consecutiveFailures++
+        if ($consecutiveFailures -ge $maxConsecutiveFailures) {
+            Write-Log -Level ERROR -Component ORCH -Message "CIRCUIT BREAKER: $consecutiveFailures consecutive failures — aborting Stage 1"
+            Write-Host "  [ERROR] $consecutiveFailures consecutive module failures. Possible systemic issue — aborting Stage 1." -ForegroundColor Red
+            break
+        }
+    }
+    else {
+        $consecutiveFailures = 0
+    }
 }
 
 Write-Log -Level SUCCESS -Component ORCH -Message "Stage 1 complete: $($pairsToAudit.Count) modules run"
@@ -361,7 +386,7 @@ foreach ($pair in $pairsToAudit) {
         Write-Log -Level INFO -Component ORCH -Message "$($pair.DiffKey): 0 diff items - Type2 SKIPPED"
 
         $SessionResults.Add((New-ModuleResult -ModuleName $pair.Type2Func `
-                    -Status 'Skipped' `
+                    -Status 'Skipped' -ModuleType 'Type2' `
                     -Message 'No diff items — system already in desired state'))
     }
 }
@@ -394,13 +419,14 @@ else {
         $duration = [int]((Get-Date) - $start).TotalSeconds
 
         if ($null -eq $result) {
-            $r = New-ModuleResult -ModuleName $pair.Type2Func -Status 'Failed' -Message 'Module returned null'
+            $r = New-ModuleResult -ModuleName $pair.Type2Func -Status 'Failed' -ModuleType 'Type2' -Message 'Module returned null'
         }
         elseif ($result -is [hashtable] -and $result.ContainsKey('Status')) {
             $r = $result
+            if (-not $r.ContainsKey('ModuleType')) { $r.ModuleType = 'Type2' }
         }
         else {
-            $r = New-ModuleResult -ModuleName $pair.Type2Func -Status 'Success' -Message "Completed in ${duration}s"
+            $r = New-ModuleResult -ModuleName $pair.Type2Func -Status 'Success' -ModuleType 'Type2' -Message "Completed in ${duration}s"
         }
 
         $SessionResults.Add($r)
@@ -450,6 +476,9 @@ catch {
     Write-Host "  [ERROR] Report generation failed: $_" -ForegroundColor Red
 }
 
+# Resume transcript so Stage 5 decisions are captured in the log
+Start-Transcript -Path $TranscriptPath -Append -Force | Out-Null
+
 #endregion
 
 #region ─── STAGE 5: COUNTDOWN + CLEANUP + REBOOT ─────────────────────────────
@@ -459,16 +488,6 @@ Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 5 : CL
 Write-Host ""
 
 $reportDisplay = if ($reportFile) { Split-Path $reportFile -Leaf } else { 'N/A' }
-
-Write-Host "  ┌───────────────────────────────────────────────────────────┐" -ForegroundColor DarkCyan
-Write-Host "  │                 MAINTENANCE COMPLETE                      │" -ForegroundColor White
-Write-Host "  │                                                           │" -ForegroundColor DarkCyan
-Write-Host "  │  HTML report:  $($reportDisplay.PadRight(43))│" -ForegroundColor Cyan
-Write-Host "  │                                                           │" -ForegroundColor DarkCyan
-Write-Host "  │  System will reboot AND temp files will be removed.      │" -ForegroundColor Yellow
-Write-Host "  │  Press ANY KEY to abort reboot and keep all files.       │" -ForegroundColor Yellow
-Write-Host "  └───────────────────────────────────────────────────────────┘" -ForegroundColor DarkCyan
-Write-Host ""
 
 $rebootSeconds = [int]($Config.execution.shutdown.countdownSeconds ?? 120)
 $doReboot = [bool]($Config.execution.shutdown.rebootOnTimeout ?? $true)
@@ -491,12 +510,45 @@ if ($doReboot -and $rebootOnlyWhenRequired) {
         Write-Host "  [INFO] Reboot required by: $rebootModules" -ForegroundColor Yellow
     }
 }
-$deadline = (Get-Date).AddSeconds($rebootSeconds)
 
-if ($NonInteractive -and -not $doReboot) {
-    Write-Host "  [NonInteractive + reboot disabled] Exiting without reboot." -ForegroundColor DarkGray
-    $aborted = $true
+# ── When no reboot is needed, skip the countdown entirely ─────────────────
+if (-not $doReboot) {
+    Write-Host ""
+    Write-Host "  ┌───────────────────────────────────────────────────────────┐" -ForegroundColor DarkCyan
+    Write-Host "  │                 MAINTENANCE COMPLETE                      │" -ForegroundColor White
+    Write-Host "  │                                                           │" -ForegroundColor DarkCyan
+    Write-Host "  │  HTML report:  $($reportDisplay.PadRight(43))│" -ForegroundColor Cyan
+    Write-Host "  │                                                           │" -ForegroundColor DarkCyan
+    Write-Host "  │  No reboot required.                                     │" -ForegroundColor Green
+    Write-Host "  └───────────────────────────────────────────────────────────┘" -ForegroundColor DarkCyan
+    Write-Host ""
+
+    if ($doCleanup) {
+        Write-Host "  Removing project folder..." -ForegroundColor DarkGray
+        try {
+            Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
+            Remove-Item -Path $ProjectRoot -Recurse -Force -ErrorAction Stop
+            Write-Host "  ✔  Project folder removed." -ForegroundColor Green
+        }
+        catch {
+            Write-Host "  [WARN] Could not fully remove project folder: $_" -ForegroundColor Yellow
+        }
+    }
+    exit 0
 }
+
+# ── Reboot IS needed — show countdown with abort option ───────────────────
+Write-Host "  ┌───────────────────────────────────────────────────────────┐" -ForegroundColor DarkCyan
+Write-Host "  │                 MAINTENANCE COMPLETE                      │" -ForegroundColor White
+Write-Host "  │                                                           │" -ForegroundColor DarkCyan
+Write-Host "  │  HTML report:  $($reportDisplay.PadRight(43))│" -ForegroundColor Cyan
+Write-Host "  │                                                           │" -ForegroundColor DarkCyan
+Write-Host "  │  System will reboot AND project files will be removed.   │" -ForegroundColor Yellow
+Write-Host "  │  Press ANY KEY to abort reboot and keep all files.       │" -ForegroundColor Yellow
+Write-Host "  └───────────────────────────────────────────────────────────┘" -ForegroundColor DarkCyan
+Write-Host ""
+
+$deadline = (Get-Date).AddSeconds($rebootSeconds)
 
 while (-not $aborted -and (Get-Date) -lt $deadline) {
     $remaining = [int]($deadline - (Get-Date)).TotalSeconds
@@ -516,37 +568,36 @@ Write-Host ""
 if ($aborted) {
     Write-Host ""
     Write-Host "  ✔  Reboot ABORTED by user." -ForegroundColor Green
-    Write-Host "     Temp files kept at: $TempDir" -ForegroundColor Cyan
+    Write-Host "     Project files kept at: $ProjectRoot" -ForegroundColor Cyan
     if ($reportFile) { Write-Host "     Report saved at:   $reportFile" -ForegroundColor Cyan }
     Write-Host ""
     exit 0
 }
 
-# ── Cleanup then Reboot ──────────────────────────────────────────────────────
+# ── Cleanup entire project folder then Reboot ────────────────────────────────
 
 Write-Host ""
 Write-Host "  Countdown complete. Proceeding with cleanup and reboot..." -ForegroundColor Yellow
 
 if ($doCleanup) {
-    Write-Host "  Removing temp_files..." -ForegroundColor DarkGray
+    Write-Host "  Removing project folder: $ProjectRoot ..." -ForegroundColor DarkGray
     try {
-        Remove-Item -Path $TempDir -Recurse -Force -ErrorAction Stop
-        Write-Host "  ✔  temp_files removed." -ForegroundColor Green
+        Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
+        Remove-Item -Path $ProjectRoot -Recurse -Force -ErrorAction Stop
+        Write-Host "  ✔  Project folder removed." -ForegroundColor Green
     }
     catch {
-        Write-Host "  [WARN] Could not fully remove temp_files: $_" -ForegroundColor Yellow
+        Write-Host "  [WARN] Could not fully remove project folder: $_" -ForegroundColor Yellow
     }
 }
 
-if ($doReboot) {
-    Write-Host "  Initiating system reboot..." -ForegroundColor Yellow
-    try {
-        Restart-Computer -Force
-    }
-    catch {
-        Write-Host "  [ERROR] Restart-Computer failed: $_" -ForegroundColor Red
-        exit 1
-    }
+Write-Host "  Initiating system reboot..." -ForegroundColor Yellow
+try {
+    Restart-Computer -Force
+}
+catch {
+    Write-Host "  [ERROR] Restart-Computer failed: $_" -ForegroundColor Red
+    exit 1
 }
 
 exit 0

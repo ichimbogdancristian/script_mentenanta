@@ -64,11 +64,55 @@ function Invoke-SystemOptimization {
                     }
                 }
                 'visualfx' {
-                    # Set to best performance visual effects (UserPreferencesMask)
+                    # Set balanced visual effects: Custom (3) with specific tweaks
                     $regPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects'
-                    $null = Set-RegistryValue -Path $regPath -Name 'VisualFXSetting' -Value 2 -Type DWord
-                    Write-Log -Level SUCCESS -Component SYSOPT -Message 'Visual effects set to best performance'
+                    $null = Set-RegistryValue -Path $regPath -Name 'VisualFXSetting' -Value 3 -Type DWord
+
+                    # Apply balanced UserPreferencesMask: disable animations/shadows/transparency, keep smooth fonts + window contents
+                    $advancedPath = 'HKCU:\Control Panel\Desktop'
+                    # Disable window animation (MinAnimate)
+                    $null = Set-RegistryValue -Path $advancedPath -Name 'MinAnimate' -Value '0' -Type String
+                    # Keep font smoothing on
+                    $null = Set-RegistryValue -Path $advancedPath -Name 'FontSmoothing' -Value '2' -Type String
+                    # Disable drag full windows (=0 for off, =1 for on) — keep enabled for usability
+                    $null = Set-RegistryValue -Path $advancedPath -Name 'DragFullWindows' -Value '1' -Type String
+
+                    # Disable taskbar animations
+                    $advancedPath2 = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+                    $null = Set-RegistryValue -Path $advancedPath2 -Name 'TaskbarAnimations' -Value 0 -Type DWord
+                    # Disable ListviewShadow (icon shadows)
+                    $null = Set-RegistryValue -Path $advancedPath2 -Name 'ListviewShadow' -Value 0 -Type DWord
+
+                    # Disable transparency
+                    $personalize = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+                    $null = Set-RegistryValue -Path $personalize -Name 'EnableTransparency' -Value 0 -Type DWord
+
+                    Write-Log -Level SUCCESS -Component SYSOPT -Message 'Visual effects set to balanced (custom)'
                     $changed = $true
+                }
+                'background' {
+                    # Disable Windows Spotlight, set background to Picture
+                    $cdmPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+                    $null = Set-RegistryValue -Path $cdmPath -Name 'RotatingLockScreenEnabled' -Value 0 -Type DWord
+                    $null = Set-RegistryValue -Path $cdmPath -Name 'RotatingLockScreenOverlayEnabled' -Value 0 -Type DWord
+                    $null = Set-RegistryValue -Path $cdmPath -Name 'SubscribedContent-338387Enabled' -Value 0 -Type DWord
+
+                    # Set desktop wallpaper type to Picture (WallpaperStyle registry)
+                    $wallpaperPath = 'HKCU:\Control Panel\Desktop'
+                    $null = Set-RegistryValue -Path $wallpaperPath -Name 'WallpaperStyle' -Value '10' -Type String
+                    $null = Set-RegistryValue -Path $wallpaperPath -Name 'TileWallpaper' -Value '0' -Type String
+
+                    Write-Log -Level SUCCESS -Component SYSOPT -Message 'Desktop background changed from Spotlight to Picture'
+                    $changed = $true
+                }
+                'startup' {
+                    $regPath = $item.RegistryPath
+                    $entryName = $item.Name
+                    if ($regPath -and $entryName) {
+                        Remove-ItemProperty -Path $regPath -Name $entryName -Force -ErrorAction Stop
+                        Write-Log -Level SUCCESS -Component SYSOPT -Message "Startup program disabled: $entryName"
+                        $changed = $true
+                    }
                 }
                 default {
                     Write-Log -Level WARN -Component SYSOPT -Message "Unknown optimization type '$type' for $name"

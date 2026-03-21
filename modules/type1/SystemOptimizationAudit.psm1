@@ -25,6 +25,10 @@ function Invoke-SystemOptimizationAudit {
             return New-ModuleResult -ModuleName 'SystemOptimizationAudit' -Status 'Failed' `
                 -Message 'System optimization baseline not found'
         }
+        if (-not $baseline.common) {
+            return New-ModuleResult -ModuleName 'SystemOptimizationAudit' -Status 'Failed' `
+                -Message 'Invalid system optimization baseline structure (missing common section)'
+        }
 
         $osCtx = if ($global:OSContext) { $global:OSContext } else { Get-OSContext }
         $diff = [System.Collections.Generic.List[hashtable]]::new()
@@ -43,8 +47,8 @@ function Invoke-SystemOptimizationAudit {
             try {
                 $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
                 if ($svc -and $svc.StartType -ne 'Disabled') {
-                    $diff.Add(@{ Type = 'Service'; Name = $svcName; CurrentState = $svc.StartType.ToString(); DesiredState = 'Disabled' })
-                    Write-Log -Level DEBUG -Component SYSOPT-AUDIT -Message "Service needs disable: $svcName ($($svc.StartType))"
+                    $diff.Add(@{ Type = 'service'; Name = $svcName; CurrentState = $svc.StartType.ToString(); DesiredState = 'Disabled' })
+                    Write-Log -Level DEBUG -Component SYSOPT-AUDIT -Message "Service needs disable: $svcName ($($svc.StartType)))"
                 }
             }
             catch { Write-Log -Level WARN -Component SYSOPT-AUDIT -Message "Service query failed for $svcName" }
@@ -81,20 +85,92 @@ function Invoke-SystemOptimizationAudit {
             catch { Write-Log -Level WARN -Component SYSOPT-AUDIT -Message "Power plan query failed: $_" }
         }
 
-        # 4. Audit visual effects (check registry)
+        # 4. Audit startup programs
+        if ($baseline.common.startupPrograms) {
+            $safePatterns = $baseline.common.startupPrograms.safeToDisablePatterns ?? @()
+            $neverDisable = $baseline.common.startupPrograms.neverDisable ?? @()
+
+            # Gather startup entries from registry Run keys
+            $startupEntries = @()
+            $runPaths = @(
+                'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
+                'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
+            )
+            foreach ($runPath in $runPaths) {
+                try {
+                    $props = Get-ItemProperty -Path $runPath -ErrorAction SilentlyContinue
+                    if ($props) {
+                        $props.PSObject.Properties | Where-Object { $_.Name -notlike 'PS*' } | ForEach-Object {
+                            $startupEntries += @{ Name = $_.Name; Command = $_.Value; Source = $runPath }
+                        }
+                    }
+                }
+                catch { Write-Log -Level WARN -Component SYSOPT-AUDIT -Message "Failed to read $runPath : $_" }
+            }
+
+            foreach ($entry in $startupEntries) {
+                $entryName = $entry.Name
+                # Check if this matches a safe-to-disable pattern
+                $isSafe = $false
+                foreach ($pattern in $safePatterns) {
+                    if ($entryName -like $pattern) { $isSafe = $true; break }
+                }
+                if (-not $isSafe) { continue }
+
+                # Ensure it's not in the never-disable list
+                $isProtected = $false
+                foreach ($pattern in $neverDisable) {
+                    if ($entryName -like $pattern) { $isProtected = $true; break }
+                }
+                if ($isProtected) { continue }
+
+                $diff.Add(@{
+                        Type         = 'startup'
+                        Name         = $entryName
+                        Command      = $entry.Command
+                        RegistryPath = $entry.Source
+                        CurrentState = 'Enabled'
+                        DesiredState = 'Disabled'
+                    })
+                Write-Log -Level DEBUG -Component SYSOPT-AUDIT -Message "Startup program to disable: $entryName"
+            }
+        }
+
+        # 5. Audit visual effects (check registry)
         $visualAudioPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects'
         $currentVisual = Get-RegistryValue -Path $visualAudioPath -Name 'VisualFXSetting'
-        if ($null -eq $currentVisual -or $currentVisual -ne 2) {
-            # 2 = custom / performance; anything else (or missing key) means not optimized
-            $diff.Add(@{ Type = 'VisualFX'; Name = 'VisualFXSetting'; CurrentState = $currentVisual; DesiredState = 2 })
+        # 3 = Custom (balanced); anything else means not optimized to our balanced preset
+        if ($null -eq $currentVisual -or $currentVisual -ne 3) {
+            $diff.Add(@{ Type = 'visualfx'; Name = 'VisualFXSetting'; CurrentState = $currentVisual; DesiredState = 3 })
+        }
+
+        # 5b. Audit desktop background (Spotlight → Picture)
+        if ($baseline.common.background.type -eq 'Picture') {
+            $contentDeliveryPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+            $spotlightEnabled = Get-RegistryValue -Path $contentDeliveryPath -Name 'RotatingLockScreenEnabled'
+            $spotlightOverride = Get-RegistryValue -Path $contentDeliveryPath -Name 'RotatingLockScreenOverlayEnabled'
+            # Check the wallpaper personalization path for Creative/Spotlight
+            $personalizePath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+            # SystemUsesLightTheme is unrelated but check for Spotlight via ContentDeliveryManager
+            $cdmSubscriptions = Get-RegistryValue -Path $contentDeliveryPath -Name 'SubscribedContent-338387Enabled'
+            if ($spotlightEnabled -eq 1 -or $cdmSubscriptions -eq 1) {
+                $diff.Add(@{
+                        Type         = 'background'
+                        Name         = 'DesktopBackground'
+                        Description  = 'Change desktop background from Windows Spotlight to Picture'
+                        CurrentState = 'Spotlight'
+                        DesiredState = 'Picture'
+                    })
+                Write-Log -Level DEBUG -Component SYSOPT-AUDIT -Message 'Desktop background: Spotlight detected, should be Picture'
+            }
         }
 
         Write-Log -Level INFO -Component SYSOPT-AUDIT -Message "Optimization gaps: $($diff.Count)"
 
-        # 5. Save diff
+        # 6. Save diff
         Save-DiffList -ModuleName 'SystemOptimization' -DiffList $diff.ToArray()
 
-        # 6. Persist audit data
+        # 7. Persist audit data
         $auditPath = Get-TempPath -Category 'data' -FileName 'sysopt-audit.json'
         @{ Timestamp = (Get-Date -Format 'o'); Gaps = $diff.ToArray(); OS = $osCtx.DisplayText } `
         | ConvertTo-Json -Depth 6 | Set-Content -Path $auditPath -Encoding UTF8 -Force

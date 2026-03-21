@@ -38,7 +38,16 @@ function Invoke-TelemetryDisable {
             switch ($type) {
                 'service' {
                     $svc = $item.ServiceName ?? $item.Name
-                    Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+                    try {
+                        $svcObj = Get-Service -Name $svc -ErrorAction Stop
+                        if ($svcObj.Status -eq 'Running') {
+                            Stop-Service -Name $svc -Force -ErrorAction Stop
+                            Write-Log -Level DEBUG -Component TELEMETRY -Message "Stopped service: $svc"
+                        }
+                    }
+                    catch {
+                        Write-Log -Level WARN -Component TELEMETRY -Message "Could not stop service $svc (may be protected): $_"
+                    }
                     Set-Service -Name $svc -StartupType Disabled -ErrorAction Stop
                     Write-Log -Level SUCCESS -Component TELEMETRY -Message "Disabled service: $svc"
                     $changed = $true

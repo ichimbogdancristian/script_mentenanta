@@ -11,31 +11,6 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
 }
 
-#region ─── PROCESS HELPER ─────────────────────────────────────────────────────
-function Invoke-Install {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)] [string]$FilePath,
-        [Parameter(Mandatory)] [string[]]$ArgumentList
-    )
-    $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName = $FilePath
-    $psi.Arguments = $ArgumentList -join ' '
-    $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.CreateNoWindow = $true
-
-    $proc = [System.Diagnostics.Process]::new()
-    $proc.StartInfo = $psi
-    $null = $proc.Start()
-    $null = $proc.StandardOutput.ReadToEnd()
-    $null = $proc.StandardError.ReadToEnd()
-    $proc.WaitForExit()
-    return $proc.ExitCode
-}
-#endregion
-
 function Invoke-EssentialApp {
     [CmdletBinding()]
     [OutputType([hashtable])]
@@ -59,7 +34,7 @@ function Invoke-EssentialApp {
     # Pre-update winget sources so individual installs don't stall on stale metadata
     if ($hasWinget) {
         Write-Log -Level INFO -Component ESSAPPS -Message 'Updating winget sources before install run'
-        $null = Invoke-Install -FilePath 'winget' -ArgumentList @('source', 'update', '--disable-interactivity')
+        $null = Invoke-ExternalPackageCommand -FilePath 'winget' -ArgumentList @('source', 'update', '--disable-interactivity')
     }
 
     Write-Log -Level INFO -Component ESSAPPS -Message "Installing $($diff.Count) missing app(s) - winget:$hasWinget choco:$hasChoco"
@@ -93,7 +68,7 @@ function Invoke-EssentialApp {
                     '--accept-package-agreements',
                     '--accept-source-agreements'
                 ) + $scopeArgs
-                $exitCode = Invoke-Install -FilePath 'winget' -ArgumentList $wingetArgs
+                $exitCode = Invoke-ExternalPackageCommand -FilePath 'winget' -ArgumentList $wingetArgs
                 if ($exitCode -in 0, -1978335189) {
                     # 0=success, -1978335189=already installed
                     Write-Log -Level SUCCESS -Component ESSAPPS -Message "winget installed: $name"
@@ -106,7 +81,7 @@ function Invoke-EssentialApp {
 
             # 2. chocolatey fallback
             if (-not $installed -and $chocoId -and $hasChoco) {
-                $exitCode = Invoke-Install -FilePath 'choco' `
+                $exitCode = Invoke-ExternalPackageCommand -FilePath 'choco' `
                     -ArgumentList @('install', $chocoId, '--yes', '--no-progress')
                 if ($exitCode -eq 0) {
                     Write-Log -Level SUCCESS -Component ESSAPPS -Message "choco installed: $name"

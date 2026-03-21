@@ -25,6 +25,10 @@ function Invoke-TelemetryAudit {
             return New-ModuleResult -ModuleName 'TelemetryAudit' -Status 'Failed' `
                 -Message 'Telemetry baseline list not found'
         }
+        if (-not $baseline.services -or -not $baseline.registry) {
+            return New-ModuleResult -ModuleName 'TelemetryAudit' -Status 'Failed' `
+                -Message 'Invalid telemetry baseline structure (missing services or registry)'
+        }
 
         $diff = [System.Collections.Generic.List[hashtable]]::new()
 

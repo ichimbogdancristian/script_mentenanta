@@ -28,6 +28,10 @@ function Invoke-WindowsUpdatesAudit {
                 -Message 'Disabled in configuration'
         }
 
+        if (-not $config.categories) {
+            return New-ModuleResult -ModuleName 'WindowsUpdatesAudit' -Status 'Failed' `
+                -Message 'Invalid updates config structure (missing categories)'
+        }
         $pendingUpdates = [System.Collections.Generic.List[hashtable]]::new()
         $comFailed = $false
 
