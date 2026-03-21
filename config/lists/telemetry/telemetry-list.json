@@ -7,12 +7,15 @@
             "PcaSvc",
             "WerSvc",
             "WMPNetworkSvc",
-            "RemoteRegistry",
             "MapsBroker",
             "lfsvc",
             "NetTcpPortSharing",
             "Fax"
-        ]
+        ],
+        "_notes": {
+            "RemoteRegistry": "Moved to security-baseline.json services.ensureDisabled",
+            "Fax": "Optional Windows feature; may not be installed on all systems"
+        }
     },
     "registry": {
         "telemetry": [
@@ -21,7 +24,8 @@
                 "name": "AllowTelemetry",
                 "type": "DWord",
                 "desiredValue": 0,
-                "description": "Disable telemetry data collection"
+                "description": "Disable telemetry data collection",
+                "_skuNote": "Value 0 (Security) is only honoured on Enterprise/Education SKUs. Home/Pro enforces minimum of 1 (Required)."
             },
             {
                 "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\DataCollection",
@@ -75,6 +79,13 @@
                 "type": "DWord",
                 "desiredValue": 1,
                 "description": "Disable web search in taskbar"
+            },
+            {
+                "path": "HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Search",
+                "name": "BingSearchEnabled",
+                "type": "DWord",
+                "desiredValue": 0,
+                "description": "Disable Bing search results in Start Menu (Win11)"
             }
         ],
         "privacy": [

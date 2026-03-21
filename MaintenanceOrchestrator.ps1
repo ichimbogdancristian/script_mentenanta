@@ -130,13 +130,13 @@ $ModulePairs = @(
     },
     @{
         Num        = 3
-        Label      = 'System Optimization'
-        DiffKey    = 'SystemOptimization'
-        Type1File  = 'modules\type1\SystemOptimizationAudit.psm1'
-        Type1Func  = 'Invoke-SystemOptimizationAudit'
-        Type2File  = 'modules\type2\SystemOptimization.psm1'
-        Type2Func  = 'Invoke-SystemOptimization'
-        ConfigSkip = 'skipSystemOptimization'
+        Label      = 'Security Enhancement'
+        DiffKey    = 'SecurityEnhancement'
+        Type1File  = 'modules\type1\SecurityAudit.psm1'
+        Type1Func  = 'Invoke-SecurityAudit'
+        Type2File  = 'modules\type2\SecurityEnhancement.psm1'
+        Type2Func  = 'Invoke-SecurityEnhancement'
+        ConfigSkip = 'skipSecurityEnhancement'
     },
     @{
         Num        = 4
@@ -150,13 +150,13 @@ $ModulePairs = @(
     },
     @{
         Num        = 5
-        Label      = 'Security Enhancement'
-        DiffKey    = 'SecurityEnhancement'
-        Type1File  = 'modules\type1\SecurityAudit.psm1'
-        Type1Func  = 'Invoke-SecurityAudit'
-        Type2File  = 'modules\type2\SecurityEnhancement.psm1'
-        Type2Func  = 'Invoke-SecurityEnhancement'
-        ConfigSkip = 'skipSecurityEnhancement'
+        Label      = 'System Optimization'
+        DiffKey    = 'SystemOptimization'
+        Type1File  = 'modules\type1\SystemOptimizationAudit.psm1'
+        Type1Func  = 'Invoke-SystemOptimizationAudit'
+        Type2File  = 'modules\type2\SystemOptimization.psm1'
+        Type2Func  = 'Invoke-SystemOptimization'
+        ConfigSkip = 'skipSystemOptimization'
     },
     @{
         Num        = 6

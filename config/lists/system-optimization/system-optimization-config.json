@@ -22,14 +22,13 @@
     },
     "services": {
       "safeToDisable": [
-        "DiagTrack",
-        "dmwappushservice",
         "RetailDemo",
         "XblAuthManager",
         "XblGameSave",
         "XboxGipSvc",
         "XboxNetApiSvc"
-      ]
+      ],
+      "_note": "DiagTrack and dmwappushservice moved to telemetry-list.json to avoid duplication"
     },
     "visualEffects": {
       "performance": {
@@ -46,11 +45,11 @@
   },
   "windows10": {
     "services": {
-      "safeToDisable": [
-        "WMPNetworkSvc"
-      ]
+      "safeToDisable": [],
+      "_note": "WMPNetworkSvc moved to telemetry-list.json to avoid duplication"
     },
     "registryTweaks": {
+      "_status": "not-implemented — no audit/apply path exists yet",
       "classicContextMenu": false,
       "showFileExtensions": true
     }
@@ -59,11 +58,12 @@
     "services": {
       "safeToDisable": [
         "WidgetService",
-        "ChatService",
         "DevHomeService"
-      ]
+      ],
+      "_note": "ChatService removed — deprecated since Win11 23H2+"
     },
     "registryTweaks": {
+      "_status": "not-implemented — no audit/apply path exists yet",
       "classicContextMenu": true,
       "showFileExtensions": true,
       "disableSnapLayouts": false,
@@ -72,6 +72,7 @@
       "disableChat": true
     },
     "uiOptimizations": {
+      "_status": "not-implemented — no audit/apply path exists yet",
       "useClassicTaskbar": false,
       "disableRecommendations": true,
       "minimizeSearchBox": true

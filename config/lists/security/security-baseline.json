@@ -79,7 +79,10 @@
         "ensureDisabled": [
             "RemoteRegistry",
             "Telnet"
-        ]
+        ],
+        "_notes": {
+            "Telnet": "Optional Windows feature; may not be installed on all systems"
+        }
     },
     "auditPolicy": {
         "logonEvents": true,

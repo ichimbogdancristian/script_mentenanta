@@ -26,7 +26,7 @@ function Invoke-SecurityEnhancement {
         return New-ModuleResult -ModuleName 'SecurityEnhancement' -Status 'Skipped' -Message 'Already compliant'
     }
 
-    $processed = 0; $failed = 0; $errors = @()
+    $processed = 0; $failed = 0; $errors = @(); $rebootNeeded = $false
 
     Write-Log -Level INFO -Component SECURITY -Message "Applying $($diff.Count) security fix(es)"
 
@@ -60,8 +60,9 @@ function Invoke-SecurityEnhancement {
                             # Remove policy key that prevents AV from running, then ensure service is started
                             $null = Set-RegistryValue -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender' `
                                 -Name 'DisableAntiSpyware' -Value 0 -Type DWord
-                            Set-Service  -Name WinDefend -StartupType Automatic -ErrorAction SilentlyContinue
-                            Start-Service -Name WinDefend -ErrorAction SilentlyContinue
+                            Set-Service  -Name WinDefend -StartupType Automatic -ErrorAction Stop
+                            Start-Service -Name WinDefend -ErrorAction Stop
+                            $rebootNeeded = $true   # DisableAntiSpyware change may require reboot
                         }
                         default {
                             Write-Log -Level WARN -Component SECURITY -Message "Unknown Defender feature: $feature"
@@ -116,7 +117,7 @@ function Invoke-SecurityEnhancement {
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
     Write-Log -Level INFO -Component SECURITY -Message "Done: $processed applied, $failed failed"
     return New-ModuleResult -ModuleName 'SecurityEnhancement' -Status $status -ItemsDetected $diff.Count `
-        -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors
+        -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors -RebootRequired $rebootNeeded
 }
 
 Export-ModuleMember -Function 'Invoke-SecurityEnhancement'

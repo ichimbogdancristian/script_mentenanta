@@ -409,6 +409,7 @@ function New-ModuleResult {
         [Parameter()] [int]$ItemsFailed = 0,
         [Parameter()] [string]$Message = '',
         [Parameter()] [object[]]$Errors = @(),
+        [Parameter()] [bool]$RebootRequired = $false,
         [Parameter()] [hashtable]$ExtraData = @{}
     )
     return @{
@@ -421,6 +422,7 @@ function New-ModuleResult {
         ItemsFailed    = $ItemsFailed
         Message        = $Message
         Errors         = $Errors
+        RebootRequired = $RebootRequired
         ExtraData      = $ExtraData
     }
 }
