@@ -23,29 +23,21 @@ function Invoke-EssentialAppsAudit {
         $baseline = Get-BaselineList -ModuleFolder 'essential-apps' -FileName 'essential-apps.json'
         if (-not $baseline) {
             return New-ModuleResult -ModuleName 'EssentialAppsAudit' -Status 'Failed' `
-                                    -Message 'Essential apps baseline list not found'
+                -Message 'Essential apps baseline list not found'
         }
         $baselineApps = @($baseline)
         Write-Log -Level INFO -Component APPS-AUDIT -Message "Baseline: $($baselineApps.Count) essential apps"
 
-        # 2. Scan installed software
+        # 2. Scan installed software from registry + AppX
         $installed = Get-InstalledApp
         $installedNames = $installed | ForEach-Object { $_.Name.ToLowerInvariant() } | Where-Object { $_ }
 
-        # 3. Also check winget list for accurate detection
-        $wingetInstalled = @()
-        if (Test-CommandAvailable 'winget') {
-            try {
-                $raw = & winget list --accept-source-agreements 2>&1 | Where-Object { $_ -is [string] -and $_ -match '\S' }
-                $wingetInstalled = $raw | Where-Object { $_ -notmatch '^[-=]' -and $_ -notmatch '^Name' } | ForEach-Object { $_.Trim().ToLowerInvariant() }
-            }
-            catch { Write-Log -Level WARN -Component APPS-AUDIT -Message "winget list failed: $_" }
-        }
+        $hasWinget = Test-CommandAvailable 'winget'
 
-        # 4. Detect if Microsoft Office is installed (skip LibreOffice if so)
+        # 3. Detect if Microsoft Office is installed (skip LibreOffice if so)
         $hasMsOffice = [bool]($installedNames | Where-Object { $_ -match 'microsoft.*(office|word|excel|outlook)' })
 
-        # 5. Build diff: apps NOT installed
+        # 4. Build diff: apps NOT installed
         $missing = [System.Collections.Generic.List[object]]::new()
         foreach ($app in $baselineApps) {
             $appNameLow = if ($app.name) { $app.name.ToLowerInvariant() } else { continue }
@@ -56,34 +48,41 @@ function Invoke-EssentialAppsAudit {
                 continue
             }
 
-            # Check registry, winget installed list, and AppX
-            $foundByName   = $installedNames | Where-Object { $_ -like "*$appNameLow*" }
-            $wingetId      = $app.winget
-            $foundByWinget = if ($wingetId) { $wingetInstalled | Where-Object { $_ -like "*$($wingetId.ToLowerInvariant())*" } } else { $null }
+            # Fast check: registry + AppX display name match
+            $foundByName = $installedNames | Where-Object { $_ -like "*$appNameLow*" }
+            if ($foundByName) {
+                Write-Log -Level DEBUG -Component APPS-AUDIT -Message "  OK (registry): $($app.name)"
+                continue
+            }
 
-            if (-not $foundByName -and -not $foundByWinget) {
-                $missing.Add($app)
-                Write-Log -Level DEBUG -Component APPS-AUDIT -Message "  MISSING: $($app.name)"
+            # Definitive check: winget list --id (exact match, covers Win32 + AppX + MSIX)
+            $wingetId = $app.winget
+            if ($hasWinget -and $wingetId) {
+                $null = & winget list --id $wingetId --exact --accept-source-agreements --disable-interactivity 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Log -Level DEBUG -Component APPS-AUDIT -Message "  OK (winget): $($app.name)"
+                    continue
+                }
             }
-            else {
-                Write-Log -Level DEBUG -Component APPS-AUDIT -Message "  OK: $($app.name)"
-            }
+
+            $missing.Add($app)
+            Write-Log -Level DEBUG -Component APPS-AUDIT -Message "  MISSING: $($app.name)"
         }
 
         Write-Log -Level INFO -Component APPS-AUDIT -Message "Missing apps: $($missing.Count)"
 
-        # 6. Save diff
+        # 5. Save diff
         Save-DiffList -ModuleName 'EssentialApps' -DiffList $missing.ToArray()
 
-        # 7. Persist audit data
+        # 6. Persist audit data
         $auditPath = Get-TempPath -Category 'data' -FileName 'essential-apps-audit.json'
         @{ Timestamp = (Get-Date -Format 'o'); Missing = $missing.ToArray(); BaselineCount = $baselineApps.Count } `
-            | ConvertTo-Json -Depth 8 | Set-Content -Path $auditPath -Encoding UTF8 -Force
+        | ConvertTo-Json -Depth 8 | Set-Content -Path $auditPath -Encoding UTF8 -Force
 
         Write-Log -Level SUCCESS -Component APPS-AUDIT -Message "Essential apps audit complete: $($missing.Count) missing"
         return New-ModuleResult -ModuleName 'EssentialAppsAudit' -Status 'Success' `
-                                -ItemsDetected $missing.Count `
-                                -Message "$($missing.Count) of $($baselineApps.Count) essential apps missing"
+            -ItemsDetected $missing.Count `
+            -Message "$($missing.Count) of $($baselineApps.Count) essential apps missing"
     }
     catch {
         Write-Log -Level ERROR -Component APPS-AUDIT -Message "Audit failed: $_"
