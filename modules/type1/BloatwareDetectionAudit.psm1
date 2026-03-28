@@ -12,6 +12,12 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
 }
 
 function Invoke-BloatwareAudit {
+    <#
+    .SYNOPSIS
+        Scans installed apps against the bloatware baseline list.
+    .OUTPUTS
+        hashtable
+    #>
     [CmdletBinding()]
     [OutputType([hashtable])]
     param()
@@ -31,7 +37,8 @@ function Invoke-BloatwareAudit {
         }
 
         # 2. OS-aware baseline (common + OS-specific entries)
-        $osCtx = if ($global:OSContext) { $global:OSContext } else { Get-OSContext }
+        $osCtx = (Get-Variable -Name 'OSContext' -Scope Global -ValueOnly -ErrorAction SilentlyContinue)
+        if (-not $osCtx) { $osCtx = Get-OSContext }
         $allBaseline = [System.Collections.Generic.List[string]]::new()
         if ($baseline.common) { $baseline.common | ForEach-Object { $allBaseline.Add($_) } }
         if ($osCtx.IsWindows11 -and $baseline.windows11) {
