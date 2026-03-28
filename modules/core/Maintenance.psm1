@@ -477,7 +477,8 @@ function Invoke-AppxInWinPS {
 
     if ($PSVersionTable.PSEdition -eq 'Core') {
         Write-Verbose 'Delegating AppX operation to Windows PowerShell 5.1'
-        return & powershell.exe -NoProfile -Command $ScriptBlock 2>$null
+        $winPS = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        return & $winPS -NoProfile -Command $ScriptBlock 2>$null
     }
 
     # Desktop edition — run directly
