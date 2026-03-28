@@ -45,7 +45,7 @@ function Invoke-BloatwareAudit {
         # 3. Scan AppX packages (primary source for bloatware)
         $appxInstalled = @()
         try {
-            $appxInstalled = @(Get-AppxPackageCompat | ForEach-Object { $_.Name })
+            $appxInstalled = @(Get-AppxPackageCompat | ForEach-Object { $_.Name } | Where-Object { $_ })
         }
         catch {
             Write-Log -Level WARN -Component BLOAT-AUDIT -Message "AppX query failed: $_ — continuing with registry apps only"
@@ -59,10 +59,10 @@ function Invoke-BloatwareAudit {
         } | Select-Object -Unique
 
         # 5. Also check registry-installed programs
-        $regApps = Get-InstalledApp | ForEach-Object { $_.Name }
+        $regApps = @(Get-InstalledApp | ForEach-Object { $_.Name } | Where-Object { $_ })
         $regDiff = $allBaseline | Where-Object {
             $b = $_.ToLowerInvariant()
-            $regApps | Where-Object { $_ -and $_.ToLowerInvariant() -like "*$b*" }
+            $regApps | Where-Object { $_.ToLowerInvariant() -like "*$b*" }
         } | Select-Object -Unique
 
         $combined = @(@($diff) + @($regDiff)) | Select-Object -Unique

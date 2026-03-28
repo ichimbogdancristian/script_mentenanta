@@ -262,7 +262,8 @@ function Invoke-SecurityAudit {
         if ($baseline.securityPolicy) {
             try {
                 $cfgPath = Join-Path $env:TEMP 'secaudit_secedit.cfg'
-                & secedit /export /cfg $cfgPath /quiet 2>&1 | Out-Null
+                $seceditExe = Join-Path $env:SystemRoot 'System32\secedit.exe'
+                & $seceditExe /export /cfg $cfgPath /quiet 2>&1 | Out-Null
                 $cfgContent = Get-Content -Path $cfgPath -Raw -ErrorAction Stop
 
                 # Password / lockout numeric policies
@@ -326,7 +327,8 @@ function Invoke-SecurityAudit {
         # 8. Audit policy check (array-based with per-subcategory success/failure)
         if ($baseline.auditPolicy -and $baseline.auditPolicy -is [System.Collections.IEnumerable]) {
             try {
-                $auditpolOutput = & auditpol /get /category:* 2>&1 | Out-String
+                $auditpolExe = Join-Path $env:SystemRoot 'System32\auditpol.exe'
+                $auditpolOutput = & $auditpolExe /get /category:* 2>&1 | Out-String
                 foreach ($ap in $baseline.auditPolicy) {
                     $subcategory = $ap.subcategory
                     $wantSuccess = if ($null -ne $ap.success) { $ap.success } else { $false }
