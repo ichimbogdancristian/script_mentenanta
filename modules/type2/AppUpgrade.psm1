@@ -50,7 +50,7 @@ function Invoke-AppUpgrade {
                     '--accept-package-agreements', '--accept-source-agreements',
                     '--disable-interactivity')
                 $exitCode = Invoke-ExternalPackageCommand -FilePath 'winget' -ArgumentList $wingetArgs
-                if ($exitCode -in 0, -1978335189) {
+                if ($exitCode -in 0, -1978335189, -1978335212) {
                     Write-Log -Level SUCCESS -Component APPUPGR -Message "Upgraded (winget): $name"
                     $upgraded = $true
                 }

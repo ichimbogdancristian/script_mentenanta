@@ -45,19 +45,10 @@ function Invoke-BloatwareAudit {
         # 3. Scan AppX packages (primary source for bloatware)
         $appxInstalled = @()
         try {
-            if ($PSVersionTable.PSEdition -eq 'Core') {
-                Import-Module -Name Appx -SkipEditionCheck -ErrorAction SilentlyContinue
-            }
-            $appxInstalled = @(Get-AppxPackage -ErrorAction Stop | Select-Object -ExpandProperty Name)
+            $appxInstalled = @(Get-AppxPackageCompat | ForEach-Object { $_.Name })
         }
         catch {
-            Write-Log -Level WARN -Component BLOAT-AUDIT -Message "AppX direct query failed: $_  — falling back to Windows PowerShell"
-            try {
-                $appxInstalled = @(& powershell.exe -NoProfile -Command 'Get-AppxPackage | Select-Object -ExpandProperty Name' 2>$null)
-            }
-            catch {
-                Write-Log -Level WARN -Component BLOAT-AUDIT -Message "AppX fallback also failed: $_ — continuing with registry apps only"
-            }
+            Write-Log -Level WARN -Component BLOAT-AUDIT -Message "AppX query failed: $_ — continuing with registry apps only"
         }
 
         # 4. Diff: baseline apps that ARE installed (need removal)

@@ -40,19 +40,6 @@ function Invoke-BloatwareRemoval {
     $osCtx = if ($OSContext) { $OSContext } elseif (Test-Path variable:global:OSContext) { $global:OSContext } else { Get-OSContext }
     $processed = 0; $failed = 0; $errors = @()
 
-    # PS7: Try loading Appx module; detect if AppX cmdlets actually work on this platform
-    $appxAvailable = $false
-    try {
-        if ($PSVersionTable.PSEdition -eq 'Core') {
-            Import-Module -Name Appx -SkipEditionCheck -ErrorAction Stop
-        }
-        $null = Get-AppxPackage -Name 'NonExistentProbePackage' -ErrorAction Stop
-        $appxAvailable = $true
-    }
-    catch {
-        Write-Log -Level WARN -Component BLOATWARE -Message "Appx module not usable in PS7 — will fall back to powershell.exe for AppX operations"
-    }
-
     Write-Log -Level INFO -Component BLOATWARE -Message "Processing $($diff.Count) item(s) on $($osCtx.DisplayText)"
 
     foreach ($item in $diff) {
@@ -65,49 +52,27 @@ function Invoke-BloatwareRemoval {
         try {
             $removed = $false
 
-            # 1. AppX removal
+            # 1. AppX removal (via PS7-safe compatibility layer)
             if ($pkgName) {
-                if ($appxAvailable) {
-                    # Direct AppX cmdlets work on this platform
-                    $pkg = Get-AppxPackage -AllUsers -Name "*$pkgName*" -ErrorAction SilentlyContinue
-                    if (-not $pkg) { $pkg = Get-AppxPackage -Name "*$pkgName*" -ErrorAction SilentlyContinue }
-                    if ($pkg) {
-                        $pkg | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
-                        $pkg | Remove-AppxPackage -ErrorAction SilentlyContinue
-                        Write-Log -Level SUCCESS -Component BLOATWARE -Message "Removed AppX: $pkgName"
-                        $removed = $true
+                $pkg = Get-AppxPackageCompat -Name "*$pkgName*" -AllUsers
+                if (-not $pkg) { $pkg = Get-AppxPackageCompat -Name "*$pkgName*" }
+                if ($pkg) {
+                    $pkg | ForEach-Object {
+                        Remove-AppxPackageCompat -PackageFullName $_.PackageFullName -AllUsers
                     }
-                    try {
-                        $prov = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
-                        Where-Object { $_.PackageName -like "*$pkgName*" }
-                        if ($prov) {
-                            $prov | ForEach-Object {
-                                $null = Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue
-                            }
+                    Write-Log -Level SUCCESS -Component BLOATWARE -Message "Removed AppX: $pkgName"
+                    $removed = $true
+                }
+                try {
+                    $prov = Get-AppxProvisionedPackageCompat |
+                    Where-Object { $_.PackageName -like "*$pkgName*" }
+                    if ($prov) {
+                        $prov | ForEach-Object {
+                            Remove-AppxProvisionedPackageCompat -PackageName $_.PackageName
                         }
                     }
-                    catch { Write-Log -Level WARN -Component BLOATWARE -Message "Provisioned package removal skipped for '$pkgName': $_" }
                 }
-                else {
-                    # Fallback: delegate AppX removal to Windows PowerShell 5.1
-                    $fallbackScript = @"
-`$pkg = Get-AppxPackage -AllUsers -Name '*$pkgName*' -ErrorAction SilentlyContinue
-if (-not `$pkg) { `$pkg = Get-AppxPackage -Name '*$pkgName*' -ErrorAction SilentlyContinue }
-if (`$pkg) {
-    `$pkg | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
-    `$pkg | Remove-AppxPackage -ErrorAction SilentlyContinue
-    Write-Output 'REMOVED'
-}
-Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
-    Where-Object { `$_.PackageName -like '*$pkgName*' } |
-    ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName `$_.PackageName -ErrorAction SilentlyContinue }
-"@
-                    $result = & powershell.exe -NoProfile -Command $fallbackScript 2>$null
-                    if ($result -contains 'REMOVED') {
-                        Write-Log -Level SUCCESS -Component BLOATWARE -Message "Removed AppX (WinPS fallback): $pkgName"
-                        $removed = $true
-                    }
-                }
+                catch { Write-Log -Level WARN -Component BLOATWARE -Message "Provisioned package removal skipped for '$pkgName': $_" }
             }
 
             # 2. Winget fallback

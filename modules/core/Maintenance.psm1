@@ -457,6 +457,134 @@ function New-ModuleResult {
 
 #endregion
 
+#region ─── APPX COMPATIBILITY LAYER ──────────────────────────────────────────
+
+<#
+.SYNOPSIS
+    Executes an AppX-related command, delegating to Windows PowerShell 5.1 when
+    running under PS7 Core (where the Appx module is unreliable).
+.PARAMETER ScriptBlock
+    The PowerShell command string to execute (must use AppX cmdlets).
+.OUTPUTS
+    Raw output from the command (deserialized objects when via powershell.exe).
+#>
+function Invoke-AppxInWinPS {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$ScriptBlock
+    )
+
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        Write-Verbose 'Delegating AppX operation to Windows PowerShell 5.1'
+        return & powershell.exe -NoProfile -Command $ScriptBlock 2>$null
+    }
+
+    # Desktop edition — run directly
+    return & ([scriptblock]::Create($ScriptBlock))
+}
+
+<#
+.SYNOPSIS
+    PS7-safe wrapper for Get-AppxPackage. Returns an array of hashtables with
+    Name, Version, Publisher and PackageFullName properties.
+.PARAMETER Name
+    Optional wildcard filter for package names.
+.PARAMETER AllUsers
+    Query packages for all user accounts.
+#>
+function Get-AppxPackageCompat {
+    [CmdletBinding()]
+    [OutputType([hashtable[]])]
+    param(
+        [string]$Name,
+        [switch]$AllUsers
+    )
+
+    $cmd = 'Get-AppxPackage'
+    if ($AllUsers) { $cmd += ' -AllUsers' }
+    if ($Name) { $cmd += " -Name '$Name'" }
+    $cmd += ' -ErrorAction SilentlyContinue'
+    $cmd += ' | Select-Object Name, Version, Publisher, PackageFullName'
+
+    $raw = Invoke-AppxInWinPS -ScriptBlock $cmd
+    if (-not $raw) { return @() }
+
+    # Normalise into plain hashtables (deserialized objects lose methods)
+    @($raw) | ForEach-Object {
+        @{
+            Name            = $_.Name
+            Version         = "$($_.Version)"
+            Publisher       = $_.Publisher
+            PackageFullName = $_.PackageFullName
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    PS7-safe wrapper for Remove-AppxPackage.
+.PARAMETER PackageFullName
+    Full name of the package to remove.
+.PARAMETER AllUsers
+    Remove for all user accounts.
+#>
+function Remove-AppxPackageCompat {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$PackageFullName,
+        [switch]$AllUsers
+    )
+
+    $cmd = "Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Where-Object { `$_.PackageFullName -eq '$PackageFullName' } | Remove-AppxPackage"
+    if ($AllUsers) { $cmd += ' -AllUsers' }
+    $cmd += ' -ErrorAction SilentlyContinue'
+
+    Invoke-AppxInWinPS -ScriptBlock $cmd
+}
+
+<#
+.SYNOPSIS
+    PS7-safe wrapper for Get-AppxProvisionedPackage -Online.
+    Returns an array of hashtables with PackageName and DisplayName.
+#>
+function Get-AppxProvisionedPackageCompat {
+    [CmdletBinding()]
+    [OutputType([hashtable[]])]
+    param()
+
+    $cmd = 'Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Select-Object PackageName, DisplayName'
+    $raw = Invoke-AppxInWinPS -ScriptBlock $cmd
+    if (-not $raw) { return @() }
+
+    @($raw) | ForEach-Object {
+        @{
+            PackageName = $_.PackageName
+            DisplayName = $_.DisplayName
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    PS7-safe wrapper for Remove-AppxProvisionedPackage -Online.
+.PARAMETER PackageName
+    The provisioned package name to remove.
+#>
+function Remove-AppxProvisionedPackageCompat {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$PackageName
+    )
+
+    $cmd = "Remove-AppxProvisionedPackage -Online -PackageName '$PackageName' -ErrorAction SilentlyContinue"
+    Invoke-AppxInWinPS -ScriptBlock $cmd
+}
+
+#endregion
+
 #region ─── SHARED SYSTEM QUERIES ─────────────────────────────────────────────
 
 <#
@@ -494,21 +622,16 @@ function Get-InstalledApp {
         catch { Write-Verbose "Registry path skipped: $_" }
     }
 
-    # Add AppX / MSIX packages
+    # Add AppX / MSIX packages via PS7-safe compatibility layer
     try {
-        if ($PSVersionTable.PSEdition -eq 'Core') {
-            Import-Module -Name Appx -SkipEditionCheck -ErrorAction SilentlyContinue
-        }
-        Get-AppxPackage -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -and $_.PackageFullName } |
-        ForEach-Object {
-            $appxApp = @{
-                Name      = $_.Name
-                Version   = $_.Version.ToString()
-                Publisher = $_.Publisher
-                Source    = 'AppX'
-            }
-            $apps.Add($appxApp)
+        $appxPkgs = Get-AppxPackageCompat
+        $appxPkgs | Where-Object { $_.Name -and $_.PackageFullName } | ForEach-Object {
+            $apps.Add(@{
+                    Name      = $_.Name
+                    Version   = $_.Version
+                    Publisher = $_.Publisher
+                    Source    = 'AppX'
+                })
         }
     }
     catch { Write-Verbose "AppX enumeration skipped: $_" }
@@ -661,12 +784,12 @@ function Invoke-ExternalPackageCommand {
     )
 
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName  = $FilePath
+    $psi.FileName = $FilePath
     $psi.Arguments = $ArgumentList -join ' '
-    $psi.UseShellExecute        = $false
+    $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError  = $true
-    $psi.CreateNoWindow         = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
 
     $proc = [System.Diagnostics.Process]::new()
     $proc.StartInfo = $psi
@@ -697,7 +820,12 @@ Export-ModuleMember -Function @(
     'Test-CommandAvailable',
     'Get-RegistryValue',
     'Set-RegistryValue',
-    'Invoke-ExternalPackageCommand'
+    'Invoke-ExternalPackageCommand',
+    'Invoke-AppxInWinPS',
+    'Get-AppxPackageCompat',
+    'Remove-AppxPackageCompat',
+    'Get-AppxProvisionedPackageCompat',
+    'Remove-AppxProvisionedPackageCompat'
 )
 
 #endregion
