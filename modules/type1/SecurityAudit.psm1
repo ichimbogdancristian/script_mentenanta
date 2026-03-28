@@ -25,9 +25,9 @@ function Invoke-SecurityAudit {
             return New-ModuleResult -ModuleName 'SecurityAudit' -Status 'Failed' `
                 -Message 'Security baseline not found'
         }
-        if (-not $baseline.registry -or -not $baseline.windowsDefender) {
+        if (-not $baseline.registry -and -not $baseline.windowsDefender) {
             return New-ModuleResult -ModuleName 'SecurityAudit' -Status 'Failed' `
-                -Message 'Invalid security baseline structure (missing registry or windowsDefender)'
+                -Message 'Invalid security baseline structure (missing registry and windowsDefender)'
         }
 
         $diff = [System.Collections.Generic.List[hashtable]]::new()
@@ -258,69 +258,104 @@ function Invoke-SecurityAudit {
             catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Service query failed '$svcName': $_" }
         }
 
-        # 7. Password policy audit
-        if ($baseline.passwordPolicy) {
+        # 7. Security policy audit via secedit (password/lockout/account rename)
+        if ($baseline.securityPolicy) {
             try {
-                $netAccounts = & net accounts 2>&1 | Out-String
-                if ($baseline.passwordPolicy.maxPasswordAge) {
-                    $desired = $baseline.passwordPolicy.maxPasswordAge
-                    if ($netAccounts -match 'Maximum password age.*?:\s*(\d+)') {
+                $cfgPath = Join-Path $env:TEMP 'secaudit_secedit.cfg'
+                & secedit /export /cfg $cfgPath /quiet 2>&1 | Out-Null
+                $cfgContent = Get-Content -Path $cfgPath -Raw -ErrorAction Stop
+
+                # Password / lockout numeric policies
+                $policyChecks = @(
+                    @{ Key = 'PasswordHistorySize'; Section = 'System Access'; CfgName = 'PasswordHistorySize'; Compare = 'ge' }
+                    @{ Key = 'MinimumPasswordAge'; Section = 'System Access'; CfgName = 'MinimumPasswordAge'; Compare = 'ge' }
+                    @{ Key = 'MinimumPasswordLength'; Section = 'System Access'; CfgName = 'MinimumPasswordLength'; Compare = 'ge' }
+                    @{ Key = 'LockoutDuration'; Section = 'System Access'; CfgName = 'LockoutDuration'; Compare = 'ge' }
+                    @{ Key = 'LockoutBadCount'; Section = 'System Access'; CfgName = 'LockoutBadCount'; Compare = 'le' }
+                    @{ Key = 'ResetLockoutCount'; Section = 'System Access'; CfgName = 'ResetLockoutCount'; Compare = 'ge' }
+                )
+                foreach ($pc in $policyChecks) {
+                    $desired = $baseline.securityPolicy.($pc.Key)
+                    if ($null -eq $desired) { continue }
+                    $current = $null
+                    if ($cfgContent -match "(?m)^\s*$($pc.CfgName)\s*=\s*(\d+)") {
                         $current = [int]$Matches[1]
-                        if ($current -gt $desired -or $current -eq 0) {
-                            $diff.Add(@{
-                                    Type         = 'passwordpolicy'
-                                    Name         = 'MaxPasswordAge'
-                                    Description  = "Max password age should be $desired days or less"
-                                    CurrentState = $current
-                                    DesiredState = $desired
-                                })
-                            Write-Log -Level WARN -Component SEC-AUDIT -Message "Max password age: $current (desired: <= $desired)"
-                        }
+                    }
+                    $mismatch = if ($null -eq $current) { $true }
+                    elseif ($pc.Compare -eq 'ge') { $current -lt $desired }
+                    elseif ($pc.Compare -eq 'le') { $current -gt $desired -or $current -eq 0 }
+                    else { "$current" -ne "$desired" }
+                    if ($mismatch) {
+                        $diff.Add(@{
+                                Type         = 'securitypolicy'
+                                Name         = $pc.Key
+                                CfgName      = $pc.CfgName
+                                Description  = "Security policy: $($pc.Key) should be $desired"
+                                CurrentState = $current
+                                DesiredState = $desired
+                            })
+                        Write-Log -Level WARN -Component SEC-AUDIT -Message "SecPolicy mismatch: $($pc.Key) current=$current desired=$desired"
                     }
                 }
-                if ($baseline.passwordPolicy.minPasswordLength) {
-                    $desired = $baseline.passwordPolicy.minPasswordLength
-                    if ($netAccounts -match 'Minimum password length.*?:\s*(\d+)') {
-                        $current = [int]$Matches[1]
-                        if ($current -lt $desired) {
-                            $diff.Add(@{
-                                    Type         = 'passwordpolicy'
-                                    Name         = 'MinPasswordLength'
-                                    Description  = "Min password length should be $desired or more"
-                                    CurrentState = $current
-                                    DesiredState = $desired
-                                })
-                            Write-Log -Level WARN -Component SEC-AUDIT -Message "Min password length: $current (desired: >= $desired)"
-                        }
+
+                # Account rename checks
+                foreach ($renameKey in @('NewAdministratorName', 'NewGuestName')) {
+                    $desired = $baseline.securityPolicy.$renameKey
+                    if (-not $desired) { continue }
+                    $current = $null
+                    if ($cfgContent -match "(?m)^\s*$renameKey\s*=\s*""?(.+?)""?\s*$") {
+                        $current = $Matches[1].Trim('"')
+                    }
+                    if ($current -ne $desired) {
+                        $diff.Add(@{
+                                Type         = 'securitypolicy'
+                                Name         = $renameKey
+                                CfgName      = $renameKey
+                                Description  = "Account rename: $renameKey should be '$desired'"
+                                CurrentState = $current
+                                DesiredState = "`"$desired`""
+                            })
+                        Write-Log -Level WARN -Component SEC-AUDIT -Message "Account rename needed: $renameKey current='$current' desired='$desired'"
                     }
                 }
+                Remove-Item -Path $cfgPath -Force -ErrorAction SilentlyContinue
             }
-            catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Password policy query failed: $_" }
+            catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Security policy (secedit) query failed: $_" }
         }
 
-        # 8. Audit policy check
-        if ($baseline.auditPolicy) {
+        # 8. Audit policy check (array-based with per-subcategory success/failure)
+        if ($baseline.auditPolicy -and $baseline.auditPolicy -is [System.Collections.IEnumerable]) {
             try {
                 $auditpolOutput = & auditpol /get /category:* 2>&1 | Out-String
-                $policyMap = @{
-                    'logonEvents'  = 'Logon'
-                    'accountLogon' = 'Credential Validation'
-                    'policyChange' = 'Audit Policy Change'
-                }
-                foreach ($key in $policyMap.Keys) {
-                    if ($baseline.auditPolicy.$key -eq $true) {
-                        $subcategory = $policyMap[$key]
-                        if ($auditpolOutput -match "$subcategory\s+(No Auditing|Not Configured)") {
-                            $diff.Add(@{
-                                    Type         = 'auditpolicy'
-                                    Name         = $key
-                                    Subcategory  = $subcategory
-                                    Description  = "Audit policy '$subcategory' should be enabled"
-                                    CurrentState = $Matches[1]
-                                    DesiredState = 'Success and Failure'
-                                })
-                            Write-Log -Level WARN -Component SEC-AUDIT -Message "Audit policy not enabled: $subcategory"
-                        }
+                foreach ($ap in $baseline.auditPolicy) {
+                    $subcategory = $ap.subcategory
+                    $wantSuccess = if ($null -ne $ap.success) { $ap.success } else { $false }
+                    $wantFailure = if ($null -ne $ap.failure) { $ap.failure } else { $false }
+                    $desiredStr = @(
+                        $(if ($wantSuccess) { 'Success' })
+                        $(if ($wantFailure) { 'Failure' })
+                    ) -join ' and '
+                    if (-not $desiredStr) { $desiredStr = 'No Auditing' }
+
+                    # Parse current setting from auditpol output
+                    $currentStr = 'Unknown'
+                    if ($auditpolOutput -match "(?m)^\s*$([regex]::Escape($subcategory))\s+(.+)$") {
+                        $currentStr = $Matches[1].Trim()
+                    }
+                    $hasSuccess = $currentStr -match 'Success'
+                    $hasFailure = $currentStr -match 'Failure'
+                    if ($hasSuccess -ne $wantSuccess -or $hasFailure -ne $wantFailure) {
+                        $diff.Add(@{
+                                Type         = 'auditpolicy'
+                                Name         = $subcategory
+                                Subcategory  = $subcategory
+                                Success      = $wantSuccess
+                                Failure      = $wantFailure
+                                Description  = "Audit policy '$subcategory' should be: $desiredStr"
+                                CurrentState = $currentStr
+                                DesiredState = $desiredStr
+                            })
+                        Write-Log -Level WARN -Component SEC-AUDIT -Message "Audit policy mismatch: $subcategory current='$currentStr' desired='$desiredStr'"
                     }
                 }
             }

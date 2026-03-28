@@ -1,5 +1,6 @@
 {
-    "_comment": "Security baseline - desired security settings for hardened Windows 10/11 workstations.",
+    "_comment": "CIS Microsoft Windows 10 Enterprise Benchmark v4.0.0 - Security baseline for hardened workstations.",
+    "_version": "4.0.0",
     "windowsDefender": {
         "realTimeProtection": true,
         "cloudProtection": true,
@@ -15,31 +16,2107 @@
             "public": true
         }
     },
-    "uac": {
-        "enabled": true,
-        "level": 2,
-        "description": "Level 2 = Notify on app changes (default)"
+    "securityPolicy": {
+        "_comment": "Applied via secedit export/import for full CIS password & account lockout coverage",
+        "PasswordHistorySize": 24,
+        "MinimumPasswordAge": 1,
+        "MinimumPasswordLength": 14,
+        "LockoutDuration": 15,
+        "LockoutBadCount": 5,
+        "ResetLockoutCount": 15,
+        "NewAdministratorName": "CISAdmin",
+        "NewGuestName": "CISGuest"
     },
-    "passwordPolicy": {
-        "maxPasswordAge": 90,
-        "minPasswordLength": 8,
-        "complexityEnabled": true,
-        "description": "Basic password policy recommendations"
+    "auditPolicy": [
+        {
+            "cis": "17.1.1",
+            "subcategory": "Credential Validation",
+            "success": true,
+            "failure": true
+        },
+        {
+            "cis": "17.2.1",
+            "subcategory": "Application Group Management",
+            "success": true,
+            "failure": true
+        },
+        {
+            "cis": "17.2.3",
+            "subcategory": "User Account Management",
+            "success": true,
+            "failure": true
+        },
+        {
+            "cis": "17.3.1",
+            "subcategory": "Plug and Play Events",
+            "success": true,
+            "failure": false
+        },
+        {
+            "cis": "17.3.2",
+            "subcategory": "Process Creation",
+            "success": true,
+            "failure": false
+        },
+        {
+            "cis": "17.5.1",
+            "subcategory": "Account Lockout",
+            "success": false,
+            "failure": true
+        },
+        {
+            "cis": "17.5.2",
+            "subcategory": "Group Membership",
+            "success": true,
+            "failure": false
+        },
+        {
+            "cis": "17.5.5",
+            "subcategory": "Other Logon/Logoff Events",
+            "success": true,
+            "failure": true
+        },
+        {
+            "cis": "17.6.1",
+            "subcategory": "Detailed File Share",
+            "success": false,
+            "failure": true
+        },
+        {
+            "cis": "17.6.2",
+            "subcategory": "File Share",
+            "success": true,
+            "failure": true
+        },
+        {
+            "cis": "17.6.3",
+            "subcategory": "Other Object Access Events",
+            "success": true,
+            "failure": true
+        },
+        {
+            "cis": "17.6.4",
+            "subcategory": "Removable Storage",
+            "success": true,
+            "failure": true
+        },
+        {
+            "cis": "17.7.3",
+            "subcategory": "Authorization Policy Change",
+            "success": true,
+            "failure": false
+        },
+        {
+            "cis": "17.7.4",
+            "subcategory": "MPSSVC Rule-Level Policy Change",
+            "success": true,
+            "failure": true
+        },
+        {
+            "cis": "17.7.5",
+            "subcategory": "Other Policy Change Events",
+            "success": false,
+            "failure": true
+        },
+        {
+            "cis": "17.8.1",
+            "subcategory": "Sensitive Privilege Use",
+            "success": true,
+            "failure": true
+        },
+        {
+            "cis": "17.9.1",
+            "subcategory": "IPsec Driver",
+            "success": true,
+            "failure": true
+        },
+        {
+            "cis": "17.9.4",
+            "subcategory": "Security System Extension",
+            "success": true,
+            "failure": false
+        }
+    ],
+    "services": {
+        "ensureRunning": [
+            "WinDefend",
+            "MpsSvc",
+            "EventLog"
+        ],
+        "ensureDisabled": [
+            "RemoteRegistry",
+            "Telnet",
+            "BTAGService",
+            "bthserv",
+            "lltdsvc",
+            "MSiSCSI",
+            "PNRPsvc",
+            "p2psvc",
+            "p2pimsvc",
+            "PNRPAutoReg",
+            "Spooler",
+            "wercplsupport",
+            "RasAuto",
+            "SessionEnv",
+            "TermService",
+            "UmRdpService",
+            "RpcLocator",
+            "LanmanServer",
+            "SSDPSRV",
+            "upnphost",
+            "Wecsvc",
+            "icssvc",
+            "WpnService",
+            "PushToInstall",
+            "WinRM"
+        ]
     },
     "registry": [
         {
+            "cis": "1.1.6",
+            "path": "HKLM:\\System\\CurrentControlSet\\Control\\SAM",
+            "name": "RelaxMinimumPasswordLengthLimits",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Relax minimum password length limits"
+        },
+        {
+            "cis": "2.3.1.1",
+            "path": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "name": "NoConnectedUser",
+            "type": "DWord",
+            "desiredValue": 3,
+            "description": "Block Microsoft accounts"
+        },
+        {
+            "cis": "2.3.4.1",
+            "path": "HKLM:\\System\\CurrentControlSet\\Control\\Print\\Providers\\LanMan Print Services\\Servers",
+            "name": "AddPrinterDrivers",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Prevent users from installing printer drivers"
+        },
+        {
+            "cis": "2.3.7.1",
+            "path": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "name": "DisableCAD",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Require CTRL+ALT+DEL for logon"
+        },
+        {
+            "cis": "2.3.7.2",
+            "path": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "name": "DontDisplayLastUserName",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Do not display last signed-in user"
+        },
+        {
+            "cis": "2.3.7.3",
+            "path": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "name": "MaxDevicePasswordFailedAttempts",
+            "type": "DWord",
+            "desiredValue": 10,
+            "description": "Machine account lockout threshold"
+        },
+        {
+            "cis": "2.3.7.4",
+            "path": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "name": "InactivityTimeoutSecs",
+            "type": "DWord",
+            "desiredValue": 900,
+            "description": "Machine inactivity limit 900 seconds"
+        },
+        {
+            "cis": "2.3.7.5",
             "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "name": "LegalNoticeText",
+            "type": "String",
+            "desiredValue": "This system is for authorized use only. By using this system you consent to monitoring.",
+            "description": "Logon legal notice text",
+            "nonEmpty": true
+        },
+        {
+            "cis": "2.3.7.6",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "name": "LegalNoticeCaption",
+            "type": "String",
+            "desiredValue": "WARNING",
+            "description": "Logon legal notice caption",
+            "nonEmpty": true
+        },
+        {
+            "cis": "2.3.7.7",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
+            "name": "CachedLogonsCount",
+            "type": "String",
+            "desiredValue": "4",
+            "description": "Cached logons count"
+        },
+        {
+            "cis": "2.3.7.9",
+            "path": "HKLM:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon",
+            "name": "ScRemoveOption",
+            "type": "String",
+            "desiredValue": "1",
+            "description": "Smart card removal action: Lock Workstation"
+        },
+        {
+            "cis": "2.3.8.1",
+            "path": "HKLM:\\System\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters",
+            "name": "RequireSecuritySignature",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "MS network client: Digitally sign communications (always)"
+        },
+        {
+            "cis": "2.3.9.2",
+            "path": "HKLM:\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+            "name": "RequireSecuritySignature",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "MS network server: Digitally sign communications (always)"
+        },
+        {
+            "cis": "2.3.9.3",
+            "path": "HKLM:\\System\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+            "name": "EnableSecuritySignature",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "MS network server: Digitally sign communications (if client agrees)"
+        },
+        {
+            "cis": "2.3.9.5",
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\LanManServer\\Parameters",
+            "name": "SMBServerNameHardeningLevel",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Server SPN target name validation"
+        },
+        {
+            "cis": "2.3.10.3",
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+            "name": "RestrictAnonymous",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Restrict anonymous SAM enumeration"
+        },
+        {
+            "cis": "2.3.10.4",
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+            "name": "DisableDomainCreds",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Do not store credentials for network auth"
+        },
+        {
+            "cis": "2.3.11.1",
+            "path": "HKLM:\\System\\CurrentControlSet\\Control\\Lsa",
+            "name": "UseMachineId",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Allow Local System computer identity for NTLM"
+        },
+        {
+            "cis": "2.3.11.7",
+            "path": "HKLM:\\System\\CurrentControlSet\\Control\\Lsa",
+            "name": "LmCompatibilityLevel",
+            "type": "DWord",
+            "desiredValue": 5,
+            "description": "LAN Manager auth level: NTLMv2 only, refuse LM and NTLM"
+        },
+        {
+            "cis": "2.3.11.11",
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\MSV1_0",
+            "name": "AuditReceivingNTLMTraffic",
+            "type": "DWord",
+            "desiredValue": 2,
+            "description": "Audit incoming NTLM traffic"
+        },
+        {
+            "cis": "2.3.11.12",
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\MSV1_0",
+            "name": "RestrictSendingNTLMTraffic",
+            "type": "DWord",
+            "desiredValue": 2,
+            "description": "Restrict outgoing NTLM traffic"
+        },
+        {
+            "cis": "2.3.17.1",
+            "path": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "name": "FilterAdministratorToken",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "UAC Admin Approval Mode for Built-in Admin"
+        },
+        {
+            "cis": "2.3.17.2",
+            "path": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "name": "ConsentPromptBehaviorAdmin",
+            "type": "DWord",
+            "desiredValue": 2,
+            "description": "UAC: Prompt for consent on secure desktop"
+        },
+        {
+            "cis": "2.3.17.3",
+            "path": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "name": "ConsentPromptBehaviorUser",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "UAC: Auto deny elevation for standard users"
+        },
+        {
+            "cis": "2.3.17.5",
+            "path": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
             "name": "EnableLUA",
             "type": "DWord",
             "desiredValue": 1,
             "description": "Ensure UAC is enabled"
         },
         {
-            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
-            "name": "ConsentPromptBehaviorAdmin",
+            "cis": "9.1.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile",
+            "name": "DisableNotifications",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Domain FW: Disable notifications"
+        },
+        {
+            "cis": "9.1.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile\\Logging",
+            "name": "LogFilePath",
+            "type": "String",
+            "desiredValue": "%SystemRoot%\\System32\\logfiles\\firewall\\domainfw.log",
+            "description": "Domain FW: Log file path"
+        },
+        {
+            "cis": "9.1.5",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile\\Logging",
+            "name": "LogFileSize",
+            "type": "DWord",
+            "desiredValue": 16384,
+            "description": "Domain FW: Log file size 16384 KB"
+        },
+        {
+            "cis": "9.1.6",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile\\Logging",
+            "name": "LogDroppedPackets",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Domain FW: Log dropped packets"
+        },
+        {
+            "cis": "9.1.7",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\DomainProfile\\Logging",
+            "name": "LogSuccessfulConnections",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Domain FW: Log successful connections"
+        },
+        {
+            "cis": "9.2.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile",
+            "name": "DisableNotifications",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Private FW: Disable notifications"
+        },
+        {
+            "cis": "9.2.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile\\Logging",
+            "name": "LogFilePath",
+            "type": "String",
+            "desiredValue": "%SystemRoot%\\System32\\logfiles\\firewall\\privatefw.log",
+            "description": "Private FW: Log file path"
+        },
+        {
+            "cis": "9.2.5",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile\\Logging",
+            "name": "LogFileSize",
+            "type": "DWord",
+            "desiredValue": 16384,
+            "description": "Private FW: Log file size 16384 KB"
+        },
+        {
+            "cis": "9.2.6",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile\\Logging",
+            "name": "LogDroppedPackets",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Private FW: Log dropped packets"
+        },
+        {
+            "cis": "9.2.7",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PrivateProfile\\Logging",
+            "name": "LogSuccessfulConnections",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Private FW: Log successful connections"
+        },
+        {
+            "cis": "9.3.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile",
+            "name": "DisableNotifications",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Public FW: Disable notifications"
+        },
+        {
+            "cis": "9.3.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile",
+            "name": "AllowLocalPolicyMerge",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Public FW: No local firewall rules"
+        },
+        {
+            "cis": "9.3.5",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile",
+            "name": "AllowLocalIPsecPolicyMerge",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Public FW: No local IPsec rules"
+        },
+        {
+            "cis": "9.3.6",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile\\Logging",
+            "name": "LogFilePath",
+            "type": "String",
+            "desiredValue": "%SystemRoot%\\System32\\logfiles\\firewall\\publicfw.log",
+            "description": "Public FW: Log file path"
+        },
+        {
+            "cis": "9.3.7",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile\\Logging",
+            "name": "LogFileSize",
+            "type": "DWord",
+            "desiredValue": 16384,
+            "description": "Public FW: Log file size 16384 KB"
+        },
+        {
+            "cis": "9.3.8",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile\\Logging",
+            "name": "LogDroppedPackets",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Public FW: Log dropped packets"
+        },
+        {
+            "cis": "9.3.9",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsFirewall\\PublicProfile\\Logging",
+            "name": "LogSuccessfulConnections",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Public FW: Log successful connections"
+        },
+        {
+            "cis": "18.1.1.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization",
+            "name": "NoLockScreenCamera",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Prevent lock screen camera"
+        },
+        {
+            "cis": "18.1.1.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Personalization",
+            "name": "NoLockScreenSlideshow",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Prevent lock screen slide show"
+        },
+        {
+            "cis": "18.1.2.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\InputPersonalization",
+            "name": "AllowInputPersonalization",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable online speech recognition"
+        },
+        {
+            "cis": "18.1.3",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer",
+            "name": "AllowOnlineTips",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable online tips"
+        },
+        {
+            "cis": "18.4.4",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Cryptography\\Wintrust\\Config",
+            "name": "EnableCertPaddingCheck",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Enable certificate padding check"
+        },
+        {
+            "cis": "18.4.5",
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\kernel",
+            "name": "DisableExceptionChainValidation",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Enable SEHOP"
+        },
+        {
+            "cis": "18.4.7",
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\NetBT\\Parameters",
+            "name": "NodeType",
             "type": "DWord",
             "desiredValue": 2,
-            "description": "UAC prompts for admins"
+            "description": "NetBT NodeType P-node"
+        },
+        {
+            "cis": "18.5.4",
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\RasMan\\Parameters",
+            "name": "DisableSavePassword",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Prevent saving dial-up passwords"
+        },
+        {
+            "cis": "18.5.5",
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters",
+            "name": "EnableICMPRedirect",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable ICMP redirects override OSPF"
+        },
+        {
+            "cis": "18.5.6",
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters",
+            "name": "KeepAliveTime",
+            "type": "DWord",
+            "desiredValue": 300000,
+            "description": "KeepAliveTime 300000ms"
+        },
+        {
+            "cis": "18.5.8",
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters",
+            "name": "PerformRouterDiscovery",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable IRDP router discovery"
+        },
+        {
+            "cis": "18.5.11",
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\TCPIP6\\Parameters",
+            "name": "TcpMaxDataRetransmissions",
+            "type": "DWord",
+            "desiredValue": 3,
+            "description": "IPv6 TCP max data retransmissions"
+        },
+        {
+            "cis": "18.5.12",
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters",
+            "name": "TcpMaxDataRetransmissions",
+            "type": "DWord",
+            "desiredValue": 3,
+            "description": "TCP max data retransmissions"
+        },
+        {
+            "cis": "18.6.4.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\DNSClient",
+            "name": "EnableMulticast",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Turn off multicast name resolution (LLMNR)"
+        },
+        {
+            "cis": "18.6.5.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+            "name": "EnableFontProviders",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable Font Providers"
+        },
+        {
+            "cis": "18.6.8.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\LanmanWorkstation",
+            "name": "AllowInsecureGuestAuth",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable insecure guest logons"
+        },
+        {
+            "cis": "18.6.10.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Peernet",
+            "name": "Disabled",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Turn off P2P networking services"
+        },
+        {
+            "cis": "18.6.11.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Network Connections",
+            "name": "NC_AllowNetBridge_NLA",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Prohibit Network Bridge"
+        },
+        {
+            "cis": "18.6.11.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Network Connections",
+            "name": "NC_ShowSharedAccessUI",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Prohibit Internet Connection Sharing"
+        },
+        {
+            "cis": "18.6.11.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Network Connections",
+            "name": "NC_StdDomainUserSetLocation",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Require elevation for network location"
+        },
+        {
+            "cis": "18.6.19.2.1",
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Services\\TCPIP6\\Parameters",
+            "name": "DisabledComponents",
+            "type": "DWord",
+            "desiredValue": 255,
+            "description": "Disable IPv6 components"
+        },
+        {
+            "cis": "18.6.20.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WCN\\Registrars",
+            "name": "EnableRegistrars",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable Windows Connect Now registrars"
+        },
+        {
+            "cis": "18.6.20.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WCN\\UI",
+            "name": "DisableWcnUi",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Prohibit WCN wizards"
+        },
+        {
+            "cis": "18.6.21.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WcmSvc\\GroupPolicy",
+            "name": "fBlockNonDomain",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Block non-domain networks when domain connected"
+        },
+        {
+            "cis": "18.7.1",
+            "path": "HKLM:\\Software\\Policies\\Microsoft\\Windows NT\\Printers",
+            "name": "RegisterSpoolerRemoteRpcEndPoint",
+            "type": "DWord",
+            "desiredValue": 2,
+            "description": "Print Spooler: No remote client connections"
+        },
+        {
+            "cis": "18.7.2",
+            "path": "HKLM:\\Software\\Policies\\Microsoft\\Windows NT\\Printers",
+            "name": "RedirectionguardPolicy",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Redirection Guard enabled"
+        },
+        {
+            "cis": "18.7.3",
+            "path": "HKLM:\\Software\\Policies\\Microsoft\\Windows NT\\Printers",
+            "name": "RpcUseNamedPipeProtocol",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "RPC outgoing: Use named pipe"
+        },
+        {
+            "cis": "18.7.4",
+            "path": "HKLM:\\Software\\Policies\\Microsoft\\Windows NT\\Printers",
+            "name": "RpcAuthentication",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "RPC outgoing: Default auth"
+        },
+        {
+            "cis": "18.7.5",
+            "path": "HKLM:\\Software\\Policies\\Microsoft\\Windows NT\\Printers",
+            "name": "RpcProtocols",
+            "type": "DWord",
+            "desiredValue": 7,
+            "description": "RPC listener protocols"
+        },
+        {
+            "cis": "18.7.7",
+            "path": "HKLM:\\Software\\Policies\\Microsoft\\Windows NT\\Printers",
+            "name": "RpcTcpPort",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "RPC over TCP port: dynamic"
+        },
+        {
+            "cis": "18.7.10",
+            "path": "HKLM:\\Software\\Policies\\Microsoft\\Windows NT\\Printers",
+            "name": "CopyFilesPolicy",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Limit queue files to color profiles"
+        },
+        {
+            "cis": "18.7.12",
+            "path": "HKLM:\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint",
+            "name": "UpdatePromptSettings",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Point and Print: Show warning and elevation prompt"
+        },
+        {
+            "cis": "18.7.12b",
+            "path": "HKLM:\\Software\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint",
+            "name": "NoWarningNoElevationOnInstall",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Point and Print: Do not suppress warning"
+        },
+        {
+            "cis": "18.8.1.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\CurrentVersion\\PushNotifications",
+            "name": "NoCloudApplicationNotification",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Turn off notifications network usage"
+        },
+        {
+            "cis": "18.9.3.1",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Audit",
+            "name": "ProcessCreationIncludeCmdLine_Enabled",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Include command line in process creation events"
+        },
+        {
+            "cis": "18.9.4.1",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\CredSSP\\Parameters",
+            "name": "AllowEncryptionOracle",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "CredSSP: Force Updated Clients"
+        },
+        {
+            "cis": "18.9.4.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\CredentialsDelegation",
+            "name": "AllowProtectedCreds",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Allow delegation of non-exportable credentials"
+        },
+        {
+            "cis": "18.9.5.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard",
+            "name": "EnableVirtualizationBasedSecurity",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Enable VBS"
+        },
+        {
+            "cis": "18.9.5.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard",
+            "name": "RequirePlatformSecurityFeatures",
+            "type": "DWord",
+            "desiredValue": 3,
+            "description": "VBS: Secure Boot and DMA Protection"
+        },
+        {
+            "cis": "18.9.5.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard",
+            "name": "HypervisorEnforcedCodeIntegrity",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "VBS: HVCI with UEFI lock"
+        },
+        {
+            "cis": "18.9.5.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard",
+            "name": "HVCIMATRequired",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "VBS: Require UEFI Memory Attributes Table"
+        },
+        {
+            "cis": "18.9.5.5",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard",
+            "name": "LsaCfgFlags",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "VBS: Credential Guard with UEFI lock"
+        },
+        {
+            "cis": "18.9.7.1.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions",
+            "name": "DenyDeviceIDs",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Prevent device install by Device IDs"
+        },
+        {
+            "cis": "18.9.7.1.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions",
+            "name": "DenyDeviceClasses",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Prevent device install by setup classes"
+        },
+        {
+            "cis": "18.9.7.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Device Metadata",
+            "name": "PreventDeviceMetadataFromNetwork",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Prevent device metadata from Internet"
+        },
+        {
+            "cis": "18.9.13.1",
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Policies\\EarlyLaunch",
+            "name": "DriverLoadPolicy",
+            "type": "DWord",
+            "desiredValue": 3,
+            "description": "Boot-Start driver init policy"
+        },
+        {
+            "cis": "18.9.19.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Group Policy\\{35378EAC-683F-11D2-A89A-00C04FBBCFA2}",
+            "name": "NoBackgroundPolicy",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Registry GP: Always process in background"
+        },
+        {
+            "cis": "18.9.19.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Group Policy\\{35378EAC-683F-11D2-A89A-00C04FBBCFA2}",
+            "name": "NoGPOListChanges",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Registry GP: Process even if unchanged"
+        },
+        {
+            "cis": "18.9.19.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Group Policy\\{827D319E-6EAC-11D2-A4EA-00C04F79F83A}",
+            "name": "NoBackgroundPolicy",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Security GP: Always process in background"
+        },
+        {
+            "cis": "18.9.19.5",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Group Policy\\{827D319E-6EAC-11D2-A4EA-00C04F79F83A}",
+            "name": "NoGPOListChanges",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Security GP: Process even if unchanged"
+        },
+        {
+            "cis": "18.9.19.6",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+            "name": "EnableCdp",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable Continue experiences on this device"
+        },
+        {
+            "cis": "18.9.20.1.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer",
+            "name": "NoUseStoreOpenWith",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Turn off access to the Store"
+        },
+        {
+            "cis": "18.9.20.1.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers",
+            "name": "DisableWebPnPDownload",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable downloading print drivers over HTTP"
+        },
+        {
+            "cis": "18.9.20.1.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\TabletPC",
+            "name": "PreventHandwritingDataSharing",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable handwriting data sharing"
+        },
+        {
+            "cis": "18.9.20.1.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\HandwritingErrorReports",
+            "name": "PreventHandwritingErrorReports",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable handwriting error reporting"
+        },
+        {
+            "cis": "18.9.20.1.5",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Internet Connection Wizard",
+            "name": "ExitOnMSICW",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable Internet Connection Wizard"
+        },
+        {
+            "cis": "18.9.20.1.6",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer",
+            "name": "NoWebServices",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable Internet download for Web publishing"
+        },
+        {
+            "cis": "18.9.20.1.7",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers",
+            "name": "DisableHTTPPrinting",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable printing over HTTP"
+        },
+        {
+            "cis": "18.9.20.1.8",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Registration Wizard Control",
+            "name": "NoRegistration",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable Registration Wizard"
+        },
+        {
+            "cis": "18.9.20.1.9",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\SearchCompanion",
+            "name": "DisableContentFileUpdates",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable Search Companion content updates"
+        },
+        {
+            "cis": "18.9.20.1.10",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer",
+            "name": "NoOnlinePrintsWizard",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable Order Prints picture task"
+        },
+        {
+            "cis": "18.9.20.1.11",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer",
+            "name": "NoPublishingWizard",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable Publish to Web task"
+        },
+        {
+            "cis": "18.9.20.1.12",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Messenger\\Client",
+            "name": "CEIP",
+            "type": "DWord",
+            "desiredValue": 2,
+            "description": "Disable Windows Messenger CEIP"
+        },
+        {
+            "cis": "18.9.20.1.13",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\SQMClient\\Windows",
+            "name": "CEIPEnable",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable Windows CEIP"
+        },
+        {
+            "cis": "18.9.20.1.14",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Error Reporting",
+            "name": "Disabled",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable Windows Error Reporting"
+        },
+        {
+            "cis": "18.9.24.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Kernel DMA Protection",
+            "name": "DeviceEnumerationPolicy",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "DMA: Block all when external DMA protection"
+        },
+        {
+            "cis": "18.9.25.1",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
+            "name": "BackupDirectory",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "LAPS: Backup to Active Directory"
+        },
+        {
+            "cis": "18.9.25.3",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
+            "name": "ADPasswordEncryptionEnabled",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "LAPS: Enable password encryption"
+        },
+        {
+            "cis": "18.9.25.4",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
+            "name": "PasswordComplexity",
+            "type": "DWord",
+            "desiredValue": 4,
+            "description": "LAPS: Large+small+numbers+special"
+        },
+        {
+            "cis": "18.9.25.5",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
+            "name": "PasswordLength",
+            "type": "DWord",
+            "desiredValue": 15,
+            "description": "LAPS: Password length 15"
+        },
+        {
+            "cis": "18.9.25.6",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
+            "name": "PasswordAgeDays",
+            "type": "DWord",
+            "desiredValue": 30,
+            "description": "LAPS: Password age 30 days"
+        },
+        {
+            "cis": "18.9.25.7",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
+            "name": "PostAuthenticationResetDelay",
+            "type": "DWord",
+            "desiredValue": 8,
+            "description": "LAPS: Post-auth grace period 8 hours"
+        },
+        {
+            "cis": "18.9.25.8",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
+            "name": "PostAuthenticationActions",
+            "type": "DWord",
+            "desiredValue": 3,
+            "description": "LAPS: Post-auth reset password and logoff"
+        },
+        {
+            "cis": "18.9.26.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+            "name": "AllowCustomSSPsAPs",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disallow custom SSPs and APs in LSASS"
+        },
+        {
+            "cis": "18.9.26.2",
+            "path": "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa",
+            "name": "RunAsPPL",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "LSASS as protected process"
+        },
+        {
+            "cis": "18.9.27.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Control Panel\\International",
+            "name": "BlockUserInputMethodsForSignIn",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disallow copying user input methods to system"
+        },
+        {
+            "cis": "18.9.28.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+            "name": "BlockUserFromShowingAccountDetailsOnSignin",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Block account details on sign-in"
+        },
+        {
+            "cis": "18.9.28.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+            "name": "DontDisplayNetworkSelectionUI",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Do not display network selection UI"
+        },
+        {
+            "cis": "18.9.28.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+            "name": "DontEnumerateConnectedUsers",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Do not enumerate connected users on domain PCs"
+        },
+        {
+            "cis": "18.9.28.5",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+            "name": "DisableLockScreenAppNotifications",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Turn off app notifications on lock screen"
+        },
+        {
+            "cis": "18.9.28.6",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+            "name": "BlockDomainPicturePassword",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Turn off picture password sign-in"
+        },
+        {
+            "cis": "18.9.31.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+            "name": "AllowCrossDeviceClipboard",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable clipboard sync across devices"
+        },
+        {
+            "cis": "18.9.31.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+            "name": "UploadUserActivities",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable upload of User Activities"
+        },
+        {
+            "cis": "18.9.33.6.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\f15576e8-98b7-4186-b944-eafa664402d9",
+            "name": "DCSettingIndex",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable network in connected standby (battery)"
+        },
+        {
+            "cis": "18.9.33.6.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\f15576e8-98b7-4186-b944-eafa664402d9",
+            "name": "ACSettingIndex",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable network in connected standby (plugged in)"
+        },
+        {
+            "cis": "18.9.33.6.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\abfc2519-3608-4c2a-94ea-171b0ed546ab",
+            "name": "DCSettingIndex",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable standby states S1-S3 (battery)"
+        },
+        {
+            "cis": "18.9.33.6.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Power\\PowerSettings\\abfc2519-3608-4c2a-94ea-171b0ed546ab",
+            "name": "ACSettingIndex",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable standby states S1-S3 (plugged in)"
+        },
+        {
+            "cis": "18.9.35.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+            "name": "fAllowToGetHelp",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable solicited Remote Assistance"
+        },
+        {
+            "cis": "18.9.36.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Rpc",
+            "name": "EnableAuthEpResolution",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Enable RPC Endpoint Mapper Client Auth"
+        },
+        {
+            "cis": "18.9.47.5.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\ScriptedDiagnosticsProvider\\Policy",
+            "name": "DisableQueryRemoteServer",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "MSDT interactive communication disabled"
+        },
+        {
+            "cis": "18.9.47.11.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WDI\\{9c5a40da-b965-4fc3-8781-88dd50a6299d}",
+            "name": "ScenarioExecutionEnabled",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable PerfTrack"
+        },
+        {
+            "cis": "18.9.51.1.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\W32Time\\TimeProviders\\NtpClient",
+            "name": "Enabled",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Enable Windows NTP Client"
+        },
+        {
+            "cis": "18.10.4.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Appx",
+            "name": "BlockNonAdminUserInstall",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Prevent non-admin packaged app install"
+        },
+        {
+            "cis": "18.10.5.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy",
+            "name": "LetAppsActivateWithVoiceAboveLock",
+            "type": "DWord",
+            "desiredValue": 2,
+            "description": "Force deny voice activation above lock"
+        },
+        {
+            "cis": "18.10.6.1",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "name": "MSAOptional",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Allow Microsoft accounts to be optional"
+        },
+        {
+            "cis": "18.10.6.2",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "name": "BlockHostedAppAccessWinRT",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Block UWP apps with WinRT from hosted content"
+        },
+        {
+            "cis": "18.10.8.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer",
+            "name": "NoAutoplayfornonVolume",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disallow AutoPlay for non-volume devices"
+        },
+        {
+            "cis": "18.10.8.2",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer",
+            "name": "NoAutorun",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "AutoRun default: Do not execute commands"
+        },
+        {
+            "cis": "18.10.8.3",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer",
+            "name": "NoDriveTypeAutoRun",
+            "type": "DWord",
+            "desiredValue": 255,
+            "description": "Disable AutoPlay for all drives"
+        },
+        {
+            "cis": "18.10.9.1.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Biometrics\\FacialFeatures",
+            "name": "EnhancedAntiSpoofing",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Configure enhanced anti-spoofing"
+        },
+        {
+            "cis": "18.10.11.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Camera",
+            "name": "AllowCamera",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable camera"
+        },
+        {
+            "cis": "18.10.13.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent",
+            "name": "DisableConsumerAccountStateContent",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable cloud consumer account state"
+        },
+        {
+            "cis": "18.10.13.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent",
+            "name": "DisableCloudOptimizedContent",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable cloud optimized content"
+        },
+        {
+            "cis": "18.10.13.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\CloudContent",
+            "name": "DisableWindowsConsumerFeatures",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable Microsoft consumer experiences"
+        },
+        {
+            "cis": "18.10.14.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Connect",
+            "name": "RequirePinForPairing",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Require pin for pairing"
+        },
+        {
+            "cis": "18.10.15.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\CredUI",
+            "name": "DisablePasswordReveal",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Do not display password reveal button"
+        },
+        {
+            "cis": "18.10.15.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+            "name": "NoLocalPasswordResetQuestions",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Prevent local password reset security questions"
+        },
+        {
+            "cis": "18.10.16.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
+            "name": "DoNotShowFeedbackNotifications",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable feedback notifications"
+        },
+        {
+            "cis": "18.10.16.5",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
+            "name": "EnableOneSettingsAuditing",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Enable OneSettings Auditing"
+        },
+        {
+            "cis": "18.10.16.7",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection",
+            "name": "LimitDumpCollection",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Limit Dump Collection"
+        },
+        {
+            "cis": "18.10.16.8",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PreviewBuilds",
+            "name": "AllowBuildPreview",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable user control over Insider builds"
+        },
+        {
+            "cis": "18.10.18.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller",
+            "name": "EnableAppInstaller",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable App Installer"
+        },
+        {
+            "cis": "18.10.18.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller",
+            "name": "EnableExperimentalFeatures",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable App Installer experimental features"
+        },
+        {
+            "cis": "18.10.18.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller",
+            "name": "EnableHashOverride",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable App Installer hash override"
+        },
+        {
+            "cis": "18.10.18.6",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller",
+            "name": "EnableMSAppInstallerProtocol",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable ms-appinstaller protocol"
+        },
+        {
+            "cis": "18.10.26.1.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Application",
+            "name": "MaxSize",
+            "type": "DWord",
+            "desiredValue": 32768,
+            "description": "Application log max size 32768 KB"
+        },
+        {
+            "cis": "18.10.26.2.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Security",
+            "name": "MaxSize",
+            "type": "DWord",
+            "desiredValue": 196608,
+            "description": "Security log max size 196608 KB"
+        },
+        {
+            "cis": "18.10.26.3.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\Setup",
+            "name": "MaxSize",
+            "type": "DWord",
+            "desiredValue": 32768,
+            "description": "Setup log max size 32768 KB"
+        },
+        {
+            "cis": "18.10.26.4.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\EventLog\\System",
+            "name": "MaxSize",
+            "type": "DWord",
+            "desiredValue": 32768,
+            "description": "System log max size 32768 KB"
+        },
+        {
+            "cis": "18.10.37.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\LocationAndSensors",
+            "name": "DisableLocation",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Turn off location"
+        },
+        {
+            "cis": "18.10.41.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Messaging",
+            "name": "AllowMessageSync",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable message cloud sync"
+        },
+        {
+            "cis": "18.10.42.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\MicrosoftAccount",
+            "name": "DisableUserAuth",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Block consumer Microsoft account auth"
+        },
+        {
+            "cis": "18.10.43.6.1.1",
+            "path": "HKLM:\\Software\\Policies\\Microsoft\\Windows Defender\\Windows Defender Exploit Guard\\ASR",
+            "name": "ExploitGuard_ASR_Rules",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Configure ASR rules"
+        },
+        {
+            "cis": "18.10.43.6.1.2",
+            "path": "HKLM:\\Software\\Policies\\Microsoft\\Windows Defender\\Windows Defender Exploit Guard\\ASR\\Rules",
+            "name": "D4F940AB-401B-4EFC-AADC-AD5F3C50688A",
+            "type": "String",
+            "desiredValue": "1",
+            "description": "ASR: Block Office creating executable content"
+        },
+        {
+            "cis": "18.10.43.6.3.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Windows Defender Exploit Guard\\Network Protection",
+            "name": "EnableNetworkProtection",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Network Protection: Block"
+        },
+        {
+            "cis": "18.10.43.7.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\MpEngine",
+            "name": "EnableFileHashComputation",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Enable file hash computation"
+        },
+        {
+            "cis": "18.10.43.12.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Reporting",
+            "name": "DisableGenericRePorts",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable Watson events"
+        },
+        {
+            "cis": "18.10.43.13.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Scan",
+            "name": "DisableRemovableDriveScanning",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Scan removable drives"
+        },
+        {
+            "cis": "18.10.43.13.5",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender\\Scan",
+            "name": "DisableEmailScanning",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Turn on email scanning"
+        },
+        {
+            "cis": "18.10.43.16",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender",
+            "name": "PUAProtection",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Detect PUA: Block"
+        },
+        {
+            "cis": "18.10.44.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\AppHVSI",
+            "name": "AllowAppHVSI_ProviderSet",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Application Guard provider set"
+        },
+        {
+            "cis": "18.10.44.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\AppHVSI",
+            "name": "AllowCameraMicrophoneRedirection",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Application Guard: Block camera and mic"
+        },
+        {
+            "cis": "18.10.44.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\AppHVSI",
+            "name": "SaveFilesToHost",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Application Guard: Block save files to host"
+        },
+        {
+            "cis": "18.10.44.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\AppHVSI",
+            "name": "AllowPersistence",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Application Guard: No persistence"
+        },
+        {
+            "cis": "18.10.44.6",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\AppHVSI",
+            "name": "AppHVSIClipboardSettings",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Application Guard: Clipboard settings"
+        },
+        {
+            "cis": "18.10.50.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Feeds",
+            "name": "EnableFeeds",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable news and interests"
+        },
+        {
+            "cis": "18.10.51.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\OneDrive",
+            "name": "DisableFileSyncNGSC",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Prevent OneDrive file storage"
+        },
+        {
+            "cis": "18.10.56.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\PushToInstall",
+            "name": "DisablePushToInstall",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable Push To Install service"
+        },
+        {
+            "cis": "18.10.57.2.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+            "name": "DisablePasswordSaving",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "RDP: Do not allow passwords to be saved"
+        },
+        {
+            "cis": "18.10.57.3.3.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+            "name": "EnableUiaRedirection",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "RDP: Disable UI Automation redirection"
+        },
+        {
+            "cis": "18.10.57.3.3.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+            "name": "fDisableCcm",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "RDP: Disable COM port redirection"
+        },
+        {
+            "cis": "18.10.57.3.3.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+            "name": "fDisableCdm",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "RDP: Disable drive redirection"
+        },
+        {
+            "cis": "18.10.57.3.3.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+            "name": "fDisableLocationRedir",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "RDP: Disable location redirection"
+        },
+        {
+            "cis": "18.10.57.3.3.5",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+            "name": "fDisableLPT",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "RDP: Disable LPT port redirection"
+        },
+        {
+            "cis": "18.10.57.3.3.6",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+            "name": "fDisablePNPRedir",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "RDP: Disable Plug and Play redirection"
+        },
+        {
+            "cis": "18.10.57.3.3.7",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+            "name": "fDisableWebAuthn",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "RDP: Disable WebAuthn redirection"
+        },
+        {
+            "cis": "18.10.57.3.9.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+            "name": "fPromptForPassword",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "RDP: Always prompt for password"
+        },
+        {
+            "cis": "18.10.57.3.9.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+            "name": "fEncryptRPCTraffic",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "RDP: Require secure RPC communication"
+        },
+        {
+            "cis": "18.10.57.3.9.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+            "name": "SecurityLayer",
+            "type": "DWord",
+            "desiredValue": 2,
+            "description": "RDP: Security layer SSL"
+        },
+        {
+            "cis": "18.10.57.3.10.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+            "name": "MaxIdleTime",
+            "type": "DWord",
+            "desiredValue": 900000,
+            "description": "RDP: Idle timeout 15 minutes"
+        },
+        {
+            "cis": "18.10.57.3.10.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services",
+            "name": "MaxDisconnectionTime",
+            "type": "DWord",
+            "desiredValue": 60000,
+            "description": "RDP: Disconnected timeout 1 minute"
+        },
+        {
+            "cis": "18.10.58.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Internet Explorer\\Feeds",
+            "name": "DisableEnclosureDownload",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Prevent downloading of enclosures"
+        },
+        {
+            "cis": "18.10.59.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search",
+            "name": "AllowCloudSearch",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable Cloud Search"
+        },
+        {
+            "cis": "18.10.59.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search",
+            "name": "AllowCortanaAboveLock",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable Cortana above lock screen"
+        },
+        {
+            "cis": "18.10.59.6",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search",
+            "name": "AllowSearchToUseLocation",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable search location use"
+        },
+        {
+            "cis": "18.10.59.7",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Windows Search",
+            "name": "AllowIndexingEncryptedStoresOrItems",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable indexing encrypted stores"
+        },
+        {
+            "cis": "18.10.63.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\CurrentVersion\\Software Protection Platform",
+            "name": "NoGenTicket",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable KMS Client Online AVS Validation"
+        },
+        {
+            "cis": "18.10.66.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsStore",
+            "name": "DisableStoreApps",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable all apps from Microsoft Store"
+        },
+        {
+            "cis": "18.10.66.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsStore",
+            "name": "DisableOSUpgrade",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable offer to update to latest Windows"
+        },
+        {
+            "cis": "18.10.66.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsStore",
+            "name": "RemoveWindowsStore",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Turn off the Store application"
+        },
+        {
+            "cis": "18.10.72.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Dsh",
+            "name": "AllowNewsAndInterests",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable widgets"
+        },
+        {
+            "cis": "18.10.76.2.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
+            "name": "ShellSmartScreenLevel",
+            "type": "String",
+            "desiredValue": "Block",
+            "description": "SmartScreen: Warn and prevent bypass"
+        },
+        {
+            "cis": "18.10.78.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\GameDVR",
+            "name": "AllowGameDVR",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable Game Recording and Broadcasting"
+        },
+        {
+            "cis": "18.10.80.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsInkWorkspace",
+            "name": "AllowSuggestedAppsInWindowsInkWorkspace",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable suggested apps in Ink Workspace"
+        },
+        {
+            "cis": "18.10.80.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsInkWorkspace",
+            "name": "AllowWindowsInkWorkspace",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Windows Ink Workspace enabled"
+        },
+        {
+            "cis": "18.10.82.2",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+            "name": "DisableAutomaticRestartSignOn",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable auto sign-in after restart"
+        },
+        {
+            "cis": "18.10.87.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription",
+            "name": "EnableTranscripting",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Enable PowerShell transcription"
+        },
+        {
+            "cis": "18.10.89.1.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Client",
+            "name": "AllowDigest",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "WinRM: Disallow Digest authentication"
+        },
+        {
+            "cis": "18.10.89.2.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service",
+            "name": "DisableRunAs",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "WinRM: Disallow RunAs credentials"
+        },
+        {
+            "cis": "18.10.90.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service\\WinRS",
+            "name": "AllowRemoteShellAccess",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable Remote Shell Access"
+        },
+        {
+            "cis": "18.10.91.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Sandbox",
+            "name": "AllowClipboardRedirection",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Sandbox: Disable clipboard sharing"
+        },
+        {
+            "cis": "18.10.91.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\Sandbox",
+            "name": "AllowNetworking",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Sandbox: Disable networking"
+        },
+        {
+            "cis": "18.10.92.2.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Defender Security Center\\App and Browser protection",
+            "name": "DisallowExploitProtectionOverride",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Prevent modifying Exploit Protection settings"
+        },
+        {
+            "cis": "18.10.93.2.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate",
+            "name": "SetDisablePauseUXAccess",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Remove access to Pause updates"
+        },
+        {
+            "cis": "18.10.93.4.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate",
+            "name": "DeferFeatureUpdatesPeriodInDays",
+            "type": "DWord",
+            "desiredValue": 180,
+            "description": "Defer feature updates 180 days"
+        },
+        {
+            "cis": "18.10.10.1.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "FDVRecovery",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "BitLocker fixed: Recovery enabled"
+        },
+        {
+            "cis": "18.10.10.1.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "FDVManageDRA",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "BitLocker fixed: Allow data recovery agent"
+        },
+        {
+            "cis": "18.10.10.1.5",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "FDVRecoveryKey",
+            "type": "DWord",
+            "desiredValue": 2,
+            "description": "BitLocker fixed: Allow 256-bit recovery key"
+        },
+        {
+            "cis": "18.10.10.1.10",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "FDVHardwareEncryption",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "BitLocker fixed: Disable HW encryption"
+        },
+        {
+            "cis": "18.10.10.1.11",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "FDVPassphrase",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "BitLocker fixed: Disable passwords"
+        },
+        {
+            "cis": "18.10.10.1.12",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "FDVAllowUserCert",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "BitLocker fixed: Allow smart cards"
+        },
+        {
+            "cis": "18.10.10.1.13",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "FDVEnforceUserCert",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "BitLocker fixed: Require smart cards"
+        },
+        {
+            "cis": "18.10.10.2.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "UseEnhancedPin",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "BitLocker OS: Allow enhanced PINs"
+        },
+        {
+            "cis": "18.10.10.2.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "OSAllowSecureBootForIntegrity",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "BitLocker OS: Allow Secure Boot for integrity"
+        },
+        {
+            "cis": "18.10.10.2.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "OSRecovery",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "BitLocker OS: Recovery enabled"
+        },
+        {
+            "cis": "18.10.10.2.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "OSManageDRA",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "BitLocker OS: Disallow data recovery agent"
+        },
+        {
+            "cis": "18.10.10.2.11",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "OSHardwareEncryption",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "BitLocker OS: Disable HW encryption"
+        },
+        {
+            "cis": "18.10.10.2.12",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "OSPassphrase",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "BitLocker OS: Disable passwords"
+        },
+        {
+            "cis": "18.10.10.2.13",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "UseAdvancedStartup",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "BitLocker OS: Require additional auth at startup"
+        },
+        {
+            "cis": "18.10.10.2.14",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "EnableBDEWithNoTPM",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "BitLocker OS: Require TPM"
+        },
+        {
+            "cis": "18.10.10.3.2",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "RDVActiveDirectoryBackup",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "BitLocker removable: No AD backup"
+        },
+        {
+            "cis": "18.10.10.3.3",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "RDVActiveDirectoryInfoToStore",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "BitLocker removable: AD info recovery passwords"
+        },
+        {
+            "cis": "18.10.10.3.5",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "RDVRequireActiveDirectoryBackup",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "BitLocker removable: No required AD backup"
+        },
+        {
+            "cis": "18.10.10.3.10",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "RDVHardwareEncryption",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "BitLocker removable: Disable HW encryption"
+        },
+        {
+            "cis": "18.10.10.3.11",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "RDVPassphrase",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "BitLocker removable: Disable passwords"
+        },
+        {
+            "cis": "18.10.10.3.12",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "RDVAllowUserCert",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "BitLocker removable: Allow smart cards"
+        },
+        {
+            "cis": "18.10.10.3.13",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "RDVEnforceUserCert",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "BitLocker removable: Require smart cards"
+        },
+        {
+            "cis": "18.10.10.3.14",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "RDVDenyCrossOrg",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "BitLocker removable: Allow cross-org access"
+        },
+        {
+            "cis": "18.10.10.4",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "DisableExternalDMAUnderLock",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "BitLocker: Disable external DMA under lock"
+        },
+        {
+            "cis": "18.10.10.1.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "FDVDiscoveryVolumeType",
+            "type": "String",
+            "desiredValue": "",
+            "description": "BitLocker fixed: Discovery volume type none"
+        },
+        {
+            "cis": "18.10.10.3.1",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
+            "name": "RDVDiscoveryVolumeType",
+            "type": "String",
+            "desiredValue": "",
+            "description": "BitLocker removable: Discovery volume type none"
         },
         {
             "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WindowsUpdate\\AU",
@@ -69,26 +2146,5 @@
             "desiredValue": "0",
             "description": "Auto admin logon must be disabled"
         }
-    ],
-    "services": {
-        "ensureRunning": [
-            "WinDefend",
-            "MpsSvc",
-            "EventLog"
-        ],
-        "ensureDisabled": [
-            "RemoteRegistry",
-            "Telnet"
-        ],
-        "_notes": {
-            "Telnet": "Optional Windows feature; may not be installed on all systems"
-        }
-    },
-    "auditPolicy": {
-        "logonEvents": true,
-        "accountLogon": true,
-        "policyChange": true,
-        "privilegeUse": false,
-        "description": "Recommended audit policy events"
-    }
+    ]
 }

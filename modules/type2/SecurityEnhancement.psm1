@@ -125,9 +125,38 @@ function Invoke-SecurityEnhancement {
                 'auditpolicy' {
                     $subcategory = $item.Subcategory
                     if ($subcategory) {
-                        & auditpol /set /subcategory:"$subcategory" /success:enable /failure:enable 2>&1 | Out-Null
-                        Write-Log -Level SUCCESS -Component SECURITY -Message "Audit policy enabled: $subcategory"
+                        $successFlag = if ($item.Success) { 'enable' } else { 'disable' }
+                        $failureFlag = if ($item.Failure) { 'enable' } else { 'disable' }
+                        & auditpol /set /subcategory:"$subcategory" /success:$successFlag /failure:$failureFlag 2>&1 | Out-Null
+                        Write-Log -Level SUCCESS -Component SECURITY -Message "Audit policy: $subcategory success=$successFlag failure=$failureFlag"
                         $changed = $true
+                    }
+                }
+                'securitypolicy' {
+                    $cfgName = $item.CfgName ?? $item.Name
+                    $desired = $item.DesiredState
+                    if ($cfgName -and $null -ne $desired) {
+                        # Export current config, patch the value, re-import
+                        $exportPath = Join-Path $env:TEMP 'secfix_export.cfg'
+                        $importPath = Join-Path $env:TEMP 'secfix_import.cfg'
+                        $sdbPath = Join-Path $env:TEMP 'secfix.sdb'
+                        & secedit /export /cfg $exportPath /quiet 2>&1 | Out-Null
+                        $cfg = Get-Content -Path $exportPath -Raw -ErrorAction Stop
+                        if ($cfg -match "(?m)^\s*$([regex]::Escape($cfgName))\s*=") {
+                            $cfg = $cfg -replace "(?m)^\s*$([regex]::Escape($cfgName))\s*=\s*.+$", "$cfgName = $desired"
+                        }
+                        else {
+                            # Append to [System Access] section
+                            $cfg = $cfg -replace '(?m)(\[System Access\])', "`$1`r`n$cfgName = $desired"
+                        }
+                        Set-Content -Path $importPath -Value $cfg -Encoding Unicode -Force
+                        $result = & secedit /configure /db $sdbPath /cfg $importPath /quiet 2>&1
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "secedit configure failed for $cfgName : $result"
+                        }
+                        Write-Log -Level SUCCESS -Component SECURITY -Message "Security policy: $cfgName = $desired"
+                        $changed = $true
+                        Remove-Item -Path $exportPath, $importPath, $sdbPath -Force -ErrorAction SilentlyContinue
                     }
                 }
                 default {
