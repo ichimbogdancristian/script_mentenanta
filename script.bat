@@ -502,7 +502,7 @@ IF EXIST "%WORKING_DIR%config" (
     REM Check for lists subdirectory (data lists)
     IF EXIST "%WORKING_DIR%config\lists" (
         CALL :LOG_MESSAGE "  ✓ config\lists directory present" "SUCCESS" "LAUNCHER"
-        IF EXIST "%WORKING_DIR%config\lists\bloatware-list.json" (
+        IF EXIST "%WORKING_DIR%config\lists\bloatware\bloatware-list.json" (
             CALL :LOG_MESSAGE "    ✓ bloatware-list.json present" "SUCCESS" "LAUNCHER"
         ) ELSE (
             CALL :LOG_MESSAGE "    ✗ bloatware-list.json missing" "WARN" "LAUNCHER"
@@ -1423,75 +1423,9 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
 
 REM Batch script execution completed - PowerShell 7+ window is now handling all operations
 CALL :LOG_MESSAGE "Batch launcher phase completed successfully" "SUCCESS" "LAUNCHER"
-GOTO :FINAL_CLEANUP
-
-REM -----------------------------------------------------------------------------
-REM Post-Orchestrator Execution Logic: Interactive Menu with Countdown
-REM -----------------------------------------------------------------------------
-:POST_ORCHESTRATOR_MENU
-ECHO.
-ECHO ===============================
-ECHO  Select Task Execution (20s):
-ECHO ===============================
-ECHO 1. Execute all tasks unattended
-ECHO 2. Execute only specific task numbers
-ECHO.
-ECHO Waiting for selection... (defaults to option 1 after 20 seconds)
-CHOICE /C 12 /N /T 20 /D 1 /M "Select option (1-2): "
-SET "NORMAL_CHOICE=%ERRORLEVEL%"
-IF "%NORMAL_CHOICE%"=="2" GOTO :NORMAL_INSERTED
-REM Default or Option 1 selected
-GOTO :EXECUTE_ALL
-
-:NORMAL_INSERTED
-ECHO.
-SET /P TASKNUMS="Enter task numbers (comma-separated, e.g., 1,3,5): "
-IF "%TASKNUMS%"=="" (
-    ECHO No task numbers entered. Executing all tasks...
-    GOTO :EXECUTE_ALL
-)
-GOTO :EXECUTE_INSERTED
-
-:EXECUTE_ALL
-CALL :LOG_MESSAGE "Executing all tasks unattended..." "INFO" "LAUNCHER"
-CD /D "%WORKING_DIR%"
-"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
-SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
-GOTO :FINAL_CLEANUP
-
-:EXECUTE_INSERTED
-CALL :LOG_MESSAGE "Executing selected tasks: %TASKNUMS%..." "INFO" "LAUNCHER"
-CD /D "%WORKING_DIR%"
-"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -TaskNumbers "%TASKNUMS%"
-SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
-GOTO :FINAL_CLEANUP
-
-:FINAL_CLEANUP
-REM -----------------------------------------------------------------------------
-REM Post-Execution Cleanup and Reporting
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "PowerShell orchestrator final execution completed with exit code: %FINAL_EXIT_CODE%" "INFO" "LAUNCHER"
-
-CALL :LOG_MESSAGE "All logs consolidated in single location: %WORKING_DIR%temp_files\logs\maintenance.log" "SUCCESS" "LAUNCHER"
-
-IF %FINAL_EXIT_CODE% EQU 0 (
-    CALL :LOG_MESSAGE "Maintenance execution completed successfully" "SUCCESS" "LAUNCHER"
-) ELSE (
-    CALL :LOG_MESSAGE "Maintenance execution completed with errors (exit code: %FINAL_EXIT_CODE%)" "WARN" "LAUNCHER"
-)
-
-REM Check for generated reports
-IF EXIST "%WORKING_DIR%temp_files\reports" (
-    FOR %%F IN ("%WORKING_DIR%temp_files\reports\*.html") DO (
-        CALL :LOG_MESSAGE "Generated report: %%~nxF" "INFO" "LAUNCHER"
-    )
-)
-
-CALL :LOG_MESSAGE "Interactive mode - press any key to close" "INFO" "LAUNCHER"
-PAUSE >nul
-EXIT /B %FINAL_EXIT_CODE%
 
 REM -----------------------------------------------------------------------------
 REM End of Script
+REM (Both branches above already EXIT /B, so nothing after this point ever runs.)
 REM -----------------------------------------------------------------------------
 ENDLOCAL

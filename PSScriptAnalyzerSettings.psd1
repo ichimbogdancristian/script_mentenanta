@@ -3,6 +3,12 @@
 # Date: December 1, 2025
 # Based on: PSScriptAnalyzer 1.24.0 best practices
 # Reference: https://learn.microsoft.com/en-us/powershell/utility-modules/psscriptanalyzer/
+#
+# IMPORTANT: do not run Invoke-ScriptAnalyzer with -Recurse from the repo root.
+# The archive/ directory contains retired, unmaintained PowerShell files that
+# throw a null-reference exception inside the analyzer engine itself. Scope
+# analysis explicitly instead, e.g.:
+#   Invoke-ScriptAnalyzer -Path .\modules,.\MaintenanceOrchestrator.ps1 -Recurse -Settings .\PSScriptAnalyzerSettings.psd1
 
 @{
     # ============================================================================
@@ -141,8 +147,8 @@
             Enable = $true
         }
         
-        # Avoid using break in finally block
-        PSAvoidUsingBrokenHash                      = @{
+        # Avoid using weak/broken hash algorithms (MD5, SHA1)
+        PSAvoidUsingBrokenHashAlgorithms            = @{
             Enable = $true
         }
         

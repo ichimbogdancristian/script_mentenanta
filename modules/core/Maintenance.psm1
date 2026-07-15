@@ -271,100 +271,6 @@ function Get-TempPath {
 
 <#
 .SYNOPSIS
-    Produces a diff list by comparing Type1 scan results against a baseline.
-.DESCRIPTION
-    Strategies:
-      Present  - items IN baseline that ARE found in scan (bloatware to remove)
-      Missing  - items IN baseline that are NOT in scan (apps to install)
-      Changed  - items where scanned state differs from desired state in baseline
-.PARAMETER ScannedItems
-    Array of objects returned by Type1 audit.
-.PARAMETER BaselineItems
-    Array/object from config/lists JSON.
-.PARAMETER Strategy
-    'Present' | 'Missing' | 'Changed'
-.PARAMETER MatchProperty
-    Property name to match on (default: 'Name').
-.OUTPUTS
-    Array of diff items (subset of scanned or baseline items).
-#>
-function Compare-ListDiff {
-    [CmdletBinding()]
-    [OutputType([object[]])]
-    param(
-        [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$ScannedItems,
-        [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$BaselineItems,
-        [Parameter(Mandatory)] [ValidateSet('Present', 'Missing', 'Changed')] [string]$Strategy,
-        [Parameter()] [string]$MatchProperty = 'Name'
-    )
-
-    if ($null -eq $ScannedItems -or $ScannedItems.Count -eq 0) { return @() }
-    if ($null -eq $BaselineItems -or $BaselineItems.Count -eq 0) { return @() }
-
-    switch ($Strategy) {
-        'Present' {
-            # Items from baseline list that ARE present in scanned results (e.g. bloatware found)
-            $scannedNames = $ScannedItems | ForEach-Object {
-                if ($_ -is [string]) { $_ } else { $_.$MatchProperty }
-            } | Where-Object { $_ } | ForEach-Object { $_.ToLowerInvariant() }
-
-            return $BaselineItems | Where-Object {
-                $bName = if ($_ -is [string]) { $_ } else { $_.$MatchProperty }
-                $bName -and $scannedNames -contains $bName.ToLowerInvariant()
-            }
-        }
-        'Missing' {
-            # Items from baseline that are NOT present in scanned results (e.g. apps to install)
-            $scannedNames = $ScannedItems | ForEach-Object {
-                if ($_ -is [string]) { $_ } else { $_.$MatchProperty }
-            } | Where-Object { $_ } | ForEach-Object { $_.ToLowerInvariant() }
-
-            return $BaselineItems | Where-Object {
-                $bName = if ($_ -is [string]) { $_ } else { $_.$MatchProperty }
-                $bName -and $scannedNames -notcontains $bName.ToLowerInvariant()
-            }
-        }
-        'Changed' {
-            # Items where scanned state does not match desired state
-            # Expects scanned items to have 'Name' and 'CurrentState'; baseline has 'name'/'desiredValue'
-            $diff = [System.Collections.Generic.List[object]]::new()
-            foreach ($baseItem in $BaselineItems) {
-                $bName = if ($baseItem -is [string]) { $baseItem } else { $baseItem.$MatchProperty }
-                if (-not $bName) { continue }
-                $found = $ScannedItems | Where-Object {
-                    ($_ -is [string] -and $_ -eq $bName) -or
-                    ($_.$MatchProperty -and $_.$MatchProperty.Equals($bName, [System.StringComparison]::OrdinalIgnoreCase))
-                } | Select-Object -First 1
-
-                if ($found -and $found.PSObject.Properties['CurrentState'] -and $baseItem.PSObject.Properties['desiredValue']) {
-                    if ($found.CurrentState -ne $baseItem.desiredValue) {
-                        $diff.Add(@{
-                                Name         = $bName
-                                CurrentState = $found.CurrentState
-                                DesiredState = $baseItem.desiredValue
-                                Item         = $baseItem
-                            })
-                    }
-                }
-                elseif (-not $found) {
-                    # Item is missing - assume it needs to be set to desired value
-                    if ($baseItem.PSObject.Properties['desiredValue']) {
-                        $diff.Add(@{
-                                Name         = $bName
-                                CurrentState = $null
-                                DesiredState = $baseItem.desiredValue
-                                Item         = $baseItem
-                            })
-                    }
-                }
-            }
-            return $diff.ToArray()
-        }
-    }
-}
-
-<#
-.SYNOPSIS
     Persists a diff list to temp_files/diff/[ModuleName]-diff.json.
 #>
 function Save-DiffList {
@@ -812,7 +718,6 @@ Export-ModuleMember -Function @(
     'Get-MainConfig',
     'Get-BaselineList',
     'Get-TempPath',
-    'Compare-ListDiff',
     'Save-DiffList',
     'Get-DiffList',
     'New-ModuleResult',
