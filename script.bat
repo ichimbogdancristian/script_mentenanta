@@ -1095,7 +1095,7 @@ IF "%PS_EXECUTABLE%"=="" (
     
     REM Check common installation paths
     SET "PS7_PATHS[0]=%ProgramFiles%\PowerShell\7\pwsh.exe"
-    SET "PS7_PATHS[1]=%ProgramFiles(x86)%\PowerShell\7\pwsh.exe"
+    SET "PS7_PATHS[1]=!ProgramFiles(x86)!\PowerShell\7\pwsh.exe"
     SET "PS7_PATHS[2]=%LocalAppData%\Microsoft\powershell\7\pwsh.exe"
     SET "PS7_PATHS[3]=%ProgramData%\chocolatey\lib\powershell-core\tools\pwsh.exe"
     
