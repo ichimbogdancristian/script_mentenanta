@@ -9,6 +9,14 @@ REM ============================================================================
 
 SETLOCAL ENABLEDELAYEDEXPANSION
 
+REM Absolute path to Windows PowerShell 5.1, used for every PowerShell one-liner
+REM invocation in this file instead of relying on the bare "powershell" command
+REM name resolving via PATH. PATH can legitimately be in a broken/unexpected state
+REM this early (or get corrupted later by registry-refresh logic elsewhere in
+REM this script) - System32 is always at this fixed location regardless, so an
+REM absolute path here can never fail the way a PATH-dependent bare command can.
+SET "WINPS_EXE=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+
 REM -----------------------------------------------------------------------------
 REM Enhanced Logging System
 REM -----------------------------------------------------------------------------
@@ -37,20 +45,35 @@ IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
 EXIT /B
 
 :REFRESH_PATH_FROM_REGISTRY
-REM Refresh PATH environment variable from system registry
+REM Refresh PATH environment variable from system registry.
+REM CRITICAL: REG QUERY returns REG_EXPAND_SZ values with literal, UNEXPANDED
+REM tokens still in them (e.g. the raw text "%SystemRoot%\system32", not
+REM "C:\Windows\system32"). A plain SET stores those tokens verbatim, which
+REM silently corrupts PATH — cmd.exe then looks for a directory literally
+REM named "%SystemRoot%" and fails, breaking resolution of EVERYTHING under
+REM the real System32 folder, including powershell.exe itself. This is exactly
+REM what caused 'powershell'/'pwsh.exe' is not recognized errors after this
+REM subroutine ran. The CALL SET idiom below forces a second expansion pass so
+REM embedded %SystemRoot%-style tokens actually resolve before being stored.
 FOR /F "tokens=2*" %%i IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul') DO (
-    SET "SYSTEM_PATH=%%j"
+    SET "SYSTEM_PATH_RAW=%%j"
 )
 FOR /F "tokens=2*" %%i IN ('REG QUERY "HKCU\Environment" /v PATH 2^>nul') DO (
-    SET "USER_PATH=%%j"
+    SET "USER_PATH_RAW=%%j"
 )
-REM Combine system and user PATH
+SET "SYSTEM_PATH="
+SET "USER_PATH="
+IF DEFINED SYSTEM_PATH_RAW CALL SET "SYSTEM_PATH=%SYSTEM_PATH_RAW%"
+IF DEFINED USER_PATH_RAW CALL SET "USER_PATH=%USER_PATH_RAW%"
+REM Combine system and user PATH, always keeping the original inherited PATH
+REM too (belt-and-suspenders: even if both registry reads come back empty,
+REM PATH must never end up wiped out).
 IF DEFINED SYSTEM_PATH IF DEFINED USER_PATH (
-    SET "PATH=%SYSTEM_PATH%;%USER_PATH%"
+    SET "PATH=%SYSTEM_PATH%;%USER_PATH%;%PATH%"
 ) ELSE IF DEFINED SYSTEM_PATH (
-    SET "PATH=%SYSTEM_PATH%"
+    SET "PATH=%SYSTEM_PATH%;%PATH%"
 ) ELSE IF DEFINED USER_PATH (
-    SET "PATH=%USER_PATH%"
+    SET "PATH=%USER_PATH%;%PATH%"
 )
 EXIT /B
 
@@ -144,7 +167,7 @@ REM Multiple methods for admin detection (improved reliability)
 NET SESSION >nul 2>&1
 SET "NET_ADMIN_CHECK=%ERRORLEVEL%"
 
-FOR /F "tokens=*" %%i IN ('powershell -Command "([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)" 2^>nul') DO SET PS_ADMIN_CHECK=%%i
+FOR /F "tokens=*" %%i IN ('"%WINPS_EXE%" -Command "([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)" 2^>nul') DO SET PS_ADMIN_CHECK=%%i
 
 SET "IS_ADMIN=NO"
 IF %NET_ADMIN_CHECK% EQU 0 SET "IS_ADMIN=YES"
@@ -154,10 +177,10 @@ CALL :LOG_MESSAGE "Admin check results: NET=%NET_ADMIN_CHECK%, PS=%PS_ADMIN_CHEC
 
 IF "%IS_ADMIN%"=="NO" (
     CALL :LOG_MESSAGE "Administrator privileges required. Attempting elevation..." "WARN" "LAUNCHER"
-    powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\" %*' -Verb RunAs -WindowStyle Normal"
+    "%WINPS_EXE%" -Command "Start-Process cmd -ArgumentList '/c \"%~f0\" %*' -Verb RunAs -WindowStyle Normal"
     IF !ERRORLEVEL! NEQ 0 (
         CALL :LOG_MESSAGE "Elevation failed or was cancelled by user" "ERROR" "LAUNCHER"
-        PAUSE
+        IF NOT "%1"=="-NonInteractive" PAUSE
         EXIT /B 1
     )
     exit
@@ -194,7 +217,7 @@ SET "RESTART_SIGNALS_WU="
 REM FIX: Reboot guard functionality removed per user request
 
 REM Prefer Windows Update reboot status when PSWindowsUpdate is available
-powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; if (Get-Command Get-WURebootStatus -ErrorAction SilentlyContinue) { $status = Get-WURebootStatus -Silent -ErrorAction SilentlyContinue; if ($status -and $status.RebootRequired) { Write-Host 'WU_REBOOT_REQUIRED'; exit 1 } else { Write-Host 'WU_REBOOT_NOT_REQUIRED'; exit 0 } } else { Write-Host 'WU_REBOOT_CMD_MISSING'; exit 2 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 3 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 4 }" >nul 2>&1
+"%WINPS_EXE%" -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; if (Get-Command Get-WURebootStatus -ErrorAction SilentlyContinue) { $status = Get-WURebootStatus -Silent -ErrorAction SilentlyContinue; if ($status -and $status.RebootRequired) { Write-Host 'WU_REBOOT_REQUIRED'; exit 1 } else { Write-Host 'WU_REBOOT_NOT_REQUIRED'; exit 0 } } else { Write-Host 'WU_REBOOT_CMD_MISSING'; exit 2 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 3 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 4 }" >nul 2>&1
 IF !ERRORLEVEL! EQU 1 (
     SET "RESTART_NEEDED=YES"
     IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=PSWindowsUpdate-RebootRequired") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,PSWindowsUpdate-RebootRequired")
@@ -270,7 +293,7 @@ IF /I "%RESTART_NEEDED_WU%"=="YES" (
     schtasks /Create ^
         /SC ONLOGON ^
         /TN "%STARTUP_TASK_NAME%" ^
-        /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\"" ^
+        /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\" -NonInteractive" ^
         /RL HIGHEST ^
         /RU "%USERNAME%" ^
         /DELAY 0001:00 ^
@@ -318,7 +341,7 @@ IF !ERRORLEVEL! EQU 0 (
         /MO 1 ^
         /D 20 ^
         /TN "%TASK_NAME%" ^
-        /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\"" ^
+        /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\" -NonInteractive" ^
         /ST 01:00 ^
         /RL HIGHEST ^
         /RU SYSTEM ^
@@ -340,18 +363,18 @@ REM ----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Verifying system requirements..." "INFO" "LAUNCHER"
 
 REM Windows version detection
-FOR /F "tokens=*" %%i IN ('powershell -Command "try { (Get-CimInstance Win32_OperatingSystem).Version } catch { (Get-WmiObject Win32_OperatingSystem).Version }"') DO SET OS_VERSION=%%i
+FOR /F "tokens=*" %%i IN ('"%WINPS_EXE%" -Command "try { (Get-CimInstance Win32_OperatingSystem).Version } catch { (Get-WmiObject Win32_OperatingSystem).Version }"') DO SET OS_VERSION=%%i
 CALL :LOG_MESSAGE "Windows version: %OS_VERSION%" "INFO" "LAUNCHER"
 
 REM PowerShell version check
-FOR /F "tokens=*" %%i IN ('powershell -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_VERSION=%%i
+FOR /F "tokens=*" %%i IN ('"%WINPS_EXE%" -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_VERSION=%%i
     IF "%PS_VERSION%"=="" SET PS_VERSION=0
 CALL :LOG_MESSAGE "PowerShell version: %PS_VERSION%" "INFO" "LAUNCHER"
 
 IF %PS_VERSION% LSS 5 (
     CALL :LOG_MESSAGE "PowerShell 5.1 or higher required. Current: %PS_VERSION%" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "Please install Windows PowerShell 5.1 or PowerShell 7+" "ERROR" "LAUNCHER"
-    PAUSE
+    IF NOT "%1"=="-NonInteractive" PAUSE
     EXIT /B 2
 )
 
@@ -369,17 +392,17 @@ IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" RMDIR /S /Q "%WORKING_DIR%%EXTRACT_FOLD
 
 REM Download repository
 CALL :LOG_MESSAGE "Downloading from: %REPO_URL%" "DEBUG" "LAUNCHER"
-powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_FILE%' -UseBasicParsing; Write-Host 'DOWNLOAD_SUCCESS' } catch { Write-Host 'DOWNLOAD_FAILED'; Write-Error $_.Exception.Message; exit 1 }"
+"%WINPS_EXE%" -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%REPO_URL%' -OutFile '%ZIP_FILE%' -UseBasicParsing; Write-Host 'DOWNLOAD_SUCCESS' } catch { Write-Host 'DOWNLOAD_FAILED'; Write-Error $_.Exception.Message; exit 1 }"
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository download failed. Check internet connection." "ERROR" "LAUNCHER"
-    PAUSE
+    IF NOT "%1"=="-NonInteractive" PAUSE
     EXIT /B 3
 )
 
 IF NOT EXIST "%ZIP_FILE%" (
     CALL :LOG_MESSAGE "Download verification failed - ZIP file not found" "ERROR" "LAUNCHER"
-    PAUSE
+    IF NOT "%1"=="-NonInteractive" PAUSE
     EXIT /B 3
 )
 
@@ -387,11 +410,11 @@ CALL :LOG_MESSAGE "Repository downloaded successfully" "SUCCESS" "LAUNCHER"
 
 REM Extract repository
 CALL :LOG_MESSAGE "Extracting repository..." "INFO" "LAUNCHER"
-powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%WORKING_DIR%'); Write-Host 'EXTRACTION_SUCCESS' } catch { Write-Host 'EXTRACTION_FAILED'; Write-Error $_.Exception.Message; exit 1 }"
+"%WINPS_EXE%" -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%WORKING_DIR%'); Write-Host 'EXTRACTION_SUCCESS' } catch { Write-Host 'EXTRACTION_FAILED'; Write-Error $_.Exception.Message; exit 1 }"
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository extraction failed" "ERROR" "LAUNCHER"
-    PAUSE
+    IF NOT "%1"=="-NonInteractive" PAUSE
     EXIT /B 3
 )
 
@@ -446,12 +469,12 @@ IF EXIST "%EXTRACTED_PATH%" (
         CALL :LOG_MESSAGE "Using extracted legacy orchestrator" "INFO" "LAUNCHER"
     ) ELSE (
         CALL :LOG_MESSAGE "No valid orchestrator found in extracted files" "ERROR" "LAUNCHER"
-        PAUSE
+        IF NOT "%1"=="-NonInteractive" PAUSE
         EXIT /B 3
     )
 ) ELSE (
     CALL :LOG_MESSAGE "Repository extraction verification failed" "ERROR" "LAUNCHER"
-    PAUSE
+    IF NOT "%1"=="-NonInteractive" PAUSE
     EXIT /B 3
 )
 
@@ -546,7 +569,7 @@ CALL :LOG_MESSAGE "Project structure verification: %COMPONENTS_FOUND%/3 major co
 
 IF "%STRUCTURE_VALID%"=="NO" (
     CALL :LOG_MESSAGE "Project structure incomplete but repository already downloaded. Check extraction." "ERROR" "LAUNCHER"
-    PAUSE
+    IF NOT "%1"=="-NonInteractive" PAUSE
     EXIT /B 4
 ) ELSE (
     CALL :LOG_MESSAGE "Project structure validated" "SUCCESS" "LAUNCHER"
@@ -588,7 +611,7 @@ CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
         CALL :LOG_MESSAGE "Winget not found. Attempting to install winget..." "INFO" "LAUNCHER"
         
         REM Method 1: Try installing App Installer via PowerShell (if allowed)
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "try { if (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue) { $appInstaller = Get-AppxPackage -Name 'Microsoft.DesktopAppInstaller' -ErrorAction SilentlyContinue; if (-not $appInstaller) { Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction Stop; Write-Host 'APPINSTALLER_REGISTERED' } else { Write-Host 'APPINSTALLER_EXISTS' } } else { Write-Host 'APPX_NOT_SUPPORTED' } } catch { Write-Host 'APPINSTALLER_FAILED'; exit 1 }" >nul 2>&1
+        "%WINPS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "try { if (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue) { $appInstaller = Get-AppxPackage -Name 'Microsoft.DesktopAppInstaller' -ErrorAction SilentlyContinue; if (-not $appInstaller) { Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction Stop; Write-Host 'APPINSTALLER_REGISTERED' } else { Write-Host 'APPINSTALLER_EXISTS' } } else { Write-Host 'APPX_NOT_SUPPORTED' } } catch { Write-Host 'APPINSTALLER_FAILED'; exit 1 }" >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "App Installer registration attempted" "INFO" "LAUNCHER"
             TIMEOUT /T 5 >nul 2>&1
@@ -601,7 +624,7 @@ CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
         IF !ERRORLEVEL! NEQ 0 (
             REM Method 2: Try PowerShell Gallery Microsoft.WinGet.Client module (official method)
             CALL :LOG_MESSAGE "Attempting winget installation via PowerShell Gallery (Microsoft.WinGet.Client)..." "INFO" "LAUNCHER"
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Installing NuGet provider...'; Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Write-Host 'Installing Microsoft.WinGet.Client module...'; Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser | Out-Null; Write-Host 'Running Repair-WinGetPackageManager...'; Import-Module Microsoft.WinGet.Client -Force; Repair-WinGetPackageManager -AllUsers; Write-Host 'WINGET_PSMODULE_SUCCESS' } catch { Write-Host 'WINGET_PSMODULE_FAILED'; Write-Host $_.Exception.Message; exit 1 }"
+            "%WINPS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Installing NuGet provider...'; Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Write-Host 'Installing Microsoft.WinGet.Client module...'; Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser | Out-Null; Write-Host 'Running Repair-WinGetPackageManager...'; Import-Module Microsoft.WinGet.Client -Force; Repair-WinGetPackageManager -AllUsers; Write-Host 'WINGET_PSMODULE_SUCCESS' } catch { Write-Host 'WINGET_PSMODULE_FAILED'; Write-Host $_.Exception.Message; exit 1 }"
             IF !ERRORLEVEL! EQU 0 (
                 CALL :LOG_MESSAGE "PowerShell Gallery method completed - verifying winget availability..." "INFO" "LAUNCHER"
                 TIMEOUT /T 5 >nul 2>&1
@@ -642,15 +665,15 @@ CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
             DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
             
             REM Try primary URL (Microsoft official shortlink)
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Trying primary URL (Microsoft official)...'; $url='https://aka.ms/getwinget'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'PRIMARY_MSIX_DOWNLOADED' } catch { Write-Host 'PRIMARY_MSIX_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
+            "%WINPS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Trying primary URL (Microsoft official)...'; $url='https://aka.ms/getwinget'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'PRIMARY_MSIX_DOWNLOADED' } catch { Write-Host 'PRIMARY_MSIX_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
             IF !ERRORLEVEL! NEQ 0 (
                 CALL :LOG_MESSAGE "Primary URL failed, trying fallback URL 1 (GitHub direct)..." "INFO" "LAUNCHER"
                 DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
-                powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Trying fallback URL 1 (GitHub direct)...'; $url='https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'FALLBACK1_MSIX_DOWNLOADED' } catch { Write-Host 'FALLBACK1_MSIX_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
+                "%WINPS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Trying fallback URL 1 (GitHub direct)...'; $url='https://github.com/microsoft/winget-cli/releases/latest/download/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'FALLBACK1_MSIX_DOWNLOADED' } catch { Write-Host 'FALLBACK1_MSIX_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
                 IF !ERRORLEVEL! NEQ 0 (
                     CALL :LOG_MESSAGE "Fallback URL 1 failed, trying fallback URL 2 (GitHub versioned)..." "INFO" "LAUNCHER"
                     DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
-                    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Trying fallback URL 2 (GitHub API latest)...'; $headers=@{'User-Agent'='WinMaintLauncher'}; $rel=Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/microsoft/winget-cli/releases/latest' -TimeoutSec 30; $asset=$rel.assets | Where-Object { $_.name -match 'msixbundle$' } | Select-Object -First 1; if(-not $asset){ Write-Host 'FALLBACK2_ASSET_NOT_FOUND'; exit 2 }; Invoke-WebRequest -Headers $headers -Uri $asset.browser_download_url -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 60; Write-Host 'FALLBACK2_MSIX_DOWNLOADED' } catch { Write-Host 'FALLBACK2_MSIX_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
+                    "%WINPS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Trying fallback URL 2 (GitHub API latest)...'; $headers=@{'User-Agent'='WinMaintLauncher'}; $rel=Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/microsoft/winget-cli/releases/latest' -TimeoutSec 30; $asset=$rel.assets | Where-Object { $_.name -match 'msixbundle$' } | Select-Object -First 1; if(-not $asset){ Write-Host 'FALLBACK2_ASSET_NOT_FOUND'; exit 2 }; Invoke-WebRequest -Headers $headers -Uri $asset.browser_download_url -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 60; Write-Host 'FALLBACK2_MSIX_DOWNLOADED' } catch { Write-Host 'FALLBACK2_MSIX_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
                     IF !ERRORLEVEL! EQU 0 (
                         CALL :LOG_MESSAGE "App Installer MSIX downloaded via fallback URL 2. Installing..." "INFO" "LAUNCHER"
                     ) ELSE (
@@ -665,7 +688,7 @@ CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
             
             REM Install the MSIX if download succeeded
             IF EXIST "%WORKING_DIR%AppInstaller.msixbundle" (
-                powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -Path '%WORKING_DIR%AppInstaller.msixbundle' -ErrorAction Stop; Write-Host 'MSIX_INSTALLED' } catch { Write-Host 'MSIX_INSTALL_FAILED'; exit 1 }" >nul 2>&1
+                "%WINPS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "try { Add-AppxPackage -Path '%WORKING_DIR%AppInstaller.msixbundle' -ErrorAction Stop; Write-Host 'MSIX_INSTALLED' } catch { Write-Host 'MSIX_INSTALL_FAILED'; exit 1 }" >nul 2>&1
                 IF !ERRORLEVEL! EQU 0 (
                     CALL :LOG_MESSAGE "App Installer MSIX installed successfully" "SUCCESS" "LAUNCHER"
                     DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
@@ -797,7 +820,7 @@ IF "%PS7_FOUND%"=="NO" (
             CALL :LOG_MESSAGE "Chocolatey not available - attempting Chocolatey installation..." "INFO" "LAUNCHER"
             
             REM Try installing Chocolatey from official installer
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iex ((New-Object Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); Write-Host 'CHOCO_INSTALLED' } catch { Write-Host 'CHOCO_INSTALL_FAILED'; exit 1 }" >nul 2>&1
+            "%WINPS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iex ((New-Object Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); Write-Host 'CHOCO_INSTALLED' } catch { Write-Host 'CHOCO_INSTALL_FAILED'; exit 1 }" >nul 2>&1
             
             IF !ERRORLEVEL! EQU 0 (
                 CALL :LOG_MESSAGE "Chocolatey installed successfully" "SUCCESS" "LAUNCHER"
@@ -829,7 +852,7 @@ IF "%PS7_FOUND%"=="NO" (
     IF NOT "%INSTALL_STATUS%"=="SUCCESS" (
         CALL :LOG_MESSAGE "Attempting PowerShell 7 MSI fallback from GitHub Releases..." "INFO" "LAUNCHER"
         DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; $headers=@{ 'User-Agent'='WinMaintLauncher' }; $arch = if([Environment]::Is64BitOperatingSystem){ 'x64' } else { 'x86' }; $rel = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -match ('win-' + $arch + '\\.msi$') } | Select-Object -First 1; if(-not $asset){ Write-Host 'ASSET_NOT_FOUND'; exit 2 }; $url = $asset.browser_download_url; Invoke-WebRequest -Headers $headers -Uri $url -OutFile '%WORKING_DIR%pwsh.msi'; Write-Host 'MSI_DOWNLOADED' } catch { Write-Host 'MSI_DOWNLOAD_FAILED'; exit 1 }" >nul 2>&1
+        "%WINPS_EXE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; $headers=@{ 'User-Agent'='WinMaintLauncher' }; $arch = if([Environment]::Is64BitOperatingSystem){ 'x64' } else { 'x86' }; $rel = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -match ('win-' + $arch + '\\.msi$') } | Select-Object -First 1; if(-not $asset){ Write-Host 'ASSET_NOT_FOUND'; exit 2 }; $url = $asset.browser_download_url; Invoke-WebRequest -Headers $headers -Uri $url -OutFile '%WORKING_DIR%pwsh.msi'; Write-Host 'MSI_DOWNLOADED' } catch { Write-Host 'MSI_DOWNLOAD_FAILED'; exit 1 }" >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "PowerShell 7 MSI downloaded. Installing silently..." "INFO" "LAUNCHER"
             msiexec /i "%WORKING_DIR%pwsh.msi" /qn ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1 ENABLE_PSREMOTING=1 REGISTER_MANIFEST=1 >nul 2>&1
@@ -892,7 +915,7 @@ REM ----------------------------------------------------------------------------
 REM Windows Defender Exclusions (Moved after PowerShell installation)
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Setting up Windows Defender exclusions..." "INFO" "LAUNCHER"
-powershell -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }"
+"%WINPS_EXE%" -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }"
 
 REM Package Manager Dependencies
 CALL :LOG_MESSAGE "Verifying package managers..." "INFO" "LAUNCHER"
@@ -1177,7 +1200,7 @@ IF "%PS_EXECUTABLE%"=="" (
     CALL :LOG_MESSAGE "  3. Chocolatey: choco install powershell-core" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "After installation, restart this script to continue." "ERROR" "LAUNCHER"
-    PAUSE
+    IF NOT "%1"=="-NonInteractive" PAUSE
     EXIT /B 1
 )
 
@@ -1200,7 +1223,7 @@ IF "%PS_EXECUTABLE%"=="" (
     CALL :LOG_MESSAGE "  - pwsh.exe is in PATH or default location" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  - No execution policy restrictions" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  - Antivirus/security software not blocking execution" "ERROR" "LAUNCHER"
-    PAUSE
+    IF NOT "%1"=="-NonInteractive" PAUSE
     EXIT /B 1
 )
 
@@ -1335,7 +1358,7 @@ CALL :LOG_MESSAGE "AUTO_NONINTERACTIVE flag: %AUTO_NONINTERACTIVE%" "DEBUG" "LAU
 
 IF "%ORCHESTRATOR_PATH%"=="" (
     CALL :LOG_MESSAGE "No valid PowerShell orchestrator found" "ERROR" "LAUNCHER"
-    PAUSE
+    IF NOT "%1"=="-NonInteractive" PAUSE
     EXIT /B 4
 )
 
@@ -1344,7 +1367,7 @@ CALL :LOG_MESSAGE "Orchestrator path: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
 REM Verify orchestrator file exists
 IF NOT EXIST "%ORCHESTRATOR_PATH%" (
     CALL :LOG_MESSAGE "Orchestrator file not found: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
-    PAUSE
+    IF NOT "%1"=="-NonInteractive" PAUSE
     EXIT /B 4
 )
 
@@ -1407,7 +1430,7 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     CALL :LOG_MESSAGE "Please install PowerShell 7+ and restart this script:" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
-    PAUSE
+    IF NOT "%1"=="-NonInteractive" PAUSE
     EXIT /B 1
 )
 
@@ -1418,4 +1441,4 @@ REM ----------------------------------------------------------------------------
 REM End of Script
 REM (Both branches above already EXIT /B, so nothing after this point ever runs.)
 REM -----------------------------------------------------------------------------
-ENDLOCAL
+ENDLOCAL
