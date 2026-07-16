@@ -11,6 +11,13 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
 }
 
+function Test-ProcessRunning {
+    param([string]$PackageName)
+    $procName = $PackageName -replace '[^a-zA-Z0-9]', ''
+    if ($procName.Length -eq 0) { return $null }
+    Get-Process | Where-Object { $_.ProcessName -like "*$procName*" }
+}
+
 <#
 .SYNOPSIS
     Removes bloatware applications identified by the Type1 audit.
@@ -57,6 +64,19 @@ function Invoke-BloatwareRemoval {
                 $pkg = Get-AppxPackageCompat -Name "*$pkgName*" -AllUsers
                 if (-not $pkg) { $pkg = Get-AppxPackageCompat -Name "*$pkgName*" }
                 if ($pkg) {
+                    $runningProc = Test-ProcessRunning -PackageName $pkgName
+                    if ($runningProc) {
+                        Write-Log -Level WARN -Component BLOATWARE -Message "Process running: $($runningProc.ProcessName). Attempting graceful termination..."
+                        try {
+                            $runningProc | Stop-Process -Force -ErrorAction Stop
+                            Start-Sleep -Milliseconds 500
+                            Write-Log -Level SUCCESS -Component BLOATWARE -Message "Terminated: $($runningProc.ProcessName)"
+                        }
+                        catch {
+                            Write-Log -Level WARN -Component BLOATWARE -Message "Could not terminate process: $_"
+                        }
+                    }
+
                     $pkg | ForEach-Object {
                         Remove-AppxPackageCompat -PackageFullName $_.PackageFullName -AllUsers
                     }

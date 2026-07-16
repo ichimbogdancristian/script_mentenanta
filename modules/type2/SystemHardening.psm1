@@ -39,6 +39,27 @@ function Invoke-SystemHardening {
 
     Write-Log -Level INFO -Component HARDENING -Message "Applying $($diff.Count) hardening change(s): $($securityItems.Count) security, $($telemetryItems.Count) telemetry"
 
+    # Export pre-hardening state for rollback/audit purposes
+    try {
+        $preHardeningState = @{
+            Timestamp = Get-Date -Format 'o'
+        }
+
+        if ($securityItems.Count -gt 0) {
+            $preHardeningState['DefenderPreferences'] = Get-MpPreference -ErrorAction SilentlyContinue |
+                Select-Object DisableRealtimeMonitoring, MAPSReporting, EnableNetworkProtection, PUAProtection, EnableControlledFolderAccess, SubmitSamplesConsent
+            $preHardeningState['FirewallProfiles'] = Get-NetFirewallProfile -ErrorAction SilentlyContinue |
+                Select-Object Name, Enabled
+        }
+
+        $backupPath = Get-TempPath -Category 'data' -FileName "hardening-pre-state-$(Get-Date -Format 'yyyyMMdd-HHmmss').json"
+        $preHardeningState | ConvertTo-Json -Depth 10 | Set-Content -Path $backupPath -Encoding UTF8 -Force
+        Write-Log -Level INFO -Component HARDENING -Message "Pre-hardening state backed up: $backupPath"
+    }
+    catch {
+        Write-Log -Level WARN -Component HARDENING -Message "Could not backup pre-hardening state: $_"
+    }
+
     foreach ($item in $diff) {
         $name = $item.Name ?? "$item"
         $type = $item.Type ?? 'registry'
