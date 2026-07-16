@@ -127,36 +127,26 @@ $ModulePairs = @(
     },
     @{
         Num        = 2
-        Label      = 'Essential Applications'
-        DiffKey    = 'EssentialApps'
-        Type1File  = 'modules\type1\EssentialAppsAudit.psm1'
-        Type1Func  = 'Invoke-EssentialAppsAudit'
-        Type2File  = 'modules\type2\EssentialApps.psm1'
-        Type2Func  = 'Invoke-EssentialApp'
-        ConfigSkip = 'skipEssentialApps'
+        Label      = 'App Management (Install & Upgrade)'
+        DiffKey    = 'AppManagement'
+        Type1File  = 'modules\type1\AppManagementAudit.psm1'
+        Type1Func  = 'Invoke-AppManagementAudit'
+        Type2File  = 'modules\type2\AppManagement.psm1'
+        Type2Func  = 'Invoke-AppManagement'
+        ConfigSkip = 'skipAppManagement'
     },
     @{
         Num        = 3
-        Label      = 'Security Enhancement'
-        DiffKey    = 'SecurityEnhancement'
-        Type1File  = 'modules\type1\SecurityAudit.psm1'
-        Type1Func  = 'Invoke-SecurityAudit'
-        Type2File  = 'modules\type2\SecurityEnhancement.psm1'
-        Type2Func  = 'Invoke-SecurityEnhancement'
-        ConfigSkip = 'skipSecurityEnhancement'
+        Label      = 'System Hardening (Security & Privacy)'
+        DiffKey    = 'SystemHardening'
+        Type1File  = 'modules\type1\SystemHardeningAudit.psm1'
+        Type1Func  = 'Invoke-SystemHardeningAudit'
+        Type2File  = 'modules\type2\SystemHardening.psm1'
+        Type2Func  = 'Invoke-SystemHardening'
+        ConfigSkip = 'skipSystemHardening'
     },
     @{
         Num        = 4
-        Label      = 'Telemetry & Privacy'
-        DiffKey    = 'TelemetryDisable'
-        Type1File  = 'modules\type1\TelemetryAudit.psm1'
-        Type1Func  = 'Invoke-TelemetryAudit'
-        Type2File  = 'modules\type2\TelemetryDisable.psm1'
-        Type2Func  = 'Invoke-TelemetryDisable'
-        ConfigSkip = 'skipTelemetryDisable'
-    },
-    @{
-        Num        = 5
         Label      = 'System Optimization'
         DiffKey    = 'SystemOptimization'
         Type1File  = 'modules\type1\SystemOptimizationAudit.psm1'
@@ -166,7 +156,7 @@ $ModulePairs = @(
         ConfigSkip = 'skipSystemOptimization'
     },
     @{
-        Num        = 6
+        Num        = 5
         Label      = 'Windows Updates'
         DiffKey    = 'WindowsUpdates'
         Type1File  = 'modules\type1\WindowsUpdatesAudit.psm1'
@@ -176,17 +166,7 @@ $ModulePairs = @(
         ConfigSkip = 'skipWindowsUpdates'
     },
     @{
-        Num        = 7
-        Label      = 'Application Upgrades'
-        DiffKey    = 'AppUpgrade'
-        Type1File  = 'modules\type1\AppUpgradeAudit.psm1'
-        Type1Func  = 'Invoke-AppUpgradeAudit'
-        Type2File  = 'modules\type2\AppUpgrade.psm1'
-        Type2Func  = 'Invoke-AppUpgrade'
-        ConfigSkip = 'skipAppUpgrade'
-    },
-    @{
-        Num        = 8
+        Num        = 6
         Label      = 'Disk Cleanup (Temp/Browser/Updates)'
         DiffKey    = 'DiskCleanup'
         Type1File  = 'modules\type1\DiskCleanupAudit.psm1'
@@ -196,7 +176,7 @@ $ModulePairs = @(
         ConfigSkip = 'skipDiskCleanup'
     },
     @{
-        Num        = 9
+        Num        = 7
         Label      = 'System Inventory (report only)'
         DiffKey    = 'SystemInventory'
         Type1File  = 'modules\type1\SystemInventory.psm1'
