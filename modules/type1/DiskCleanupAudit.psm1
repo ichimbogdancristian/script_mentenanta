@@ -172,11 +172,6 @@ function Invoke-DiskCleanupAudit {
         # 5. Save diff
         Save-DiffList -ModuleName 'DiskCleanup' -DiffList $diff.ToArray()
 
-        # 6. Persist audit snapshot
-        $auditPath = Get-TempPath -Category 'data' -FileName 'disk-cleanup-audit.json'
-        @{ Timestamp = (Get-Date -Format 'o'); Candidates = $diff.ToArray(); EstimatedTotalMB = $totalMB } `
-        | ConvertTo-Json -Depth 8 | Set-Content -Path $auditPath -Encoding UTF8 -Force
-
         return New-ModuleResult -ModuleName 'DiskCleanupAudit' -Status 'Success' `
             -ItemsDetected $diff.Count `
             -Message "$($diff.Count) cleanup candidate(s), ~$totalMB MB reclaimable"

@@ -46,15 +46,18 @@ EXIT /B
 
 :REFRESH_PATH_FROM_REGISTRY
 REM Refresh PATH environment variable from system registry.
-REM CRITICAL: REG QUERY returns REG_EXPAND_SZ values with literal, UNEXPANDED
-REM tokens still in them (e.g. the raw text "%SystemRoot%\system32", not
-REM "C:\Windows\system32"). A plain SET stores those tokens verbatim, which
-REM silently corrupts PATH — cmd.exe then looks for a directory literally
-REM named "%SystemRoot%" and fails, breaking resolution of EVERYTHING under
-REM the real System32 folder, including powershell.exe itself. This is exactly
-REM what caused 'powershell'/'pwsh.exe' is not recognized errors after this
-REM subroutine ran. The CALL SET idiom below forces a second expansion pass so
-REM embedded %SystemRoot%-style tokens actually resolve before being stored.
+
+REM ─── CRITICAL PATH REFRESH LOGIC ──────────────────────────────────────────────────────
+REM When REG QUERY returns REG_EXPAND_SZ values, they contain literal tokens like %SystemRoot%.
+REM Plain SET ("SET PATH=...") stores these tokens verbatim, silently corrupting PATH.
+REM CALL SET (calling SET a second time) forces PowerShell-style token expansion, so the
+REM final PATH contains actual paths like C:\Windows\System32 instead of literal %SystemRoot%.
+REM
+REM This is necessary because:
+REM 1. Registry tokens like %SystemRoot% aren't expanded by REG QUERY itself
+REM 2. cmd.exe's normal SET doesn't expand AFTER reading from registry
+REM 3. Many downstream tools will fail if they find literal "%SystemRoot%" in PATH
+REM ──────────────────────────────────────────────────────────────────────────────────────
 FOR /F "tokens=2*" %%i IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul') DO (
     SET "SYSTEM_PATH_RAW=%%j"
 )
