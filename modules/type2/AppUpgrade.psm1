@@ -23,7 +23,7 @@ function Invoke-AppUpgrade {
     $diff = Get-DiffList -ModuleName 'AppUpgrade'
     if (-not $diff -or $diff.Count -eq 0) {
         Write-Log -Level INFO -Component APPUPGR -Message 'All apps are up to date'
-        return New-ModuleResult -ModuleName 'AppUpgrade' -Status 'Skipped' -Message 'No upgrades available'
+        return New-ModuleResult -ModuleName 'AppUpgrade' -Status 'Skipped' -ModuleType 'Type2' -Message 'No upgrades available'
     }
 
     $hasWinget = Test-CommandAvailable 'winget'
@@ -50,7 +50,11 @@ function Invoke-AppUpgrade {
                     '--accept-package-agreements', '--accept-source-agreements',
                     '--disable-interactivity')
                 $exitCode = Invoke-ExternalPackageCommand -FilePath 'winget' -ArgumentList $wingetArgs
-                if ($exitCode -in 0, -1978335189, -1978335212) {
+                # 0 = success, -1978335189 (UPDATE_NOT_APPLICABLE) = already up to date.
+                # -1978335212 (NO_APPLICATIONS_FOUND) is deliberately NOT treated as
+                # success here — it means winget found no matching package at all,
+                # which is a real config problem (stale/typo'd id), not a completed upgrade.
+                if ($exitCode -in 0, -1978335189) {
                     Write-Log -Level SUCCESS -Component APPUPGR -Message "Upgraded (winget): $name"
                     $upgraded = $true
                 }
@@ -85,7 +89,7 @@ function Invoke-AppUpgrade {
 
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
     Write-Log -Level INFO -Component APPUPGR -Message "Done: $processed upgraded, $failed failed"
-    return New-ModuleResult -ModuleName 'AppUpgrade' -Status $status -ItemsDetected $diff.Count `
+    return New-ModuleResult -ModuleName 'AppUpgrade' -Status $status -ModuleType 'Type2' -ItemsDetected $diff.Count `
         -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors
 }
 

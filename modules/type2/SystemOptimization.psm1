@@ -23,7 +23,7 @@ function Invoke-SystemOptimization {
     $diff = Get-DiffList -ModuleName 'SystemOptimization'
     if (-not $diff -or $diff.Count -eq 0) {
         Write-Log -Level INFO -Component SYSOPT -Message 'System already optimized'
-        return New-ModuleResult -ModuleName 'SystemOptimization' -Status 'Skipped' -Message 'No changes needed'
+        return New-ModuleResult -ModuleName 'SystemOptimization' -Status 'Skipped' -ModuleType 'Type2' -Message 'No changes needed'
     }
 
     $osCtx     = if ($OSContext) { $OSContext } elseif ($global:OSContext) { $global:OSContext } else { Get-OSContext }
@@ -38,30 +38,23 @@ function Invoke-SystemOptimization {
             $changed = $false
             switch ($type) {
                 'service' {
-                    $svc   = $item.ServiceName ?? $item.Name
-                    $start = $item.DesiredStartType ?? $item.DesiredState ?? 'Disabled'
-                    Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
-                    Set-Service -Name $svc -StartupType $start -ErrorAction Stop
-                    Write-Log -Level SUCCESS -Component SYSOPT -Message "Service '$svc' -> $start"
-                    $changed = $true
+                    $changed = Invoke-ServiceChangeItem -Item $item -Component 'SYSOPT'
                 }
                 'powerplan' {
                     $planGuid = $item.GUID ?? '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'  # High performance
                     $powercfg = Join-Path $env:SystemRoot 'System32\powercfg.exe'
                     $null = & $powercfg /setactive $planGuid 2>&1
-                    Write-Log -Level SUCCESS -Component SYSOPT -Message "Power plan set to GUID $planGuid"
-                    $changed = $true
-                }
-                'registry' {
-                    $path  = $item.Path ?? $item.RegistryPath
-                    $vname = $item.ValueName ?? $item.Name
-                    $val   = $item.DesiredValue
-                    $vtype = $item.ValueType ?? 'DWord'
-                    if ($path -and $null -ne $val) {
-                        $null = Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
-                        Write-Log -Level SUCCESS -Component SYSOPT -Message "Registry set: $path\$vname = $val"
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Log -Level SUCCESS -Component SYSOPT -Message "Power plan set to GUID $planGuid"
                         $changed = $true
                     }
+                    else {
+                        Write-Log -Level ERROR -Component SYSOPT -Message "powercfg /setactive $planGuid failed (exit $LASTEXITCODE)"
+                        $errors += "[PowerPlan] powercfg exit $LASTEXITCODE"; $failed++
+                    }
+                }
+                'registry' {
+                    $changed = Invoke-RegistryChangeItem -Item $item -Component 'SYSOPT'
                 }
                 'visualfx' {
                     # Set balanced visual effects: Custom (3) with specific tweaks
@@ -116,6 +109,7 @@ function Invoke-SystemOptimization {
                 }
                 default {
                     Write-Log -Level WARN -Component SYSOPT -Message "Unknown optimization type '$type' for $name"
+                    $errors += "[Unknown type] $name"; $failed++
                 }
             }
             if ($changed) { $processed++ }
@@ -128,7 +122,7 @@ function Invoke-SystemOptimization {
 
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
     Write-Log -Level INFO -Component SYSOPT -Message "Done: $processed applied, $failed failed"
-    return New-ModuleResult -ModuleName 'SystemOptimization' -Status $status -ItemsDetected $diff.Count `
+    return New-ModuleResult -ModuleName 'SystemOptimization' -Status $status -ModuleType 'Type2' -ItemsDetected $diff.Count `
                             -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors
 }
 

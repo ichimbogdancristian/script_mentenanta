@@ -23,7 +23,7 @@ function Invoke-WindowsUpdate {
     $diff = Get-DiffList -ModuleName 'WindowsUpdates'
     if (-not $diff -or $diff.Count -eq 0) {
         Write-Log -Level INFO -Component WINUPDATE -Message 'No pending updates found'
-        return New-ModuleResult -ModuleName 'WindowsUpdates' -Status 'Skipped' -Message 'System is up to date'
+        return New-ModuleResult -ModuleName 'WindowsUpdates' -Status 'Skipped' -ModuleType 'Type2' -Message 'System is up to date'
     }
 
     $processed = 0; $failed = 0; $errors = @(); $rebootRequired = $false
@@ -74,15 +74,32 @@ function Invoke-WindowsUpdate {
     }
 
     if (-not $pswuAvailable) {
-        # Fallback: usoclient — async, triggers WU service to scan+install all pending at once
-        Write-Log -Level WARN -Component WINUPDATE -Message "Triggering usoclient to install $($diff.Count) update(s) (async — results unverifiable)"
+        # Fallback: usoclient — async, triggers WU service to scan+install all pending at once.
+        # usoclient.exe is undocumented/deprecated and Microsoft has removed it on some
+        # builds without notice, so its presence is verified before use rather than
+        # letting a missing-command exception propagate uncaught to the orchestrator.
         $usoClient = Join-Path $env:SystemRoot 'System32\usoclient.exe'
-        $null = & $usoClient StartScan 2>&1
-        Start-Sleep -Seconds 2
-        $null = & $usoClient StartInstall 2>&1
-        $processed = $diff.Count
-        $rebootRequired = $true
-        Write-Log -Level INFO -Component WINUPDATE -Message "usoclient triggered $processed update(s) — reboot expected"
+        if (-not (Test-Path $usoClient)) {
+            Write-Log -Level ERROR -Component WINUPDATE -Message "usoclient.exe not found at $usoClient - cannot install updates without PSWindowsUpdate"
+            $failed = $diff.Count
+            $errors += "usoclient.exe not present on this system and PSWindowsUpdate module is unavailable"
+        }
+        else {
+            Write-Log -Level WARN -Component WINUPDATE -Message "Triggering usoclient to install $($diff.Count) update(s) (async — results unverifiable)"
+            try {
+                $null = & $usoClient StartScan 2>&1
+                Start-Sleep -Seconds 2
+                $null = & $usoClient StartInstall 2>&1
+                $processed = $diff.Count
+                $rebootRequired = $true
+                Write-Log -Level INFO -Component WINUPDATE -Message "usoclient triggered $processed update(s) — reboot expected"
+            }
+            catch {
+                Write-Log -Level ERROR -Component WINUPDATE -Message "usoclient invocation failed: $_"
+                $failed = $diff.Count
+                $errors += "usoclient invocation failed: $_"
+            }
+        }
     }
 
     $extraData = @{ RebootRequired = $rebootRequired; UsedUsoclient = (-not $pswuAvailable) }
@@ -92,7 +109,7 @@ function Invoke-WindowsUpdate {
 
     $status = if (-not $pswuAvailable) { 'Warning' } elseif ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
     Write-Log -Level INFO -Component WINUPDATE -Message "Done: $processed triggered/installed, $failed failed"
-    return New-ModuleResult -ModuleName 'WindowsUpdates' -Status $status -ItemsDetected $diff.Count `
+    return New-ModuleResult -ModuleName 'WindowsUpdates' -Status $status -ModuleType 'Type2' -ItemsDetected $diff.Count `
         -ItemsProcessed $processed -ItemsFailed $failed -RebootRequired $rebootRequired `
         -Errors $errors -ExtraData $extraData
 }

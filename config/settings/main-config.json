@@ -1,20 +1,31 @@
 {
+  "_comment": "Windows Maintenance Automation - main settings. Edit the values below to change behavior; no code changes needed. This file is read once per run by the orchestrator (Get-MainConfig) and never prompts for input, so every setting here is safe to use for fully unattended/Task Scheduler execution.",
   "execution": {
     "shutdown": {
+      "_comment": "Controls Stage 5 (the only stage that can reboot or delete the project folder).",
       "countdownSeconds": 120,
       "cleanupOnTimeout": true,
       "rebootOnTimeout": true,
-      "rebootOnlyWhenRequired": true
+      "rebootOnlyWhenRequired": true,
+      "_rebootOnlyWhenRequired_note": "When true (recommended), a reboot only happens if a Type2 module actually flagged one as required (e.g. Windows Update, a Defender policy change). When false, rebootOnTimeout alone decides."
     }
   },
   "modules": {
+    "_comment": "Set any flag below to true to SKIP that module's Type2 action (install/remove/change) for every run, without editing any code. The corresponding Type1 audit still runs and still reports findings in the HTML report - only the automatic fix is skipped. This is read by MaintenanceOrchestrator.ps1 in Stage 2 and requires no user interaction, so it is safe to use with -NonInteractive / Task Scheduler.",
     "skipBloatwareRemoval": false,
+    "_skipBloatwareRemoval_desc": "Skip removing bloatware/OEM AppX packages found by the bloatware audit.",
     "skipEssentialApps": false,
+    "_skipEssentialApps_desc": "Skip installing missing apps from config/lists/essential-apps/essential-apps.json.",
     "skipWindowsUpdates": false,
+    "_skipWindowsUpdates_desc": "Skip installing pending Windows Updates found by the update audit.",
     "skipTelemetryDisable": false,
+    "_skipTelemetryDisable_desc": "Skip disabling telemetry services/registry keys/scheduled tasks.",
     "skipSystemOptimization": false,
+    "_skipSystemOptimization_desc": "Skip service/power-plan/visual-effects/startup-program optimization changes.",
     "skipSecurityEnhancement": false,
-    "skipAppUpgrade": false
+    "_skipSecurityEnhancement_desc": "Skip applying the security baseline (registry policy, Defender, firewall, services, password/audit policy).",
+    "skipAppUpgrade": false,
+    "_skipAppUpgrade_desc": "Skip upgrading already-installed apps found out of date by the app-upgrade audit."
   },
   "reporting": {
     "enableHtmlReport": true

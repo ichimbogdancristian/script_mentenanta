@@ -23,7 +23,7 @@ function Invoke-EssentialApp {
     $diff = Get-DiffList -ModuleName 'EssentialApps'
     if (-not $diff -or $diff.Count -eq 0) {
         Write-Log -Level INFO -Component ESSAPPS -Message 'All essential apps already installed'
-        return New-ModuleResult -ModuleName 'EssentialApps' -Status 'Skipped' -Message 'All apps present'
+        return New-ModuleResult -ModuleName 'EssentialApps' -Status 'Skipped' -ModuleType 'Type2' -Message 'All apps present'
     }
 
     $osCtx = if ($OSContext) { $OSContext } elseif ($global:OSContext) { $global:OSContext } else { Get-OSContext }
@@ -69,8 +69,9 @@ function Invoke-EssentialApp {
                     '--accept-source-agreements'
                 ) + $scopeArgs
                 $exitCode = Invoke-ExternalPackageCommand -FilePath 'winget' -ArgumentList $wingetArgs
-                if ($exitCode -in 0, -1978335189) {
-                    # 0=success, -1978335189=already installed
+                # 0 = success, -1978335135 (PACKAGE_ALREADY_INSTALLED) = already present,
+                # -1978335189 (UPDATE_NOT_APPLICABLE) = also effectively already present/current.
+                if ($exitCode -in 0, -1978335135, -1978335189) {
                     Write-Log -Level SUCCESS -Component ESSAPPS -Message "winget installed: $name"
                     $installed = $true
                 }
@@ -105,7 +106,7 @@ function Invoke-EssentialApp {
 
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
     Write-Log -Level INFO -Component ESSAPPS -Message "Done: $processed installed, $failed failed"
-    return New-ModuleResult -ModuleName 'EssentialApps' -Status $status -ItemsDetected $diff.Count `
+    return New-ModuleResult -ModuleName 'EssentialApps' -Status $status -ModuleType 'Type2' -ItemsDetected $diff.Count `
         -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors
 }
 

@@ -19,6 +19,12 @@
 .PARAMETER NonInteractive
     Skip all interactive countdowns; run all Type1 then all Type2 automatically.
 
+.PARAMETER TaskNumbers
+    Comma-separated module numbers to run (e.g. "1,3,5"), matching the Stage 1
+    menu numbering. Implies -NonInteractive (no interactive menu is shown when
+    a selection is supplied on the command line). Unrecognized numbers are
+    ignored; if none match, all modules run.
+
 .NOTES
     Author:  Windows Maintenance Automation Project
     Version: 5.0.0
@@ -26,7 +32,8 @@
 #>
 [CmdletBinding()]
 param(
-    [switch]$NonInteractive
+    [switch]$NonInteractive,
+    [string]$TaskNumbers
 )
 
 Set-StrictMode -Version 1.0
@@ -272,7 +279,14 @@ function Get-MenuSelection {
         Write-Host "`r  Auto-running option 0 in $remaining second(s)... [enter number(s) to select]  " `
             -NoNewline -ForegroundColor Yellow
 
-        if ([Console]::KeyAvailable) {
+        # Defensive: [Console]::KeyAvailable throws if stdin has no real console
+        # attached (e.g. launched in a context without one). Treat that the same
+        # as "no key pressed" rather than letting it crash the run.
+        $keyAvailable = $false
+        try { $keyAvailable = [Console]::KeyAvailable }
+        catch { $keyAvailable = $false }
+
+        if ($keyAvailable) {
             $null = [Console]::ReadKey($true)   # consume the trigger key-press only
             $key = Read-Host "`n  Your choice (comma-separated)"
             # Parse comma-separated input: "1,3,5" → @(1, 3, 5)
@@ -294,7 +308,23 @@ Write-Host ""
 Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 1 : SYSTEM INVENTORY  ━━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
 Write-Log -Level INFO -Component ORCH -Message "Stage 1 started"
 
-if (-not $NonInteractive) {
+if ($TaskNumbers) {
+    # Non-interactive equivalent of the Stage 1 menu selection, for Task Scheduler /
+    # script.bat -TaskNumbers callers that want to run a specific subset unattended.
+    $parsed = @($TaskNumbers -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
+    if ($parsed.Count -gt 0 -and (0 -notin $parsed)) {
+        $selectedPairs = $ModulePairs | Where-Object { $_.Num -in $parsed }
+        if (-not $selectedPairs) {
+            Write-Log -Level WARN -Component ORCH -Message "TaskNumbers '$TaskNumbers' matched no modules - running all"
+            $selectedPairs = $null
+        }
+        else {
+            $names = ($selectedPairs | ForEach-Object { $_.Label }) -join ', '
+            Write-Log -Level INFO -Component ORCH -Message "TaskNumbers filter applied: $names"
+        }
+    }
+}
+elseif (-not $NonInteractive) {
     Show-Stage1Menu
     $choice = Get-MenuSelection -Countdown 10
 
@@ -487,6 +517,25 @@ Write-Host ""
 Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 5 : CLEANUP & REBOOT  ━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
 Write-Host ""
 
+# Removes the Windows Defender exclusions script.bat adds before dependency
+# installation (working dir + powershell.exe/pwsh.exe), so this run's
+# maintenance session doesn't leave a permanent, unscoped AV exclusion behind
+# on the machine after cleanup. Paired setup/teardown for the same paths/processes
+# script.bat's dependency-management phase excludes.
+function Remove-DefenderSessionExclusions {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [string]$WorkingDir)
+    try {
+        Remove-MpPreference -ExclusionPath $WorkingDir -ErrorAction SilentlyContinue
+        Remove-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue
+        Remove-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue
+        Write-Log -Level INFO -Component ORCH -Message "Removed Defender exclusions for $WorkingDir"
+    }
+    catch {
+        Write-Log -Level WARN -Component ORCH -Message "Could not remove Defender exclusions: $_"
+    }
+}
+
 $reportDisplay = if ($reportFile) { Split-Path $reportFile -Leaf } else { 'N/A' }
 
 $rebootSeconds = [int]($Config.execution.shutdown.countdownSeconds ?? 120)
@@ -525,6 +574,7 @@ if (-not $doReboot) {
 
     if ($doCleanup) {
         Write-Host "  Removing project folder..." -ForegroundColor DarkGray
+        Remove-DefenderSessionExclusions -WorkingDir $ProjectRoot
         try {
             Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
             Remove-Item -Path $ProjectRoot -Recurse -Force -ErrorAction Stop
@@ -554,7 +604,19 @@ while (-not $aborted -and (Get-Date) -lt $deadline) {
     $remaining = [int]($deadline - (Get-Date)).TotalSeconds
     Write-Host "`r  Rebooting in $remaining second(s)...  " -NoNewline -ForegroundColor Red
 
-    if ([Console]::KeyAvailable) {
+    # In -NonInteractive mode (e.g. Task Scheduler with no attached console),
+    # never poll the console — [Console]::KeyAvailable throws
+    # InvalidOperationException when stdin is redirected or no console exists,
+    # which would otherwise crash the run at the very last stage. Interactive
+    # mode still defensively catches the same exception rather than trusting
+    # a console is genuinely available.
+    $keyAvailable = $false
+    if (-not $NonInteractive) {
+        try { $keyAvailable = [Console]::KeyAvailable }
+        catch { $keyAvailable = $false }
+    }
+
+    if ($keyAvailable) {
         $null = [Console]::ReadKey($true)
         $aborted = $true
     }
@@ -581,6 +643,7 @@ Write-Host "  Countdown complete. Proceeding with cleanup and reboot..." -Foregr
 
 if ($doCleanup) {
     Write-Host "  Removing project folder: $ProjectRoot ..." -ForegroundColor DarkGray
+    Remove-DefenderSessionExclusions -WorkingDir $ProjectRoot
     try {
         Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
         Remove-Item -Path $ProjectRoot -Recurse -Force -ErrorAction Stop

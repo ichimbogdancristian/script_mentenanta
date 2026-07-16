@@ -32,26 +32,16 @@ function Invoke-SecurityAudit {
 
         $diff = [System.Collections.Generic.List[hashtable]]::new()
 
-        # 2. Registry security checks
-        foreach ($entry in $baseline.registry) {
-            $current = Get-RegistryValue -Path $entry.path -Name $entry.name
-            if ($null -eq $current -or "$current" -ne "$($entry.desiredValue)") {
-                $diff.Add(@{
-                        Type         = 'registry'
-                        Name         = "$($entry.path)\$($entry.name)"
-                        Description  = $entry.description
-                        Path         = $entry.path
-                        ValueName    = $entry.name
-                        DesiredValue = $entry.desiredValue
-                        ValueType    = if ($entry.type) { $entry.type } else { 'DWord' }
-                        CurrentState = $current
-                        DesiredState = $entry.desiredValue
-                    })
-                Write-Log -Level DEBUG -Component SEC-AUDIT -Message "Security mismatch: $($entry.description)"
-            }
+        # 2. Registry security checks (shared audit-side comparison — see
+        # Compare-RegistryBaseline in modules/core/Maintenance.psm1; entries
+        # with "nonEmpty": true (e.g. legal notice banner text) are matched as
+        # "any non-blank value" instead of exact-string equality)
+        Compare-RegistryBaseline -Entries @($baseline.registry) | ForEach-Object {
+            $diff.Add($_)
+            Write-Log -Level DEBUG -Component SEC-AUDIT -Message "Security mismatch: $($_.Description)"
         }
 
-        # 3. Windows Defender real-time protection + optional features
+        # 3. Windows Defender real-time protection
         if ($baseline.windowsDefender.realTimeProtection) {
             try {
                 $mpStatus = Get-MpComputerStatus -ErrorAction Stop
@@ -91,8 +81,14 @@ function Invoke-SecurityAudit {
                         DesiredState = $true
                     })
             }
+        }
 
-            # Check cloud protection, network protection, and PUA via Get-MpPreference
+        # 3a. Cloud protection, network protection, and PUA protection — each
+        # gated on its OWN independent baseline flag, not on realTimeProtection.
+        # (Previously nested inside the realTimeProtection check above, which meant
+        # these three checks silently stopped running whenever realTimeProtection
+        # was set false, even though nothing about them actually depends on it.)
+        if ($baseline.windowsDefender.cloudProtection -or $baseline.windowsDefender.networkProtection -or $baseline.windowsDefender.pua) {
             try {
                 $mpPrefs = Get-MpPreference -ErrorAction Stop
                 if ($baseline.windowsDefender.cloudProtection -and $mpPrefs.MAPSReporting -eq 0) {
@@ -220,43 +216,10 @@ function Invoke-SecurityAudit {
             }
         }
 
-        # 5. Services that must be running
-        foreach ($svcName in $baseline.services.ensureRunning) {
-            try {
-                $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
-                if ($svc -and $svc.Status -ne 'Running') {
-                    $diff.Add(@{
-                            Type         = 'service'
-                            Name         = $svcName
-                            ServiceName  = $svcName
-                            Action       = 'EnsureRunning'
-                            Description  = "Service $svcName must be Running"
-                            CurrentState = $svc.Status.ToString()
-                            DesiredState = 'Running'
-                        })
-                }
-            }
-            catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Service query failed '$svcName': $_" }
-        }
-
-        # 6. Services that must be disabled
-        foreach ($svcName in $baseline.services.ensureDisabled) {
-            try {
-                $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
-                if ($svc -and $svc.StartType -ne 'Disabled') {
-                    $diff.Add(@{
-                            Type         = 'service'
-                            Name         = $svcName
-                            ServiceName  = $svcName
-                            Action       = 'EnsureDisabled'
-                            Description  = "Service $svcName must be Disabled"
-                            CurrentState = $svc.StartType.ToString()
-                            DesiredState = 'Disabled'
-                        })
-                }
-            }
-            catch { Write-Log -Level WARN -Component SEC-AUDIT -Message "Service query failed '$svcName': $_" }
-        }
+        # 5 & 6. Services that must be running / disabled (shared audit-side
+        # comparison — see Compare-ServiceBaseline in modules/core/Maintenance.psm1)
+        Compare-ServiceBaseline -ServiceNames @($baseline.services.ensureRunning) -Action 'EnsureRunning' | ForEach-Object { $diff.Add($_) }
+        Compare-ServiceBaseline -ServiceNames @($baseline.services.ensureDisabled) -Action 'EnsureDisabled' | ForEach-Object { $diff.Add($_) }
 
         # 7. Security policy audit via secedit (password/lockout/account rename)
         if ($baseline.securityPolicy) {

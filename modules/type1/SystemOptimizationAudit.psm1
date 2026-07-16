@@ -43,15 +43,10 @@ function Invoke-SystemOptimizationAudit {
             $baseline.windows10.services.safeToDisable | ForEach-Object { $svcsToDisable.Add($_) }
         }
 
-        foreach ($svcName in $svcsToDisable) {
-            try {
-                $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
-                if ($svc -and $svc.StartType -ne 'Disabled') {
-                    $diff.Add(@{ Type = 'service'; Name = $svcName; CurrentState = $svc.StartType.ToString(); DesiredState = 'Disabled' })
-                    Write-Log -Level DEBUG -Component SYSOPT-AUDIT -Message "Service needs disable: $svcName ($($svc.StartType)))"
-                }
-            }
-            catch { Write-Log -Level WARN -Component SYSOPT-AUDIT -Message "Service query failed for $svcName" }
+        # Shared audit-side comparison — see Compare-ServiceBaseline in modules/core/Maintenance.psm1
+        Compare-ServiceBaseline -ServiceNames @($svcsToDisable) -Action 'EnsureDisabled' | ForEach-Object {
+            $diff.Add($_)
+            Write-Log -Level DEBUG -Component SYSOPT-AUDIT -Message "Service needs disable: $($_.Name) ($($_.CurrentState))"
         }
 
         # 3. Audit power plan

@@ -154,7 +154,7 @@ CALL :LOG_MESSAGE "Admin check results: NET=%NET_ADMIN_CHECK%, PS=%PS_ADMIN_CHEC
 
 IF "%IS_ADMIN%"=="NO" (
     CALL :LOG_MESSAGE "Administrator privileges required. Attempting elevation..." "WARN" "LAUNCHER"
-    powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs -WindowStyle Normal"
+    powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\" %*' -Verb RunAs -WindowStyle Normal"
     IF !ERRORLEVEL! NEQ 0 (
         CALL :LOG_MESSAGE "Elevation failed or was cancelled by user" "ERROR" "LAUNCHER"
         PAUSE
@@ -1354,19 +1354,6 @@ REM [REMOVED: Legacy PowerShell 7+ orchestrator check. Now handled by consolidat
 
 CALL :LOG_MESSAGE "Using PowerShell 7+ for orchestrator execution" "SUCCESS" "LAUNCHER"
 
-REM Parse command line arguments for the orchestrator
-SET "PS_ARGS="
-IF "%1"=="-NonInteractive" SET "PS_ARGS=%PS_ARGS% -NonInteractive"
-IF "%AUTO_NONINTERACTIVE%"=="YES" (
-    IF NOT "%1"=="-NonInteractive" (
-        SET "PS_ARGS=%PS_ARGS% -NonInteractive"
-        CALL :LOG_MESSAGE "Auto-enabling non-interactive mode due to PowerShell 7+ availability" "INFO" "LAUNCHER"
-    )
-)
-IF "%1"=="-TaskNumbers" SET "PS_ARGS=%PS_ARGS% -TaskNumbers %2"
-
-CALL :LOG_MESSAGE "Launching orchestrator with arguments: %PS_ARGS%" "INFO" "LAUNCHER"
-
 REM Setup complete - transitioning to dedicated PowerShell 7 window for better performance and UI
 CALL :LOG_MESSAGE "Setup phase completed - launching dedicated PowerShell 7+ window" "INFO" "LAUNCHER"
 CALL :LOG_MESSAGE "This will provide better performance and eliminate visual glitches" "INFO" "LAUNCHER"
@@ -1387,6 +1374,9 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     REM Check for command line arguments to pass through
     IF "%1"=="-NonInteractive" (
         SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%' -NonInteractive; "
+    ) ELSE IF "%1"=="-TaskNumbers" (
+        SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%' -NonInteractive -TaskNumbers '%~2'; "
+        CALL :LOG_MESSAGE "Forwarding task selection to orchestrator: %~2" "INFO" "LAUNCHER"
     ) ELSE (
         SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%'; "
     )
