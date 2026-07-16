@@ -25,7 +25,9 @@
     "skipSecurityEnhancement": false,
     "_skipSecurityEnhancement_desc": "Skip applying the security baseline (registry policy, Defender, firewall, services, password/audit policy).",
     "skipAppUpgrade": false,
-    "_skipAppUpgrade_desc": "Skip upgrading already-installed apps found out of date by the app-upgrade audit."
+    "_skipAppUpgrade_desc": "Skip upgrading already-installed apps found out of date by the app-upgrade audit.",
+    "skipDiskCleanup": false,
+    "_skipDiskCleanup_desc": "Skip clearing temp files, browser cache/cookies, Windows Update component cleanup, and Recycle Bin. See config/lists/disk-cleanup/disk-cleanup-config.json for finer-grained toggles (e.g. cookie clearing is off by default there)."
   },
   "reporting": {
     "enableHtmlReport": true

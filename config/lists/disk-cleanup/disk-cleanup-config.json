@@ -1,0 +1,30 @@
+{
+  "_comment": "Disk cleanup baseline - temp files, browser cache/cookies, Windows Update component-store cleanup, Recycle Bin. Nothing here runs blindly: Stage 1 audits what actually exists and has real size, Stage 2 builds the diff list, and Stage 3 only acts on items in that list (mandatory diff-list discipline, same as every other module pair).",
+  "tempFiles": {
+    "enabled": true,
+    "_description": "Clears %TEMP%, C:\\Windows\\Temp, and every local user profile's AppData\\Local\\Temp folder.",
+    "minSizeMB": 1
+  },
+  "browsers": {
+    "enabled": true,
+    "_description": "Applies to Chrome, Edge, and Firefox, for every local user profile found under C:\\Users.",
+    "chrome": true,
+    "edge": true,
+    "firefox": true,
+    "clearCache": true,
+    "clearCookies": false,
+    "_clearCookies_note": "OFF by default: clearing cookies signs every user out of every website they're logged into. Set true only if that's actually wanted.",
+    "minSizeMB": 1
+  },
+  "windowsUpdateCleanup": {
+    "enabled": true,
+    "_description": "Runs DISM /Online /Cleanup-Image /StartComponentCleanup, but only when DISM's own analysis (/AnalyzeComponentStore) says cleanup is recommended - skips the expensive operation otherwise.",
+    "resetBase": false,
+    "_resetBase_note": "DANGER: /ResetBase permanently removes the ability to uninstall currently-installed updates/service packs. Leave false unless you specifically want that irreversible extra space savings."
+  },
+  "recycleBin": {
+    "enabled": true,
+    "_description": "Empties the Recycle Bin on every fixed (non-removable) drive.",
+    "minSizeMB": 1
+  }
+}

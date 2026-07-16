@@ -18,7 +18,17 @@
     Import: Import-Module ReportGenerator.psm1 -Force
 #>
 
-Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
+Set-StrictMode -Version 1.0
+
+# ConvertTo-HtmlSafe: single shared HTML-escaping helper used everywhere in this
+# module. [System.Net.WebUtility]::HtmlEncode is built into .NET Core/PS7 (no
+# assembly load needed) and — unlike the manual '<'/'>' -replace fallback this
+# module used previously — correctly escapes '&' and quotes too.
+function ConvertTo-HtmlSafe {
+    param([string]$Text)
+    if ([string]::IsNullOrEmpty($Text)) { return '' }
+    return [System.Net.WebUtility]::HtmlEncode($Text)
+}
 
 #region ─── ENTRY POINT ───────────────────────────────────────────────────────
 
@@ -90,15 +100,21 @@ function Build-ReportHtml {
 
     $totalModules = $SessionResults.Count
     $succeeded = @($SessionResults | Where-Object { $_.Status -eq 'Success' }).Count
+    $warningCount = @($SessionResults | Where-Object { $_.Status -eq 'Warning' }).Count
     $failed = @($SessionResults | Where-Object { $_.Status -eq 'Failed' }).Count
     $skipped = @($SessionResults | Where-Object { $_.Status -eq 'Skipped' }).Count
     $totalItems = ($SessionResults | ForEach-Object { [int]$_.ItemsProcessed } | Measure-Object -Sum).Sum
-    $overallStatus = if ($failed -gt 0) { 'danger' } elseif ($skipped -gt 0) { 'warning' } else { 'success' }
+    # 'Warning' is a real, emitted Status (e.g. WindowsUpdatesAudit when its COM
+    # search partially fails) but was previously invisible here — a run with
+    # only Warning-status modules showed the green "all succeeded" banner.
+    $overallStatus = if ($failed -gt 0) { 'danger' } elseif ($warningCount -gt 0 -or $skipped -gt 0) { 'warning' } else { 'success' }
     $overallLabel = if ($failed -gt 0) { 'Completed with Errors' } `
+        elseif ($warningCount -gt 0) { 'Completed with Warnings' } `
         elseif ($skipped -gt 0) { 'Completed with Skips' } `
         else { 'All tasks completed successfully' }
 
     $moduleCards = ($SessionResults | ForEach-Object { Build-ModuleCard -Result $_ }) -join "`n"
+    $sysInfoSections = Build-SystemInfoSection -SessionResults $SessionResults
 
     # Error aggregation across all modules
     $allErrors = [System.Collections.Generic.List[string]]::new()
@@ -113,7 +129,7 @@ function Build-ReportHtml {
     $errorSummaryHtml = ''
     if ($allErrors.Count -gt 0) {
         $errItems = ($allErrors | ForEach-Object {
-                $escaped = $_ -replace '<', '&lt;' -replace '>', '&gt;'
+                $escaped = ConvertTo-HtmlSafe $_
                 "<div class='err-mod'><span class='err-msg'>$escaped</span></div>"
             }) -join "`n"
         $errorSummaryHtml = @"
@@ -141,13 +157,7 @@ function Build-ReportHtml {
     if ($TranscriptPath -and (Test-Path $TranscriptPath)) {
         $rawContent = Get-Content -Path $TranscriptPath -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
         if ($rawContent) {
-            try {
-                $rawTranscript = [System.Web.HttpUtility]::HtmlEncode($rawContent)
-            }
-            catch {
-                # Fallback if System.Web not available
-                $rawTranscript = $rawContent -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;'
-            }
+            $rawTranscript = ConvertTo-HtmlSafe $rawContent
         }
     }
 
@@ -244,6 +254,15 @@ details[open] summary{border-radius:8px 8px 0 0;border-bottom:none}
 .tx pre{font-family:'Cascadia Code',Consolas,monospace;font-size:11px;color:#a0b0c8;white-space:pre-wrap;word-break:break-all}
 /* FOOTER */
 .footer{text-align:center;color:var(--muted);font-size:12px;padding:18px 0;border-top:1px solid var(--border);margin-top:22px}
+/* SYSTEM INFO / USER ACCOUNTS SECTIONS */
+.sec-note{font-size:11px;font-weight:400;color:var(--muted);text-transform:none;letter-spacing:0;margin-left:8px}
+.user-table{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:8px}
+.user-row{display:grid;grid-template-columns:1.2fr .8fr 1.2fr 2fr;gap:10px;padding:9px 14px;font-size:12px;border-bottom:1px solid var(--border);align-items:center}
+.user-row:last-child{border-bottom:none}
+.user-row.user-hd{background:rgba(124,58,237,.08);font-weight:600;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+.u-name{font-weight:600}
+.u-logon,.u-desc{color:var(--muted);font-size:11px}
+.muted-note{color:var(--muted);font-size:11px;margin:0 0 20px;font-style:italic}
 </style>
 </head>
 <body>
@@ -266,7 +285,8 @@ $errorSummaryHtml
 <div class="summary-grid">
   <div class="stat">   <div class="val">$totalModules</div><div class="lbl">Modules Run</div></div>
   <div class="stat s"> <div class="val">$succeeded</div>   <div class="lbl">Succeeded</div></div>
-  <div class="stat w"> <div class="val">$skipped</div>     <div class="lbl">Skipped</div></div>
+  <div class="stat w"> <div class="val">$warningCount</div><div class="lbl">Warnings</div></div>
+  <div class="stat">   <div class="val">$skipped</div>     <div class="lbl">Skipped</div></div>
   <div class="stat d"> <div class="val">$failed</div>      <div class="lbl">Failed</div></div>
   <div class="stat i"> <div class="val">$totalItems</div>  <div class="lbl">Items Changed</div></div>
 </div>
@@ -278,6 +298,9 @@ $errorSummaryHtml
   <div class="inf"><div class="k">Run As</div><div class="v">$runAs</div></div>
   <div class="inf"><div class="k">Generated</div><div class="v">$genTime</div></div>
 </div>
+
+$($sysInfoSections.SystemInfo)
+$($sysInfoSections.Users)
 
 <div class="sec">Stage 1 &mdash; System Audit Results</div>
 <div class="mod-grid">$type1Cards</div>
@@ -296,6 +319,89 @@ $errorSummaryHtml
 </body>
 </html>
 "@
+}
+
+<#
+.SYNOPSIS
+    Builds the "System Information" and "Local User Accounts" report sections
+    from the SystemInventory module's ExtraData.
+.DESCRIPTION
+    Surfaces internal/external IP, default gateway, domain/workgroup, time
+    zone, and BIOS serial for later machine identification, plus every local
+    user account NOT part of the small set present on any fresh Windows
+    install (Administrator/Guest/DefaultAccount/WDAGUtilityAccount/
+    defaultuser0) — so an extra admin account or unexpected login stands out
+    for manual review instead of being buried among normal Windows accounts.
+.PARAMETER SessionResults
+    Array of hashtables from New-ModuleResult (searched for the SystemInventory entry).
+.OUTPUTS
+    [hashtable] with two HTML fragment strings: SystemInfo and Users.
+#>
+function Build-SystemInfoSection {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param([Parameter(Mandatory)] [array]$SessionResults)
+
+    $sysInvResult = $SessionResults | Where-Object { $_.ModuleName -eq 'SystemInventory' } | Select-Object -First 1
+    $inv = if ($sysInvResult) { $sysInvResult.ExtraData } else { $null }
+
+    $result = @{ SystemInfo = ''; Users = '' }
+    if (-not $inv) { return $result }
+
+    $net = $inv.Network
+    $sd = $inv.SystemDetails
+    $internalIp = ConvertTo-HtmlSafe "$($net.InternalIP)"
+    $externalIp = ConvertTo-HtmlSafe "$($net.ExternalIP)"
+    $gateway = ConvertTo-HtmlSafe "$($net.DefaultGateway)"
+    $domainWg = ConvertTo-HtmlSafe "$($sd.DomainOrWorkgroup)"
+    $tz = ConvertTo-HtmlSafe "$($sd.TimeZone)"
+    $bios = ConvertTo-HtmlSafe "$($sd.BIOSSerialNumber)"
+
+    $result.SystemInfo = @"
+<div class="sec">System Information</div>
+<div class="info-row">
+  <div class="inf"><div class="k">Internal IP</div><div class="v">$internalIp</div></div>
+  <div class="inf"><div class="k">Default Gateway</div><div class="v">$gateway</div></div>
+  <div class="inf"><div class="k">External IP</div><div class="v">$externalIp</div></div>
+  <div class="inf"><div class="k">Domain / Workgroup</div><div class="v">$domainWg</div></div>
+  <div class="inf"><div class="k">Time Zone</div><div class="v">$tz</div></div>
+  <div class="inf"><div class="k">BIOS Serial</div><div class="v">$bios</div></div>
+</div>
+"@
+
+    $allUsers = @($inv.LocalUsers)
+    $reviewUsers = @($allUsers | Where-Object { -not $_.IsDefaultOnAnyWindowsInstall })
+    $hiddenCount = $allUsers.Count - $reviewUsers.Count
+
+    $userRows = if ($reviewUsers.Count -gt 0) {
+        ($reviewUsers | ForEach-Object {
+                $name = ConvertTo-HtmlSafe "$($_.Name)"
+                $statusClass = if ($_.Enabled) { 'bs' } else { 'bm' }
+                $statusText = if ($_.Enabled) { 'Enabled' } else { 'Disabled' }
+                $lastLogon = ConvertTo-HtmlSafe "$($_.LastLogon)"
+                $desc = ConvertTo-HtmlSafe "$($_.Description)"
+                "<div class='user-row'><span class='u-name'>$name</span><span class='badge $statusClass'>$statusText</span><span class='u-logon'>$lastLogon</span><span class='u-desc'>$desc</span></div>"
+            }) -join "`n"
+    }
+    else {
+        "<div class='user-row'><span class='u-desc'>No non-default local accounts found.</span></div>"
+    }
+
+    $hiddenNote = if ($hiddenCount -gt 0) {
+        "<p class='muted-note'>$hiddenCount built-in Windows account(s) not shown above (Administrator, Guest, DefaultAccount, WDAGUtilityAccount, etc. — present on any fresh install).</p>"
+    }
+    else { '' }
+
+    $result.Users = @"
+<div class="sec">Local User Accounts <span class="sec-note">for review — excludes accounts present on any fresh Windows install</span></div>
+<div class="user-table">
+  <div class="user-row user-hd"><span>Name</span><span>Status</span><span>Last Logon</span><span>Description</span></div>
+  $userRows
+</div>
+$hiddenNote
+"@
+
+    return $result
 }
 
 <#
@@ -324,26 +430,22 @@ function Build-ModuleCard {
 
     $errHtml = ''
     if ($Result.Errors -and @($Result.Errors).Count -gt 0) {
-        $items = ($Result.Errors | ForEach-Object {
-                try { "<li>$([System.Web.HttpUtility]::HtmlEncode($_))</li>" }
-                catch { "<li>$($_ -replace '<','&lt;' -replace '>','&gt;')</li>" }
-            }) -join ''
+        $items = ($Result.Errors | ForEach-Object { "<li>$(ConvertTo-HtmlSafe $_)</li>" }) -join ''
         $errHtml = "<ul class='errs'>$items</ul>"
     }
 
-    $msg = if ($Result.Message) {
-        try { [System.Web.HttpUtility]::HtmlEncode($Result.Message) }
-        catch { $Result.Message -replace '<', '&lt;' -replace '>', '&gt;' }
-    }
-    else { '' }
+    $msg = if ($Result.Message) { ConvertTo-HtmlSafe $Result.Message } else { '' }
     $msgRow = if ($msg) { "<div class='r'><span class='k'>Note</span><span>$msg</span></div>" } else { '' }
 
-    # ExtraData rendering
+    # ExtraData rendering — SystemInventory's ExtraData gets its own dedicated
+    # "System Information" / "Local User Accounts" sections elsewhere in the
+    # report instead (richer nested data than this generic key/value renderer
+    # can usefully show), so it's skipped here to avoid duplicating it badly.
     $extraHtml = ''
-    if ($Result.ExtraData -and $Result.ExtraData.Count -gt 0) {
+    if ($Result.ModuleName -ne 'SystemInventory' -and $Result.ExtraData -and $Result.ExtraData.Count -gt 0) {
         $exRows = ($Result.ExtraData.GetEnumerator() | ForEach-Object {
-                $ek = $_.Key -replace '<', '&lt;' -replace '>', '&gt;'
-                $ev = "$($_.Value)" -replace '<', '&lt;' -replace '>', '&gt;'
+                $ek = ConvertTo-HtmlSafe $_.Key
+                $ev = ConvertTo-HtmlSafe "$($_.Value)"
                 "<div class='ex-row'><span class='k'>$ek</span><span class='v'>$ev</span></div>"
             }) -join ''
         $extraHtml = "<div class='extra'>$exRows</div>"
@@ -380,11 +482,11 @@ function Build-ModuleCard {
         if ($diffData -and $diffData.Count -gt 0) {
             $maxItems = [Math]::Min($diffData.Count, 20)  # Cap at 20 items to keep report readable
             $itemRows = ($diffData[0..($maxItems - 1)] | ForEach-Object {
-                    $itemName = ($_.Name ?? $_.name ?? 'Unknown') -replace '<', '&lt;' -replace '>', '&gt;'
-                    $itemType = ($_.Type ?? $_.type ?? '') -replace '<', '&lt;' -replace '>', '&gt;'
-                    $currentSt = ($_.CurrentState ?? '') -replace '<', '&lt;' -replace '>', '&gt;'
-                    $desiredSt = ($_.DesiredState ?? '') -replace '<', '&lt;' -replace '>', '&gt;'
-                    $desc = ($_.Description ?? '') -replace '<', '&lt;' -replace '>', '&gt;'
+                    $itemName = ConvertTo-HtmlSafe ($_.Name ?? $_.name ?? 'Unknown')
+                    $itemType = ConvertTo-HtmlSafe ($_.Type ?? $_.type ?? '')
+                    $currentSt = ConvertTo-HtmlSafe "$($_.CurrentState)"
+                    $desiredSt = ConvertTo-HtmlSafe "$($_.DesiredState)"
+                    $desc = ConvertTo-HtmlSafe ($_.Description ?? '')
                     $detailText = if ($desc) { $desc }
                     elseif ($currentSt -and $desiredSt) { "$currentSt &#8594; $desiredSt" }
                     else { $itemType }
@@ -428,7 +530,9 @@ function Build-ModuleCard {
 Export-ModuleMember -Function @(
     'New-MaintenanceReport',
     'Build-ReportHtml',
-    'Build-ModuleCard'
+    'Build-ModuleCard',
+    'Build-SystemInfoSection',
+    'ConvertTo-HtmlSafe'
 )
 
 #endregion

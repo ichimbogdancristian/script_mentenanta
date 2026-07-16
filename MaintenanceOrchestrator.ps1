@@ -187,6 +187,16 @@ $ModulePairs = @(
     },
     @{
         Num        = 8
+        Label      = 'Disk Cleanup (Temp/Browser/Updates)'
+        DiffKey    = 'DiskCleanup'
+        Type1File  = 'modules\type1\DiskCleanupAudit.psm1'
+        Type1Func  = 'Invoke-DiskCleanupAudit'
+        Type2File  = 'modules\type2\DiskCleanup.psm1'
+        Type2Func  = 'Invoke-DiskCleanup'
+        ConfigSkip = 'skipDiskCleanup'
+    },
+    @{
+        Num        = 9
         Label      = 'System Inventory (report only)'
         DiffKey    = 'SystemInventory'
         Type1File  = 'modules\type1\SystemInventory.psm1'
