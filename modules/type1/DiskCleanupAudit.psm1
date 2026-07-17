@@ -76,12 +76,29 @@ function Invoke-DiskCleanupAudit {
         $diff = [System.Collections.Generic.List[hashtable]]::new()
         $userProfiles = Get-LocalUserProfileDirs
 
-        # 1. Temp files: %TEMP%, C:\Windows\Temp, and each user profile's AppData\Local\Temp
+        # 1. Temp files: Use config-driven paths with environment variable expansion
         if ($config.tempFiles.enabled) {
             $minMB = $config.tempFiles.minSizeMB ?? 1
             $tempTargets = [System.Collections.Generic.List[hashtable]]::new()
-            $tempTargets.Add(@{ Name = 'Current Session Temp'; Path = $env:TEMP })
-            $tempTargets.Add(@{ Name = 'Windows Temp'; Path = (Join-Path $env:SystemRoot 'Temp') })
+
+            # Add configured common temp paths
+            if ($config.tempFiles.paths) {
+                foreach ($pathConfig in $config.tempFiles.paths) {
+                    $expandedPath = [System.Environment]::ExpandEnvironmentVariables($pathConfig.path)
+                    $tempTargets.Add(@{
+                        Name = $pathConfig.name
+                        Path = $expandedPath
+                    })
+                }
+            }
+            else {
+                # Fallback to hardcoded paths if config is missing
+                Write-Log -Level WARN -Component DISKCLEAN-AUDIT -Message 'Temp paths not in config, using fallback paths'
+                $tempTargets.Add(@{ Name = 'Current Session Temp'; Path = $env:TEMP })
+                $tempTargets.Add(@{ Name = 'Windows Temp'; Path = (Join-Path $env:SystemRoot 'Temp') })
+            }
+
+            # Add per-user temp paths
             foreach ($profileDir in $userProfiles) {
                 $userName = Split-Path $profileDir -Leaf
                 $userTemp = Join-Path $profileDir 'AppData\Local\Temp'
@@ -103,22 +120,34 @@ function Invoke-DiskCleanupAudit {
             }
         }
 
-        # 2. Browser cache/cookies — Chrome, Edge, Firefox, every local user profile
+        # 2. Browser cache/cookies — Chrome, Edge, Firefox, every local user profile (paths from config)
         if ($config.browsers.enabled) {
             $minMB = $config.browsers.minSizeMB ?? 1
             foreach ($profileDir in $userProfiles) {
                 $userName = Split-Path $profileDir -Leaf
 
-                if ($config.browsers.chrome) {
+                if ($config.browsers.chrome -and $config.browsers.paths.chrome) {
+                    $chromeRoot = [System.Environment]::ExpandEnvironmentVariables($config.browsers.paths.chrome.root)
+                    Add-BrowserDiffItems -Diff $diff -BrowserRoot $chromeRoot -BrowserName 'Chrome' `
+                        -UserName $userName -Config $config -MinMB $minMB
+                }
+                elseif ($config.browsers.chrome) {
                     $chromeRoot = Join-Path $profileDir 'AppData\Local\Google\Chrome\User Data'
                     Add-BrowserDiffItems -Diff $diff -BrowserRoot $chromeRoot -BrowserName 'Chrome' `
                         -UserName $userName -Config $config -MinMB $minMB
                 }
-                if ($config.browsers.edge) {
+
+                if ($config.browsers.edge -and $config.browsers.paths.edge) {
+                    $edgeRoot = [System.Environment]::ExpandEnvironmentVariables($config.browsers.paths.edge.root)
+                    Add-BrowserDiffItems -Diff $diff -BrowserRoot $edgeRoot -BrowserName 'Edge' `
+                        -UserName $userName -Config $config -MinMB $minMB
+                }
+                elseif ($config.browsers.edge) {
                     $edgeRoot = Join-Path $profileDir 'AppData\Local\Microsoft\Edge\User Data'
                     Add-BrowserDiffItems -Diff $diff -BrowserRoot $edgeRoot -BrowserName 'Edge' `
                         -UserName $userName -Config $config -MinMB $minMB
                 }
+
                 if ($config.browsers.firefox) {
                     Add-FirefoxDiffItems -Diff $diff -ProfileDir $profileDir -UserName $userName `
                         -Config $config -MinMB $minMB

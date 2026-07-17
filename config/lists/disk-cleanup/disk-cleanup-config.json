@@ -3,7 +3,24 @@
   "tempFiles": {
     "enabled": true,
     "_description": "Clears %TEMP%, C:\\Windows\\Temp, and every local user profile's AppData\\Local\\Temp folder.",
-    "minSizeMB": 1
+    "minSizeMB": 1,
+    "paths": [
+      {
+        "name": "Current Session Temp",
+        "path": "%TEMP%",
+        "description": "Current user's TEMP environment variable"
+      },
+      {
+        "name": "Windows System Temp",
+        "path": "%SystemRoot%\\Temp",
+        "description": "System-wide temporary files directory"
+      },
+      {
+        "name": "Per-User Temp",
+        "path": "%UserProfile%\\AppData\\Local\\Temp",
+        "description": "Per-user temporary files (added for each user profile)"
+      }
+    ]
   },
   "browsers": {
     "enabled": true,
@@ -14,7 +31,25 @@
     "clearCache": true,
     "clearCookies": false,
     "_clearCookies_note": "OFF by default: clearing cookies signs every user out of every website they're logged into. Set true only if that's actually wanted.",
-    "minSizeMB": 1
+    "minSizeMB": 1,
+    "paths": {
+      "chrome": {
+        "root": "%UserProfile%\\AppData\\Local\\Google\\Chrome\\User Data",
+        "cache": "Cache",
+        "cookies": ["Network\\Cookies", "Cookies"]
+      },
+      "edge": {
+        "root": "%UserProfile%\\AppData\\Local\\Microsoft\\Edge\\User Data",
+        "cache": "Cache",
+        "cookies": ["Network\\Cookies", "Cookies"]
+      },
+      "firefox": {
+        "localRoot": "%UserProfile%\\AppData\\Local\\Mozilla\\Firefox\\Profiles",
+        "roamingRoot": "%UserProfile%\\AppData\\Roaming\\Mozilla\\Firefox\\Profiles",
+        "cache": "cache2",
+        "cookies": "cookies.sqlite"
+      }
+    }
   },
   "windowsUpdateCleanup": {
     "enabled": true,

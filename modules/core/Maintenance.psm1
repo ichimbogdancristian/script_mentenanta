@@ -202,34 +202,132 @@ function Add-LogRaw {
 
 <#
 .SYNOPSIS
-    Logs a terminating error as FATAL with its position, script stack trace, and a
-    short dump of recent $Error records — the information needed to locate a crash.
+    Logs a terminating error as FATAL with detailed context: exception type, message,
+    position, stack trace, inner exceptions, and HResult for system errors.
 .PARAMETER ErrorRecord
     The $_ / ErrorRecord from a catch block or trap.
+.PARAMETER Component
+    Component tag (default: ORCH)
+.PARAMETER Message
+    Custom message (default: 'Unhandled error')
+.PARAMETER IncludeInnerExceptions
+    If $true, logs all inner exceptions recursively (default: $true)
 #>
 function Write-LogException {
     [CmdletBinding()]
     param(
         [string]$Component = 'ORCH',
         [string]$Message = 'Unhandled error',
-        [Parameter(Mandatory)] $ErrorRecord
+        [Parameter(Mandatory)] $ErrorRecord,
+        [bool]$IncludeInnerExceptions = $true
     )
-    Write-Log -Level FATAL -Component $Component -Message "$Message : $($ErrorRecord.Exception.Message)"
+
+    # Main exception
+    $exception = $ErrorRecord.Exception
+    $exceptionType = $exception.GetType().FullName
+
+    Write-Log -Level FATAL -Component $Component `
+        -Message "$Message : [$exceptionType] $($exception.Message)"
+
+    # HResult for system errors
+    if ($exception.HResult) {
+        Write-Log -Level FATAL -Component $Component -Message "HResult: 0x$($exception.HResult.ToString('X8'))"
+    }
+
+    # Position information
     if ($ErrorRecord.InvocationInfo -and $ErrorRecord.InvocationInfo.PositionMessage) {
         $pos = ($ErrorRecord.InvocationInfo.PositionMessage -replace "`r?`n", ' | ')
         Write-Log -Level FATAL -Component $Component -Message "At: $pos"
     }
+
+    # Inner exceptions (recursive)
+    if ($IncludeInnerExceptions -and $exception.InnerException) {
+        $depth = 0
+        $innerEx = $exception.InnerException
+        while ($innerEx -and $depth -lt 5) {
+            $innerType = $innerEx.GetType().FullName
+            Write-Log -Level FATAL -Component $Component `
+                -Message "  └─ InnerException[$depth]: [$innerType] $($innerEx.Message)"
+            $innerEx = $innerEx.InnerException
+            $depth++
+        }
+    }
+
+    # Stack trace
     if ($ErrorRecord.ScriptStackTrace) {
         foreach ($frame in ($ErrorRecord.ScriptStackTrace -split "`r?`n")) {
             if ($frame.Trim()) { Write-Log -Level FATAL -Component $Component -Message "  stack: $frame" }
         }
     }
+
     # Recent error history (DEBUG-level; file only under default thresholds)
     $i = 0
     foreach ($e in $Error) {
         if ($i -ge 5) { break }
         Write-Log -Level DEBUG -Component $Component -Message "Error[$i]: $e"
         $i++
+    }
+}
+
+<#
+.SYNOPSIS
+    Categorizes an exception for structured handling and logging.
+.DESCRIPTION
+    Analyzes exception type and provides category, severity, and suggested action.
+    Categories: Permission, Timeout, Network, IO, Invalid, Unknown
+.PARAMETER ErrorRecord
+    The ErrorRecord to analyze.
+.OUTPUTS
+    [hashtable] with keys: Category, Severity, Message, Suggestion
+#>
+function Get-ExceptionCategory {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param([Parameter(Mandatory)] $ErrorRecord)
+
+    $exception = $ErrorRecord.Exception
+    $exceptionType = $exception.GetType().Name
+    $message = $exception.Message
+
+    # Categorize by exception type
+    $category = if ($exceptionType -match 'UnauthorizedAccess|AccessDenied|SecurityException') {
+        'Permission'
+    }
+    elseif ($exceptionType -match 'TimeoutException|OperationCanceledException') {
+        'Timeout'
+    }
+    elseif ($exceptionType -match 'IOException|FileNotFound|DirectoryNotFound') {
+        'IO'
+    }
+    elseif ($exceptionType -match 'Net.Http|Net.WebException|TimeoutException') {
+        'Network'
+    }
+    elseif ($exceptionType -match 'ArgumentException|ArgumentNullException|InvalidOperation') {
+        'Invalid'
+    }
+    else {
+        'Unknown'
+    }
+
+    # Suggest severity
+    $severity = if ($category -in 'Permission', 'Network', 'IO') { 'High' } else { 'Medium' }
+
+    # Suggest action
+    $suggestion = switch ($category) {
+        'Permission' { 'Verify permissions and elevation level' }
+        'Timeout' { 'Retry operation or increase timeout' }
+        'Network' { 'Check network connectivity and retry' }
+        'IO' { 'Verify path exists and is accessible' }
+        'Invalid' { 'Review input parameters and state' }
+        default { 'Check error details and logs' }
+    }
+
+    return @{
+        Category = $category
+        Severity = $severity
+        Message = $message
+        Suggestion = $suggestion
+        ExceptionType = $exceptionType
     }
 }
 
@@ -1188,6 +1286,7 @@ Export-ModuleMember -Function @(
     'Write-Log',
     'Add-LogRaw',
     'Write-LogException',
+    'Get-ExceptionCategory',
     'Close-LogFile',
     'Get-OSContext',
     'Get-MainConfig',
