@@ -53,17 +53,22 @@ install/verify → launch `MaintenanceOrchestrator.ps1` under `pwsh`.
   HTML report (the folder the user launched from, e.g. a USB drive).
 
 ### Orchestrator: five stages
-[MaintenanceOrchestrator.ps1](MaintenanceOrchestrator.ps1) wraps the whole run in a single
-`Start-Transcript` → `maintenance.log`, then:
+[MaintenanceOrchestrator.ps1](MaintenanceOrchestrator.ps1) opens the structured log
+(`maintenance.log`, via the core logger) plus a raw transcript sidecar (`transcript.log`),
+wraps the whole body in a fatal-capture `try/catch/finally` (any uncaught error is written to
+`maintenance.log` with a stack trace; the log and transcript are always closed in `finally`),
+then:
 
 1. **Stage 1 – Inventory (Type1):** interactive menu with a 10s auto-run countdown; runs
    audit modules. A circuit breaker aborts the stage after 3 consecutive module failures.
 2. **Stage 2 – Diff analysis:** for each pair, reads the diff list the Type1 module saved;
-   only pairs with a non-empty diff (and not skipped by config) are queued.
+   only pairs with a non-empty diff (and not skipped by config) are queued. Each pair is
+   wrapped so one bad diff/config entry can't abort the stage.
 3. **Stage 3 – Maintenance (Type2):** runs only the queued action modules. If no diffs, no
    changes are made.
-4. **Stage 4 – Report:** stops the transcript (to flush the log), generates the HTML report
-   embedding the transcript, copies it to the launcher folder, then resumes the transcript.
+4. **Stage 4 – Report:** generates the HTML report embedding `maintenance.log` (read live —
+   the log is auto-flushed with `FileShare.ReadWrite`, so no transcript stop/restart is needed),
+   then copies it to the launcher folder.
 5. **Stage 5 – Cleanup + reboot:** 120s countdown (configurable). Reboots and deletes the
    project folder unless a key is pressed, or skips reboot entirely when
    `rebootOnlyWhenRequired` is set and no module flagged `RebootRequired`.
@@ -102,7 +107,10 @@ installs **Sysinternals Sysmon** via winget (`Microsoft.Sysinternals.Sysmon`) an
 ### Core module
 [modules/core/Maintenance.psm1](modules/core/Maintenance.psm1) is imported `-Global` and provides
 all shared infrastructure — do not duplicate these elsewhere:
-`Write-Log` (structured `[ts] [LEVEL] [COMPONENT] msg`, captured by the transcript),
+`Write-Log` (structured `[ts] [LEVEL] [COMPONENT] msg`, written **directly** to `maintenance.log`
+via an auto-flushed `StreamWriter` — independent of the transcript — with per-sink level gating:
+console defaults to INFO, file to DEBUG, both overridable via the `logging` block in
+`main-config.json` / `Set-LogLevel`; plus `Write-LogException`/`Close-LogFile`/`Add-LogRaw`),
 `Get-OSContext` (Win10 vs 11 by build ≥22000, feature flags), `Get-MainConfig` / `Get-BaselineList`
 (JSON loaded with `-AsHashtable` — everything is a case-insensitive hashtable), the diff engine
 (`Compare-ListDiff` with `Present`/`Missing`/`Changed` strategies, `Save-DiffList`, `Get-DiffList`),
@@ -125,7 +133,8 @@ all shared infrastructure — do not duplicate these elsewhere:
   audit may consume several list folders (e.g. SoftwareManagement reads `bloatware`,
   `essential-apps`, `app-upgrade`).
 - `config/sysmon/sysmonconfig.xml` — Sysmon configuration applied by SystemConfiguration.
-- `temp_files/` (git-ignored) — `logs/maintenance.log` (full transcript), `diff/*-diff.json`,
+- `temp_files/` (git-ignored) — `logs/maintenance.log` (authoritative structured log),
+  `logs/transcript.log` (raw PowerShell transcript sidecar), `diff/*-diff.json`,
   `reports/*.html`, `data/`. Created at startup by the orchestrator and core module.
 
 ## Conventions

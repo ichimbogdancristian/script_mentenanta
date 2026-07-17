@@ -53,6 +53,11 @@ function Initialize-Maintenance {
         $dir = Join-Path $env:MAINT_TEMP $sub
         if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     }
+
+    # Open the authoritative, auto-flushed maintenance.log (default levels; the
+    # orchestrator re-applies configured levels after main-config.json loads).
+    Initialize-LogFile -Path (Join-Path $env:MAINT_TEMP 'logs\maintenance.log')
+
     Write-Log -Level INFO -Component CORE -Message "Maintenance initialized. Root: $ProjectRoot"
 }
 
@@ -60,43 +65,179 @@ function Initialize-Maintenance {
 
 #region ─── LOGGING ───────────────────────────────────────────────────────────
 
+# ── Logger state (module-scoped, persists for the imported module's lifetime) ──
+# maintenance.log is written DIRECTLY here (auto-flushed), independent of any
+# PowerShell transcript, so log lines survive crashes and the report-generation
+# window. The transcript is only a raw sidecar (transcript.log).
+$script:LevelRank = @{ DEBUG = 10; INFO = 20; SUCCESS = 20; WARN = 30; ERROR = 40; FATAL = 50 }
+$script:LogConsoleRank = 20        # default console threshold = INFO (hides DEBUG)
+$script:LogFileRank = 10           # default file threshold    = DEBUG (keeps everything)
+$script:LogWriter = $null          # [System.IO.StreamWriter] once opened
+$script:LogPath = $null
+
 <#
 .SYNOPSIS
-    Writes a structured log line to the console (captured by Start-Transcript).
-    Colors are stripped inside non-interactive sessions automatically.
+    Opens (append) the authoritative maintenance.log for direct, auto-flushed writes.
+.DESCRIPTION
+    Uses a FileStream with FileShare.ReadWrite so the report generator can read the
+    log while it is still held open. Safe to call more than once (re-opens).
+.PARAMETER Path
+    Full path to maintenance.log.
+.PARAMETER ConsoleLevel / FileLevel
+    Minimum level emitted to console / file. DEBUG|INFO|SUCCESS|WARN|ERROR|FATAL.
+#>
+function Initialize-LogFile {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$Path,
+        [string]$ConsoleLevel = 'INFO',
+        [string]$FileLevel = 'DEBUG'
+    )
+    Close-LogFile
+    try {
+        $dir = Split-Path $Path -Parent
+        if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        $fs = [System.IO.FileStream]::new($Path, [System.IO.FileMode]::Append,
+            [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
+        $sw = [System.IO.StreamWriter]::new($fs, [System.Text.UTF8Encoding]::new($false))
+        $sw.AutoFlush = $true
+        $script:LogWriter = $sw
+        $script:LogPath = $Path
+        Set-LogLevel -Console $ConsoleLevel -File $FileLevel
+    }
+    catch {
+        $script:LogWriter = $null
+        Write-Host "[WARN] Could not open log file '$Path': $_" -ForegroundColor Yellow
+    }
+}
+
+<#
+.SYNOPSIS
+    Sets the console and/or file minimum log levels at runtime (e.g. from config).
+#>
+function Set-LogLevel {
+    [CmdletBinding()]
+    param([string]$Console, [string]$File)
+    if ($Console -and $script:LevelRank.ContainsKey($Console.ToString().ToUpper())) {
+        $script:LogConsoleRank = $script:LevelRank[$Console.ToString().ToUpper()]
+    }
+    if ($File -and $script:LevelRank.ContainsKey($File.ToString().ToUpper())) {
+        $script:LogFileRank = $script:LevelRank[$File.ToString().ToUpper()]
+    }
+}
+
+<#
+.SYNOPSIS
+    Writes a structured log line to the console (level-gated) and to maintenance.log.
+.DESCRIPTION
+    Format: [yyyy-MM-dd HH:mm:ss] [LEVEL] [COMPONENT] message
+    Console output is gated by the console threshold (default INFO); the file always
+    receives everything at/above the file threshold (default DEBUG) via a direct,
+    auto-flushed write that does not depend on any transcript being active.
 .PARAMETER Level
-    INFO | WARN | ERROR | DEBUG | SUCCESS
+    DEBUG | INFO | SUCCESS | WARN | ERROR | FATAL
 .PARAMETER Component
-    Uppercase short module tag, e.g. BLOATWARE, CORE, ESSENTIALAPPS
+    Uppercase short module tag, e.g. BLOATWARE, CORE, CONFIG.
 .PARAMETER Message
-    Free-form message text
+    Free-form message text.
 #>
 function Write-Log {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('INFO', 'WARN', 'ERROR', 'DEBUG', 'SUCCESS')]
+        [ValidateSet('DEBUG', 'INFO', 'SUCCESS', 'WARN', 'ERROR', 'FATAL')]
         [string]$Level,
 
         [Parameter(Mandatory)]
         [string]$Component,
 
         [Parameter(Mandatory)]
+        [AllowEmptyString()]
         [string]$Message
     )
 
+    $rank = $script:LevelRank[$Level]
     $ts = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
     $line = "[$ts] [$Level] [$Component] $Message"
 
-    $color = switch ($Level) {
-        'INFO' { 'Cyan' }
-        'WARN' { 'Yellow' }
-        'ERROR' { 'Red' }
-        'DEBUG' { 'DarkGray' }
-        'SUCCESS' { 'Green' }
-        default { 'White' }
+    if ($rank -ge $script:LogConsoleRank) {
+        $color = switch ($Level) {
+            'INFO' { 'Cyan' }
+            'WARN' { 'Yellow' }
+            'ERROR' { 'Red' }
+            'FATAL' { 'Red' }
+            'DEBUG' { 'DarkGray' }
+            'SUCCESS' { 'Green' }
+            default { 'White' }
+        }
+        Write-Host $line -ForegroundColor $color
     }
-    Write-Host $line -ForegroundColor $color
+
+    if ($script:LogWriter -and $rank -ge $script:LogFileRank) {
+        try { $script:LogWriter.WriteLine($line) } catch { }
+    }
+}
+
+<#
+.SYNOPSIS
+    Appends a verbatim (already-formatted) line to maintenance.log only.
+.DESCRIPTION
+    Used to fold pre-formatted external content (e.g. the launcher bootstrap log)
+    into maintenance.log without re-wrapping it in another timestamp/level prefix.
+#>
+function Add-LogRaw {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)] [AllowEmptyString()] [string]$Text)
+    if ($script:LogWriter) {
+        try { $script:LogWriter.WriteLine($Text) } catch { }
+    }
+}
+
+<#
+.SYNOPSIS
+    Logs a terminating error as FATAL with its position, script stack trace, and a
+    short dump of recent $Error records — the information needed to locate a crash.
+.PARAMETER ErrorRecord
+    The $_ / ErrorRecord from a catch block or trap.
+#>
+function Write-LogException {
+    [CmdletBinding()]
+    param(
+        [string]$Component = 'ORCH',
+        [string]$Message = 'Unhandled error',
+        [Parameter(Mandatory)] $ErrorRecord
+    )
+    Write-Log -Level FATAL -Component $Component -Message "$Message : $($ErrorRecord.Exception.Message)"
+    if ($ErrorRecord.InvocationInfo -and $ErrorRecord.InvocationInfo.PositionMessage) {
+        $pos = ($ErrorRecord.InvocationInfo.PositionMessage -replace "`r?`n", ' | ')
+        Write-Log -Level FATAL -Component $Component -Message "At: $pos"
+    }
+    if ($ErrorRecord.ScriptStackTrace) {
+        foreach ($frame in ($ErrorRecord.ScriptStackTrace -split "`r?`n")) {
+            if ($frame.Trim()) { Write-Log -Level FATAL -Component $Component -Message "  stack: $frame" }
+        }
+    }
+    # Recent error history (DEBUG-level; file only under default thresholds)
+    $i = 0
+    foreach ($e in $Error) {
+        if ($i -ge 5) { break }
+        Write-Log -Level DEBUG -Component $Component -Message "Error[$i]: $e"
+        $i++
+    }
+}
+
+<#
+.SYNOPSIS
+    Flushes and closes the maintenance.log writer. Idempotent — safe to call at
+    every exit path and again in a finally block.
+#>
+function Close-LogFile {
+    [CmdletBinding()]
+    param()
+    if ($script:LogWriter) {
+        try { $script:LogWriter.Flush(); $script:LogWriter.Dispose() } catch { }
+        $script:LogWriter = $null
+    }
 }
 
 #endregion
@@ -174,6 +315,7 @@ function Get-MainConfig {
             }
             modules   = @{}
             reporting = @{ enableHtmlReport = $true }
+            logging   = @{ consoleLevel = 'INFO'; fileLevel = 'DEBUG' }
         }
     }
 
@@ -988,7 +1130,12 @@ function Invoke-ExternalPackageCommand {
 
 Export-ModuleMember -Function @(
     'Initialize-Maintenance',
+    'Initialize-LogFile',
+    'Set-LogLevel',
     'Write-Log',
+    'Add-LogRaw',
+    'Write-LogException',
+    'Close-LogFile',
     'Get-OSContext',
     'Get-MainConfig',
     'Get-BaselineList',

@@ -46,7 +46,10 @@ $ProjectRoot = $PSScriptRoot
 if (-not $ProjectRoot) { $ProjectRoot = (Get-Location).Path }
 
 $TempDir = Join-Path $ProjectRoot 'temp_files'
-$TranscriptPath = Join-Path $TempDir 'logs\maintenance.log'
+# maintenance.log = authoritative structured log (direct-write, auto-flushed by the
+# core logger). transcript.log = raw PowerShell transcript sidecar (native output).
+$LogPath = Join-Path $TempDir 'logs\maintenance.log'
+$TranscriptPath = Join-Path $TempDir 'logs\transcript.log'
 
 # Create temp_files structure before transcript starts
 foreach ($sub in 'logs', 'data', 'reports', 'diff') {
@@ -56,24 +59,10 @@ foreach ($sub in 'logs', 'data', 'reports', 'diff') {
 
 #endregion
 
-#region ─── START TRANSCRIPT ──────────────────────────────────────────────────
+#region ─── START TRANSCRIPT (raw sidecar) ────────────────────────────────────
 
-# maintenance.log = PowerShell transcript of the ENTIRE project run
+# Raw capture only; the authoritative log is maintenance.log via the core logger.
 Start-Transcript -Path $TranscriptPath -Append -Force | Out-Null
-
-# Inject bootstrap log from script.bat launcher if present
-if ($env:BOOTSTRAP_LOG -and (Test-Path $env:BOOTSTRAP_LOG)) {
-    Write-Host ""
-    Write-Host ('=' * 70) -ForegroundColor DarkGray
-    Write-Host '  LAUNCHER LOG  (script.bat — pre-orchestrator phase)' -ForegroundColor DarkGray
-    Write-Host ('=' * 70) -ForegroundColor DarkGray
-    Get-Content $env:BOOTSTRAP_LOG | ForEach-Object { Write-Host $_ -ForegroundColor DarkGray }
-    Write-Host ('=' * 70) -ForegroundColor DarkGray
-    Write-Host '  END LAUNCHER LOG' -ForegroundColor DarkGray
-    Write-Host ('=' * 70) -ForegroundColor DarkGray
-    Remove-Item $env:BOOTSTRAP_LOG -Force -ErrorAction SilentlyContinue
-    [System.Environment]::SetEnvironmentVariable('BOOTSTRAP_LOG', $null, 'Process')
-}
 
 Write-Host ""
 Write-Host "======================================================================" -ForegroundColor Magenta
@@ -94,17 +83,53 @@ if (-not (Test-Path $CorePath)) {
     Stop-Transcript | Out-Null
     exit 1
 }
-Import-Module $CorePath -Force -Global
+# The core logger lives inside this module, so a load failure can't be logged through
+# it — capture it directly to maintenance.log and the console before bailing out.
+try {
+    Import-Module $CorePath -Force -Global -ErrorAction Stop
+}
+catch {
+    Write-Host "[FATAL] Failed to import core module: $_" -ForegroundColor Red
+    try { "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [FATAL] [ORCH] Core import failed: $_" |
+            Add-Content -Path $LogPath -Encoding UTF8 } catch { }
+    Stop-Transcript | Out-Null
+    exit 1
+}
 
-# Initialise (sets env vars, creates temp dirs)
+# Initialise (sets env vars, creates temp dirs, opens maintenance.log)
 Initialize-Maintenance -ProjectRoot $ProjectRoot
 
+# Fold the launcher bootstrap log into maintenance.log (and echo to console), now that
+# the log writer is open. script.bat passes its temp log path via $env:BOOTSTRAP_LOG.
+if ($env:BOOTSTRAP_LOG -and (Test-Path $env:BOOTSTRAP_LOG)) {
+    Add-LogRaw ('=' * 70)
+    Add-LogRaw '  LAUNCHER LOG  (script.bat — pre-orchestrator phase)'
+    Add-LogRaw ('=' * 70)
+    Write-Host ('  Launcher log folded into maintenance.log') -ForegroundColor DarkGray
+    Get-Content $env:BOOTSTRAP_LOG | ForEach-Object { Add-LogRaw $_ }
+    Add-LogRaw ('=' * 70)
+    Add-LogRaw '  END LAUNCHER LOG'
+    Add-LogRaw ('=' * 70)
+    Remove-Item $env:BOOTSTRAP_LOG -Force -ErrorAction SilentlyContinue
+    [System.Environment]::SetEnvironmentVariable('BOOTSTRAP_LOG', $null, 'Process')
+}
+
 #endregion
+
+# ── Everything below runs inside a fatal-capture guard so any uncaught terminating
+#    error is written to maintenance.log with a stack trace, and the log/transcript
+#    are always closed cleanly (finally). ──────────────────────────────────────────
+try {
 
 #region ─── OS & CONFIG ───────────────────────────────────────────────────────
 
 $global:OSContext = Get-OSContext
 $Config = Get-MainConfig
+
+# Apply configured log levels (falls back to the logger's INFO/DEBUG defaults).
+if ($Config.logging) {
+    Set-LogLevel -Console $Config.logging.consoleLevel -File $Config.logging.fileLevel
+}
 
 Write-Log -Level SUCCESS -Component ORCH -Message "OS: $($global:OSContext.DisplayText)"
 
@@ -257,11 +282,19 @@ function Get-MenuSelection {
         catch { $keyAvailable = $false }
 
         if ($keyAvailable) {
-            $null = [Console]::ReadKey($true)   # consume the trigger key-press only
-            $key = Read-Host "`n  Your choice (comma-separated)"
-            # Parse comma-separated input: "1,3,5" → @(1, 3, 5)
-            $parsed = @($key -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
-            if ($parsed.Count -gt 0) { $selected = $parsed }
+            # ReadKey/Read-Host can throw if stdin is redirected or the console is not
+            # truly interactive — treat that as "no selection" (fall through to run-all)
+            # rather than letting it crash Stage 1.
+            try {
+                $null = [Console]::ReadKey($true)   # consume the trigger key-press only
+                $key = Read-Host "`n  Your choice (comma-separated)"
+                # Parse comma-separated input: "1,3,5" → @(1, 3, 5)
+                $parsed = @($key -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
+                if ($parsed.Count -gt 0) { $selected = $parsed }
+            }
+            catch {
+                Write-Log -Level WARN -Component ORCH -Message "Menu input unavailable ($_) — defaulting to run-all"
+            }
             break
         }
         Start-Sleep -Milliseconds 500
@@ -369,25 +402,31 @@ $actionNeeded = [System.Collections.Generic.List[hashtable]]::new()
 foreach ($pair in $pairsToAudit) {
     if (-not $pair.Type2Func) { continue }   # inventory-only modules skip
 
-    $configSkip = if ($pair.ConfigSkip -and $Config.modules.$($pair.ConfigSkip)) { $true } else { $false }
-    if ($configSkip) {
-        Write-Log -Level INFO -Component ORCH -Message "Skipped (config): $($pair.Type2Func)"
-        continue
-    }
+    try {
+        $configSkip = if ($pair.ConfigSkip -and $Config.modules.$($pair.ConfigSkip)) { $true } else { $false }
+        if ($configSkip) {
+            Write-Log -Level INFO -Component ORCH -Message "Skipped (config): $($pair.Type2Func)"
+            continue
+        }
 
-    $diff = Get-DiffList -ModuleName $pair.DiffKey
-    if ($diff -and $diff.Count -gt 0) {
-        Write-Host "  ✔  $($pair.Label): $($diff.Count) item(s) queued for action" -ForegroundColor Green
-        Write-Log -Level INFO -Component ORCH -Message "$($pair.DiffKey): $($diff.Count) diff items - Type2 will run"
-        $actionNeeded.Add($pair)
-    }
-    else {
-        Write-Host "  ─  $($pair.Label): no changes needed — SKIPPED" -ForegroundColor DarkGray
-        Write-Log -Level INFO -Component ORCH -Message "$($pair.DiffKey): 0 diff items - Type2 SKIPPED"
+        $diff = Get-DiffList -ModuleName $pair.DiffKey
+        if ($diff -and $diff.Count -gt 0) {
+            Write-Host "  ✔  $($pair.Label): $($diff.Count) item(s) queued for action" -ForegroundColor Green
+            Write-Log -Level INFO -Component ORCH -Message "$($pair.DiffKey): $($diff.Count) diff items - Type2 will run"
+            $actionNeeded.Add($pair)
+        }
+        else {
+            Write-Host "  ─  $($pair.Label): no changes needed — SKIPPED" -ForegroundColor DarkGray
+            Write-Log -Level INFO -Component ORCH -Message "$($pair.DiffKey): 0 diff items - Type2 SKIPPED"
 
-        $SessionResults.Add((New-ModuleResult -ModuleName $pair.Type2Func `
-                    -Status 'Skipped' -ModuleType 'Type2' `
-                    -Message 'No diff items — system already in desired state'))
+            $SessionResults.Add((New-ModuleResult -ModuleName $pair.Type2Func `
+                        -Status 'Skipped' -ModuleType 'Type2' `
+                        -Message 'No diff items — system already in desired state'))
+        }
+    }
+    catch {
+        # One malformed diff/config entry must not abort Stage 2 for the other pairs.
+        Write-Log -Level ERROR -Component ORCH -Message "Stage 2 error for $($pair.DiffKey): $_"
     }
 }
 
@@ -444,40 +483,36 @@ Write-Host ""
 Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 4 : REPORT GENERATION  ━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
 Write-Log -Level INFO -Component ORCH -Message "Stage 4: generating HTML report"
 
-# Stop transcript NOW so the log file is flushed before we embed it in the report
-Write-Log -Level INFO -Component ORCH -Message "Stopping transcript for report inclusion"
-Stop-Transcript | Out-Null
-
+# maintenance.log is auto-flushed (FileShare.ReadWrite), so the report can embed it
+# live — no transcript stop/restart gymnastics, and no Stage-4 logging blind spot.
 $ReportGenPath = Join-Path $ProjectRoot 'modules\core\ReportGenerator.psm1'
 if (Test-Path $ReportGenPath) {
-    Import-Module $ReportGenPath -Force
+    try { Import-Module $ReportGenPath -Force -ErrorAction Stop }
+    catch { Write-Log -Level ERROR -Component ORCH -Message "ReportGenerator import failed: $_" }
 }
 else {
-    Write-Host "[ERROR] ReportGenerator module not found: $ReportGenPath" -ForegroundColor Red
+    Write-Log -Level ERROR -Component ORCH -Message "ReportGenerator module not found: $ReportGenPath"
 }
 
 $reportFile = $null
 try {
     $reportFile = New-MaintenanceReport -SessionResults $SessionResults.ToArray() `
         -OSContext      $global:OSContext `
-        -TranscriptPath $TranscriptPath `
+        -TranscriptPath $LogPath `
         -ReportTitle    'Windows Maintenance Report'
 
-    Write-Host "  ✔  Report: $reportFile" -ForegroundColor Green
+    Write-Log -Level SUCCESS -Component ORCH -Message "Report: $reportFile"
 
     # Copy report to the folder where script.bat was launched from (e.g. USB drive / Desktop)
     $launcherDir = $env:ORIGINAL_SCRIPT_DIR
     $copyTarget = if ($launcherDir -and (Test-Path $launcherDir)) { $launcherDir } else { $ProjectRoot }
     $destReport = Join-Path $copyTarget (Split-Path $reportFile -Leaf)
     Copy-Item -Path $reportFile -Destination $destReport -Force
-    Write-Host "  ✔  Report also saved to: $destReport" -ForegroundColor Green
+    Write-Log -Level SUCCESS -Component ORCH -Message "Report also saved to: $destReport"
 }
 catch {
-    Write-Host "  [ERROR] Report generation failed: $_" -ForegroundColor Red
+    Write-Log -Level ERROR -Component ORCH -Message "Report generation failed: $_"
 }
-
-# Resume transcript so Stage 5 decisions are captured in the log
-Start-Transcript -Path $TranscriptPath -Append -Force | Out-Null
 
 #endregion
 
@@ -547,6 +582,7 @@ if (-not $doReboot) {
         Remove-DefenderSessionExclusions -WorkingDir $ProjectRoot
         try {
             Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
+            Close-LogFile   # release the maintenance.log handle so the folder can be deleted
             Remove-Item -Path $ProjectRoot -Recurse -Force -ErrorAction Stop
             Write-Host "  ✔  Project folder removed." -ForegroundColor Green
         }
@@ -616,6 +652,7 @@ if ($doCleanup) {
     Remove-DefenderSessionExclusions -WorkingDir $ProjectRoot
     try {
         Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
+        Close-LogFile   # release the maintenance.log handle so the folder can be deleted
         Remove-Item -Path $ProjectRoot -Recurse -Force -ErrorAction Stop
         Write-Host "  ✔  Project folder removed." -ForegroundColor Green
     }
@@ -636,3 +673,19 @@ catch {
 exit 0
 
 #endregion
+
+}
+# ── Fatal-capture guard: any uncaught terminating error from the body lands here.
+#    'exit 1' still runs the finally block before the process terminates.
+catch {
+    Write-LogException -Component ORCH -Message 'FATAL: unhandled orchestrator error' -ErrorRecord $_
+    Write-Host ""
+    Write-Host "  [FATAL] Maintenance aborted by an unhandled error — see maintenance.log:" -ForegroundColor Red
+    Write-Host "          $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
+finally {
+    # Always flush/close the log and stop the raw transcript, even on crash or exit.
+    try { Stop-Transcript -ErrorAction SilentlyContinue | Out-Null } catch { }
+    Close-LogFile
+}

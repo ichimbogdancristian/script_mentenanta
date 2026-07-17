@@ -1080,8 +1080,12 @@ IF "%PS_EXECUTABLE%"=="" (
     SET "PS7_PATHS[1]=%ProgramFiles(x86)%\PowerShell\7\pwsh.exe"
     SET "PS7_PATHS[2]=%LocalAppData%\Microsoft\powershell\7\pwsh.exe"
     SET "PS7_PATHS[3]=%ProgramData%\chocolatey\lib\powershell-core\tools\pwsh.exe"
-    
-    FOR %%P IN (0 1 2 3) DO (
+    REM WindowsApps App Execution Alias (winget/Microsoft Store install). Only reachable
+    REM via PATH in interactive sessions; check the explicit per-user path so scheduled/
+    REM SYSTEM runs can also find a Store/winget-installed pwsh.exe.
+    SET "PS7_PATHS[4]=%LocalAppData%\Microsoft\WindowsApps\pwsh.exe"
+
+    FOR %%P IN (0 1 2 3 4) DO (
         IF "%PS_EXECUTABLE%"=="" (
             CALL SET "TEST_PATH=%%PS7_PATHS[%%P]%%"
             IF EXIST "!TEST_PATH!" (

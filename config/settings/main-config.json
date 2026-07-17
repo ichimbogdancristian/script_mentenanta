@@ -15,5 +15,10 @@
   },
   "reporting": {
     "enableHtmlReport": true
+  },
+  "logging": {
+    "_comment": "consoleLevel gates on-screen output; fileLevel gates maintenance.log. Levels: DEBUG < INFO/SUCCESS < WARN < ERROR < FATAL.",
+    "consoleLevel": "INFO",
+    "fileLevel": "DEBUG"
   }
 }
