@@ -2145,6 +2145,54 @@
             "type": "String",
             "desiredValue": "0",
             "description": "Auto admin logon must be disabled"
+        },
+        {
+            "section": "Microsoft Store Prevention",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsStore",
+            "name": "RemoveWindowsStore",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Prevent access to Windows Store (remove from Start menu)"
+        },
+        {
+            "section": "Microsoft Store Prevention",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsStore",
+            "name": "DisableStoreApps",
+            "type": "DWord",
+            "desiredValue": 1,
+            "description": "Disable Store apps launch"
+        },
+        {
+            "section": "Microsoft Store Prevention",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsStore",
+            "name": "AutoDownload",
+            "type": "DWord",
+            "desiredValue": 2,
+            "description": "Turn off automatic app updates from Store"
+        },
+        {
+            "section": "Microsoft Store Prevention",
+            "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppPrivacy",
+            "name": "LetAppsRunInBackground",
+            "type": "DWord",
+            "desiredValue": 2,
+            "description": "Prevent apps from running in background"
+        },
+        {
+            "section": "Microsoft Store Prevention",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+            "name": "SilentInstall",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable silent install of suggested apps"
+        },
+        {
+            "section": "Microsoft Store Prevention",
+            "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager",
+            "name": "ContentDeliveryAllowed",
+            "type": "DWord",
+            "desiredValue": 0,
+            "description": "Disable Spotlight and suggested content"
         }
     ]
 }

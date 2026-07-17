@@ -90,7 +90,7 @@ function Get-BloatwareFromAllSources {
     # Source 2: Provisioned packages (pre-installed for new users)
     Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning provisioned packages...'
     try {
-        $provisionedPackages = Get-AppxProvisionedPackageCompat -Online -ErrorAction Stop |
+        $provisionedPackages = Get-AppxProvisionedPackageCompat -ErrorAction Stop |
             Select-Object -ExpandProperty PackageName | Where-Object { $_ }
 
         foreach ($pattern in $BloatwareConfig.patterns) {

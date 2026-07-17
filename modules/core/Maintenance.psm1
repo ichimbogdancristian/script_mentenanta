@@ -983,33 +983,74 @@ function Get-AppxProvisionedPackageCompat {
     [OutputType([hashtable[]])]
     param()
 
-    $cmd = 'Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Select-Object PackageName, DisplayName'
-    $raw = Invoke-AppxInWinPS -ScriptBlock $cmd
-    if (-not $raw) { return @() }
+    $result = [System.Collections.Generic.List[hashtable]]::new()
 
-    @($raw) | ForEach-Object {
-        @{
-            PackageName = $_.PackageName
-            DisplayName = $_.DisplayName
+    # Try PowerShell method first (PS5.1 via AppX module)
+    try {
+        $cmd = 'Get-AppxProvisionedPackage -ErrorAction Stop | Select-Object PackageName, DisplayName'
+        $raw = Invoke-AppxInWinPS -ScriptBlock $cmd
+        if ($raw) {
+            @($raw) | ForEach-Object {
+                $result.Add(@{ PackageName = $_.PackageName; DisplayName = $_.DisplayName })
+            }
+            return $result.ToArray()
         }
     }
+    catch { Write-Verbose "AppX PowerShell method failed: $_" }
+
+    # Fallback: DISM (more reliable, works on all SKUs)
+    try {
+        $dismExe = Join-Path $env:SystemRoot 'System32\dism.exe'
+        $output = & $dismExe /Online /Get-ProvisionedAppxPackages 2>&1 | Where-Object { $_ -is [string] }
+        $currentPackage = $null
+        foreach ($line in $output) {
+            if ($line -match 'PackageName\s*:\s*(.+)') {
+                $currentPackage = $matches[1].Trim()
+            }
+            elseif ($line -match 'DisplayName\s*:\s*(.+)' -and $currentPackage) {
+                $displayName = $matches[1].Trim()
+                $result.Add(@{ PackageName = $currentPackage; DisplayName = $displayName })
+                $currentPackage = $null
+            }
+        }
+        if ($result.Count -gt 0) { return $result.ToArray() }
+    }
+    catch { Write-Verbose "DISM fallback failed: $_" }
+
+    return @()
 }
 
 <#
 .SYNOPSIS
-    PS7-safe wrapper for Remove-AppxProvisionedPackage -Online.
+    PS7-safe wrapper for Remove-AppxProvisionedPackage with DISM fallback.
 .PARAMETER PackageName
     The provisioned package name to remove.
 #>
 function Remove-AppxProvisionedPackageCompat {
     [CmdletBinding()]
+    [OutputType([bool])]
     param(
         [Parameter(Mandatory)]
         [string]$PackageName
     )
 
-    $cmd = "Remove-AppxProvisionedPackage -Online -PackageName '$PackageName' -ErrorAction SilentlyContinue"
-    Invoke-AppxInWinPS -ScriptBlock $cmd
+    # Try PowerShell method first
+    try {
+        $cmd = "Get-AppxProvisionedPackage -ErrorAction SilentlyContinue | Where-Object { `$_.PackageName -match [regex]::Escape('$PackageName') } | Remove-AppxProvisionedPackage -ErrorAction Stop"
+        Invoke-AppxInWinPS -ScriptBlock $cmd
+        return $true
+    }
+    catch { Write-Verbose "PowerShell removal failed: $_" }
+
+    # Fallback: DISM
+    try {
+        $dismExe = Join-Path $env:SystemRoot 'System32\dism.exe'
+        $null = & $dismExe /Online /Remove-ProvisionedAppxPackage /PackageName:"$PackageName" 2>&1
+        if ($LASTEXITCODE -eq 0) { return $true }
+    }
+    catch { Write-Verbose "DISM removal failed: $_" }
+
+    return $false
 }
 
 #endregion

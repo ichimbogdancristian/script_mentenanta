@@ -47,11 +47,11 @@ function Remove-BloatwareLayered {
 
     # Layer 2: Provisioned package removal (prevents reinstall on new login)
     try {
-        $prov = Get-AppxProvisionedPackageCompat -Online -ErrorAction SilentlyContinue |
+        $prov = Get-AppxProvisionedPackageCompat -ErrorAction SilentlyContinue |
             Where-Object { $_.PackageName -like "*$PackageName*" }
         if ($prov) {
             $prov | ForEach-Object {
-                Remove-AppxProvisionedPackageCompat -Online -PackageName $_.PackageName -ErrorAction Continue
+                $null = Remove-AppxProvisionedPackageCompat -PackageName $_.PackageName -ErrorAction Continue
             }
             Write-Log -Level SUCCESS -Component SOFTWARE -Message "    ✓ Layer 2: Removed Provisioned"
             $attempts += 'Provisioned'

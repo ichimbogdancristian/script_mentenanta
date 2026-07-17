@@ -1,0 +1,55 @@
+{
+  "_comment": "Microsoft Store bloatware/unwanted apps. These are commonly installed provisioned packages that should be removed. Format: PackageName patterns (case-insensitive partial match).",
+  "common": [
+    "Microsoft.CandyCrush",
+    "Microsoft.MicrosoftSolitaireCollection",
+    "Microsoft.MicrosoftMahjong",
+    "Microsoft.ZuneMusic",
+    "Microsoft.ZuneVideo",
+    "Microsoft.XboxGameOverlay",
+    "Microsoft.XboxIdentityProvider",
+    "Microsoft.Xbox",
+    "Microsoft.XboxApp",
+    "Microsoft.XboxSpeechToTextOverlay",
+    "Microsoft.GetHelp",
+    "Microsoft.Getstarted",
+    "Microsoft.MicrosoftOfficeHub",
+    "Microsoft.BingNews",
+    "Microsoft.BingFinance",
+    "Microsoft.BingSports",
+    "Microsoft.BingWeather",
+    "Microsoft.MixedReality.Portal",
+    "Microsoft.Microsoft3DViewer",
+    "Microsoft.Print3D",
+    "Microsoft.RemoteDesktop",
+    "Microsoft.SkypeApp",
+    "Microsoft.WindowsAlarms",
+    "Microsoft.WindowsCamera",
+    "Microsoft.WindowsFeedbackHub",
+    "Microsoft.WindowsMaps",
+    "Microsoft.WindowsSoundRecorder",
+    "Microsoft.YourPhone",
+    "Microsoft.AppInstaller",
+    "Microsoft.StorePurchaseApp"
+  ],
+  "windows10": [
+    "Microsoft.MSPaint",
+    "Microsoft.ScreenSketch"
+  ],
+  "windows11": [
+    "Microsoft.Paint",
+    "Microsoft.Snipping Tool",
+    "Microsoft.Copilot"
+  ],
+  "thirdParty": [
+    "AdobeSystemsIncorporated.AdobePhotoshop",
+    "CandyCrush",
+    "Priceline",
+    "TikTok",
+    "Disney",
+    "Netflix",
+    "Spotify",
+    "Slack",
+    "Teams"
+  ]
+}
