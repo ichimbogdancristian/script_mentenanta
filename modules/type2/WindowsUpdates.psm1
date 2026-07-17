@@ -11,6 +11,72 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
 }
 
+function Test-UpdateInstalled {
+    param([string]$KBNumber)
+
+    # Layer 1: Try Get-CimInstance Win32_QuickFixEngineering (installed updates)
+    try {
+        $installed = Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction SilentlyContinue |
+            Where-Object { $_.HotFixID -match $KBNumber }
+        if ($installed) {
+            return $true
+        }
+    }
+    catch {
+        Write-Log -Level DEBUG -Component WINUPDATE -Message "Layer 1 check failed: $_"
+    }
+
+    # Layer 2: Try registry HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall
+    try {
+        $regKey = Get-ChildItem -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
+            Where-Object { $_.GetValue('DisplayName') -match $KBNumber }
+        if ($regKey) {
+            return $true
+        }
+    }
+    catch {
+        Write-Log -Level DEBUG -Component WINUPDATE -Message "Layer 2 check failed: $_"
+    }
+
+    return $false
+}
+
+function Test-UpdateIsInstalled {
+    param([string]$KBNumber)
+
+    Write-Log -Level DEBUG -Component WINUPDATE -Message "Verifying update installation... (waiting $($WaitTime.TotalSeconds)s)"
+    Start-Sleep -Seconds 5
+
+    # Try Layer 1: Quick Fix Engineering
+    try {
+        $installed = Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction SilentlyContinue |
+            Where-Object { $_.HotFixID -match $KBNumber }
+        if ($installed) {
+            Write-Log -Level DEBUG -Component WINUPDATE -Message "✓ Verification Layer 1 success: Found in Quick Fix Engineering"
+            return $true
+        }
+    }
+    catch {
+        Write-Log -Level DEBUG -Component WINUPDATE -Message "Verification Layer 1 failed: $_"
+    }
+
+    # Try Layer 2: Registry
+    try {
+        $regKey = Get-ChildItem -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
+            Where-Object { $_.GetValue('DisplayName') -match $KBNumber }
+        if ($regKey) {
+            Write-Log -Level DEBUG -Component WINUPDATE -Message "✓ Verification Layer 2 success: Found in registry"
+            return $true
+        }
+    }
+    catch {
+        Write-Log -Level DEBUG -Component WINUPDATE -Message "Verification Layer 2 failed: $_"
+    }
+
+    Write-Log -Level WARN -Component WINUPDATE -Message "⚠ Update not verified in system (may still be installing)"
+    return $false
+}
+
 function Invoke-WindowsUpdate {
     [CmdletBinding()]
     [OutputType([hashtable])]
@@ -37,10 +103,19 @@ function Invoke-WindowsUpdate {
             Import-Module PSWindowsUpdate -SkipEditionCheck -ErrorAction Stop
             foreach ($update in $diff) {
                 $title = $update.Title ?? $update.Name ?? "$update"
+                $kb = if ($title -match 'KB(\d+)') { $Matches[1] } else { $null }
+                $updateId = $update.Identity ?? ''
+
                 Write-Log -Level INFO -Component WINUPDATE -Message "Processing: $title"
+
+                # Pre-check: Is it already installed?
+                if ($kb -and (Test-UpdateInstalled -KBNumber $kb)) {
+                    Write-Log -Level INFO -Component WINUPDATE -Message "Already installed, skipping: $title"
+                    $processed++
+                    continue
+                }
+
                 try {
-                    $kb = if ($title -match 'KB(\d+)') { $Matches[1] } else { $null }
-                    $updateId = $update.Identity ?? ''
                     if ($kb) {
                         $result = Install-WindowsUpdate -KBArticleID $kb -AcceptAll -AutoReboot:$false -IgnoreReboot -Confirm:$false -ErrorAction Stop
                     }
@@ -49,21 +124,34 @@ function Invoke-WindowsUpdate {
                     }
                     else {
                         Write-Log -Level WARN -Component WINUPDATE -Message "No KB number or update ID — skipping: $title"
-                        $failed++; $errors += "[No ID] $title"; continue
+                        $failed++
+                        $errors += "[No ID] $title"
+                        continue
                     }
+
                     if ($result -and ($result | Where-Object { $_.Result -eq 'Failed' })) {
                         Write-Log -Level ERROR -Component WINUPDATE -Message "Install reported failure: $title"
-                        $errors += "[Failed] $title"; $failed++
+                        $errors += "[Failed] $title"
+                        $failed++
                     }
                     else {
-                        Write-Log -Level SUCCESS -Component WINUPDATE -Message "Installed: $title"
-                        $processed++
+                        # Post-check: Verify installation succeeded
+                        if ($kb -and (Test-UpdateIsInstalled -KBNumber $kb)) {
+                            Write-Log -Level SUCCESS -Component WINUPDATE -Message "Installed and verified: $title"
+                            $processed++
+                        }
+                        else {
+                            Write-Log -Level WARN -Component WINUPDATE -Message "Installation not immediately verified (may still be installing): $title"
+                            $processed++
+                        }
                     }
+
                     if ($result -and ($result | Where-Object { $_.RebootRequired })) { $rebootRequired = $true }
                 }
                 catch {
                     Write-Log -Level ERROR -Component WINUPDATE -Message "PSWindowsUpdate failed [$title]: $_"
-                    $errors += "[$title] $_"; $failed++
+                    $errors += "[$title] $_"
+                    $failed++
                 }
             }
         }

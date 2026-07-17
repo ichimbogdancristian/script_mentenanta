@@ -11,6 +11,134 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
 }
 
+function Get-PendingUpdatesMultiSource {
+    param([hashtable]$Config)
+
+    $pendingUpdates = [System.Collections.Generic.List[hashtable]]::new()
+    $detectionMethod = $null
+
+    # Layer 1: COM (Windows Update API) - Primary method
+    Write-Log -Level DEBUG -Component WU-AUDIT -Message 'Attempting Layer 1: COM (Windows Update API)'
+    try {
+        $updateSession = New-Object -ComObject Microsoft.Update.Session -ErrorAction Stop
+        $updateSearcher = $updateSession.CreateUpdateSearcher()
+        $searchResult = $updateSearcher.Search('IsInstalled=0 and IsHidden=0')
+
+        foreach ($update in $searchResult.Updates) {
+            $title = $update.Title
+
+            $excluded = $false
+            foreach ($pattern in $config.excludePatterns) {
+                if ($title -like $pattern) { $excluded = $true; break }
+            }
+            if ($excluded) { continue }
+
+            $severity = $update.MsrcSeverity
+            $isSecurity = [bool]$severity -or ($title -match 'Security|Cumulative')
+            $isCritical = $severity -eq 'Critical'
+            $isImportant = $severity -eq 'Important'
+            $isOptional = -not $isSecurity -and -not $isCritical -and -not $isImportant
+
+            $include = ($config.categories.security -and $isSecurity) `
+                -or ($config.categories.critical -and $isCritical) `
+                -or ($config.categories.important -and $isImportant) `
+                -or ($config.categories.optional -and $isOptional)
+
+            if ($include) {
+                $pendingUpdates.Add(@{
+                    Title = $title
+                    Identity = $update.Identity.UpdateID
+                    Severity = $severity
+                    SizeMB = [math]::Round($update.MaxDownloadSize / 1MB, 1)
+                    IsMandatory = $update.IsMandatory
+                })
+            }
+        }
+
+        if ($pendingUpdates.Count -gt 0) {
+            $detectionMethod = 'COM (Windows Update API)'
+            Write-Log -Level DEBUG -Component WU-AUDIT -Message "✓ Layer 1 successful: Found $($pendingUpdates.Count) updates"
+            return @{ Updates = $pendingUpdates; Method = $detectionMethod }
+        }
+        else {
+            Write-Log -Level DEBUG -Component WU-AUDIT -Message "Layer 1 found no updates, trying Layer 2"
+        }
+    }
+    catch {
+        Write-Log -Level DEBUG -Component WU-AUDIT -Message "Layer 1 failed: $_. Trying Layer 2..."
+    }
+
+    # Layer 2: WMI Fallback - Get-CimInstance Win32_QuickFixEngineering
+    Write-Log -Level DEBUG -Component WU-AUDIT -Message 'Attempting Layer 2: WMI (Quick Fix Engineering)'
+    try {
+        $quickFixes = Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction Stop |
+            Where-Object { $_.HotFixID -match '^KB\d+' } |
+            Sort-Object -Property InstalledOn -Descending
+
+        foreach ($fix in $quickFixes) {
+            $pendingUpdates.Add(@{
+                Title = "KB$($fix.HotFixID)"
+                Identity = $fix.HotFixID
+                Severity = 'Unknown'
+                SizeMB = 0
+                IsMandatory = $false
+            })
+        }
+
+        if ($pendingUpdates.Count -gt 0) {
+            $detectionMethod = 'WMI (Quick Fix Engineering - Historical)'
+            Write-Log -Level DEBUG -Component WU-AUDIT -Message "✓ Layer 2 successful: Found $($pendingUpdates.Count) installed updates"
+            return @{ Updates = $pendingUpdates; Method = $detectionMethod }
+        }
+        else {
+            Write-Log -Level DEBUG -Component WU-AUDIT -Message "Layer 2 found no updates, trying Layer 3"
+        }
+    }
+    catch {
+        Write-Log -Level DEBUG -Component WU-AUDIT -Message "Layer 2 failed: $_. Trying Layer 3..."
+    }
+
+    # Layer 3: Event Log Fallback - Check System event log for update events
+    Write-Log -Level DEBUG -Component WU-AUDIT -Message 'Attempting Layer 3: Event Log (System events)'
+    try {
+        $events = Get-WinEvent -LogName System -FilterXPath "*[System[EventID=19]]" -MaxEvents 10 -ErrorAction Stop |
+            Sort-Object -Property TimeCreated -Descending
+
+        foreach ($evt in $events) {
+            $message = $evt.Message
+            if ($message -match 'KB\d+') {
+                $matchResults = [regex]::Matches($message, 'KB(\d+)')
+                foreach ($match in $matchResults) {
+                    $kbid = "KB$($match.Groups[1].Value)"
+                    $pendingUpdates.Add(@{
+                        Title       = $kbid
+                        Identity    = $kbid
+                        Severity    = 'Unknown'
+                        SizeMB      = 0
+                        IsMandatory = $false
+                    })
+                }
+            }
+        }
+
+        if ($pendingUpdates.Count -gt 0) {
+            $detectionMethod = 'Event Log (System events - Historical)'
+            Write-Log -Level DEBUG -Component WU-AUDIT -Message "✓ Layer 3 successful: Found $($pendingUpdates.Count) from event log"
+            return @{ Updates = $pendingUpdates; Method = $detectionMethod }
+        }
+        else {
+            Write-Log -Level DEBUG -Component WU-AUDIT -Message "Layer 3 found no events"
+        }
+    }
+    catch {
+        Write-Log -Level WARN -Component WU-AUDIT -Message "Layer 3 failed: $_"
+    }
+
+    # All layers failed
+    Write-Log -Level WARN -Component WU-AUDIT -Message 'All update detection methods failed'
+    return @{ Updates = [System.Collections.Generic.List[hashtable]]::new(); Method = 'None (All methods failed)' }
+}
+
 function Invoke-WindowsUpdatesAudit {
     [CmdletBinding()]
     [OutputType([hashtable])]
@@ -32,55 +160,14 @@ function Invoke-WindowsUpdatesAudit {
             return New-ModuleResult -ModuleName 'WindowsUpdatesAudit' -Status 'Failed' `
                 -Message 'Invalid updates config structure (missing categories)'
         }
-        $pendingUpdates = [System.Collections.Generic.List[hashtable]]::new()
-        $comFailed = $false
 
-        # 2. Query Windows Update via COM
-        Write-Log -Level INFO -Component WU-AUDIT -Message 'Querying Windows Update service...'
-        try {
-            $updateSession = New-Object -ComObject Microsoft.Update.Session
-            $updateSearcher = $updateSession.CreateUpdateSearcher()
-            $searchResult = $updateSearcher.Search('IsInstalled=0 and IsHidden=0')
+        # 2. Query Windows Update via multi-source detection (COM + fallback)
+        Write-Log -Level INFO -Component WU-AUDIT -Message 'Querying Windows Update using multi-source detection...'
+        $detectionResult = Get-PendingUpdatesMultiSource -Config $config
+        $pendingUpdates = $detectionResult.Updates
+        $detectionMethod = $detectionResult.Method
 
-            foreach ($update in $searchResult.Updates) {
-                $title = $update.Title
-
-                # Filter by exclude patterns
-                $excluded = $false
-                foreach ($pattern in $config.excludePatterns) {
-                    if ($title -like $pattern) { $excluded = $true; break }
-                }
-                if ($excluded) { continue }
-
-                # Classify by severity (mutually exclusive categories)
-                $severity = $update.MsrcSeverity
-                $isSecurity = [bool]$severity -or ($title -match 'Security|Cumulative')
-                $isCritical = $severity -eq 'Critical'
-                $isImportant = $severity -eq 'Important'
-                $isOptional = -not $isSecurity -and -not $isCritical -and -not $isImportant
-
-                # Apply category filters from config
-                $include = ($config.categories.security -and $isSecurity)  `
-                    -or ($config.categories.critical -and $isCritical)  `
-                    -or ($config.categories.important -and $isImportant) `
-                    -or ($config.categories.optional -and $isOptional)
-
-                if ($include) {
-                    $pendingUpdates.Add(@{
-                            Title       = $title
-                            Identity    = $update.Identity.UpdateID
-                            Severity    = $severity
-                            SizeMB      = [math]::Round($update.MaxDownloadSize / 1MB, 1)
-                            IsMandatory = $update.IsMandatory
-                        })
-                    Write-Log -Level DEBUG -Component WU-AUDIT -Message "Pending: $title"
-                }
-            }
-        }
-        catch {
-            $comFailed = $true
-            Write-Log -Level ERROR -Component WU-AUDIT -Message "COM WU query failed — pending updates will not be detected: $_"
-        }
+        Write-Log -Level INFO -Component WU-AUDIT -Message "Detection method used: $detectionMethod"
 
         Write-Log -Level INFO -Component WU-AUDIT -Message "Pending updates: $($pendingUpdates.Count)"
 
@@ -89,15 +176,25 @@ function Invoke-WindowsUpdatesAudit {
 
         # 4. Persist audit data
         $auditPath = Get-TempPath -Category 'data' -FileName 'wu-audit.json'
-        @{ Timestamp = (Get-Date -Format 'o'); Pending = $pendingUpdates.ToArray() } `
-        | ConvertTo-Json -Depth 8 | Set-Content -Path $auditPath -Encoding UTF8 -Force
+        @{
+            Timestamp = (Get-Date -Format 'o')
+            Pending = $pendingUpdates.ToArray()
+            DetectionMethod = $detectionMethod
+        } | ConvertTo-Json -Depth 8 | Set-Content -Path $auditPath -Encoding UTF8 -Force
 
-        if ($comFailed) {
-            Write-Log -Level WARN -Component WU-AUDIT -Message 'Audit completed with errors — COM query failed'
+        if ($detectionMethod -eq 'None (All methods failed)') {
+            Write-Log -Level ERROR -Component WU-AUDIT -Message 'All update detection methods failed'
+            return New-ModuleResult -ModuleName 'WindowsUpdatesAudit' -Status 'Failed' `
+                -Message 'All update detection methods failed' `
+                -Errors @('COM, WMI, and Event Log queries all failed')
+        }
+
+        if ($detectionMethod -notlike 'COM*') {
+            Write-Log -Level WARN -Component WU-AUDIT -Message "Audit completed using fallback: $detectionMethod"
             return New-ModuleResult -ModuleName 'WindowsUpdatesAudit' -Status 'Warning' `
                 -ItemsDetected $pendingUpdates.Count `
-                -Message 'COM WU query failed — results may be incomplete' `
-                -Errors @('Windows Update COM query failed')
+                -Message "Primary detection failed, used fallback: $detectionMethod" `
+                -Errors @("COM detection failed, used: $detectionMethod")
         }
 
         Write-Log -Level SUCCESS -Component WU-AUDIT -Message "Windows Updates audit complete: $($pendingUpdates.Count) pending"

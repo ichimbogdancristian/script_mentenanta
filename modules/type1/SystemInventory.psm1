@@ -21,59 +21,124 @@ function Invoke-SystemInventory {
     try {
         $inv = [ordered]@{ Timestamp = (Get-Date -Format 'o') }
 
+        Write-Log -Level DEBUG -Component INVENTORY -Message 'Running parallel hardware queries (OS, CPU, Memory, Disks)...'
+
+        # Run 4 independent CIM queries in parallel
+        $jobs = @(
+            {
+                try {
+                    Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+                }
+                catch {
+                    $null
+                }
+            },
+            {
+                try {
+                    Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -First 1
+                }
+                catch {
+                    $null
+                }
+            },
+            {
+                try {
+                    Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
+                }
+                catch {
+                    $null
+                }
+            },
+            {
+                try {
+                    Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' -ErrorAction Stop
+                }
+                catch {
+                    $null
+                }
+            }
+        )
+
+        $results = $jobs | ForEach-Object -Parallel { & $_ } -ThrottleLimit 4
+
+        # Extract results (order: OS, CPU, Memory, Disks)
+        $os = $results[0]
+        $cpu = $results[1]
+        $cs = $results[2]
+        $disks = $results[3]
+
         # OS
         try {
-            $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
-            $inv.OS = @{
-                Caption        = $os.Caption
-                Version        = $os.Version
-                BuildNumber    = $os.BuildNumber
-                Architecture   = $os.OSArchitecture
-                InstallDate    = $os.InstallDate.ToString('yyyy-MM-dd')
-                LastBootUpTime = $os.LastBootUpTime.ToString('yyyy-MM-dd HH:mm:ss')
-                Locale         = $os.Locale
+            if ($os) {
+                $inv.OS = @{
+                    Caption        = $os.Caption
+                    Version        = $os.Version
+                    BuildNumber    = $os.BuildNumber
+                    Architecture   = $os.OSArchitecture
+                    InstallDate    = $os.InstallDate.ToString('yyyy-MM-dd')
+                    LastBootUpTime = $os.LastBootUpTime.ToString('yyyy-MM-dd HH:mm:ss')
+                    Locale         = $os.Locale
+                }
+                Write-Log -Level DEBUG -Component INVENTORY -Message "OS: $($os.Caption) build $($os.BuildNumber)"
             }
-            Write-Log -Level DEBUG -Component INVENTORY -Message "OS: $($os.Caption) build $($os.BuildNumber)"
+            else {
+                Write-Log -Level WARN -Component INVENTORY -Message "OS query failed"
+            }
         }
-        catch { Write-Log -Level WARN -Component INVENTORY -Message "OS query failed: $_" }
+        catch { Write-Log -Level WARN -Component INVENTORY -Message "OS processing failed: $_" }
 
         # CPU
         try {
-            $cpu = Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -First 1
-            $inv.CPU = @{
-                Name          = $cpu.Name
-                Cores         = $cpu.NumberOfCores
-                LogicalProcs  = $cpu.NumberOfLogicalProcessors
-                MaxClockMHz   = $cpu.MaxClockSpeed
+            if ($cpu) {
+                $inv.CPU = @{
+                    Name         = $cpu.Name
+                    Cores        = $cpu.NumberOfCores
+                    LogicalProcs = $cpu.NumberOfLogicalProcessors
+                    MaxClockMHz  = $cpu.MaxClockSpeed
+                }
+                Write-Log -Level DEBUG -Component INVENTORY -Message "CPU: $($cpu.Name) ($($cpu.NumberOfCores) cores)"
+            }
+            else {
+                Write-Log -Level WARN -Component INVENTORY -Message "CPU query failed"
             }
         }
-        catch { Write-Log -Level WARN -Component INVENTORY -Message "CPU query failed: $_" }
+        catch { Write-Log -Level WARN -Component INVENTORY -Message "CPU processing failed: $_" }
 
         # Memory
         try {
-            $cs    = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
-            $inv.Memory = @{
-                TotalGB      = [math]::Round($cs.TotalPhysicalMemory / 1GB, 2)
-                Manufacturer = $cs.Manufacturer
-                Model        = $cs.Model
+            if ($cs) {
+                $inv.Memory = @{
+                    TotalGB      = [math]::Round($cs.TotalPhysicalMemory / 1GB, 2)
+                    Manufacturer = $cs.Manufacturer
+                    Model        = $cs.Model
+                }
+                Write-Log -Level DEBUG -Component INVENTORY -Message "Memory: $($inv.Memory.TotalGB) GB"
+            }
+            else {
+                Write-Log -Level WARN -Component INVENTORY -Message "Memory query failed"
             }
         }
-        catch { Write-Log -Level WARN -Component INVENTORY -Message "Memory query failed: $_" }
+        catch { Write-Log -Level WARN -Component INVENTORY -Message "Memory processing failed: $_" }
 
         # Disks
         try {
-            $disks = Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' -ErrorAction Stop
-            $inv.Disks = @($disks | ForEach-Object {
-                @{
-                    Drive   = $_.DeviceID
-                    SizeGB  = [math]::Round($_.Size / 1GB, 1)
-                    FreeGB  = [math]::Round($_.FreeSpace / 1GB, 1)
-                    UsedPct = if ($_.Size -gt 0) { [math]::Round((($_.Size - $_.FreeSpace) / $_.Size) * 100, 1) } else { 0 }
-                    FS      = $_.FileSystem
-                }
-            })
+            if ($disks) {
+                $inv.Disks = @($disks | ForEach-Object {
+                    @{
+                        Drive   = $_.DeviceID
+                        SizeGB  = [math]::Round($_.Size / 1GB, 1)
+                        FreeGB  = [math]::Round($_.FreeSpace / 1GB, 1)
+                        UsedPct = if ($_.Size -gt 0) { [math]::Round((($_.Size - $_.FreeSpace) / $_.Size) * 100, 1) } else { 0 }
+                        FS      = $_.FileSystem
+                    }
+                })
+                Write-Log -Level DEBUG -Component INVENTORY -Message "Disks: $($inv.Disks.Count) found"
+            }
+            else {
+                Write-Log -Level WARN -Component INVENTORY -Message "Disk query failed"
+            }
         }
-        catch { Write-Log -Level WARN -Component INVENTORY -Message "Disk query failed: $_" }
+        catch { Write-Log -Level WARN -Component INVENTORY -Message "Disk processing failed: $_" }
 
         # Network adapters & DNS
         try {
@@ -120,16 +185,18 @@ function Invoke-SystemInventory {
         }
         catch { Write-Log -Level WARN -Component INVENTORY -Message "Local users query failed: $_"; $inv.LocalUsers = @() }
 
-        # System Restore Points
+        # System Restore Points (use CIM since Get-ComputerRestorePoint is PS5.1 only)
         try {
-            $restorePoints = @(Get-ComputerRestorePoint -ErrorAction Stop | Sort-Object -Property CreationTime -Descending |
+            $restorePoints = @(Get-CimInstance -ClassName Win32_ShadowCopy -ErrorAction Stop |
+                Sort-Object -Property InstallDate -Descending |
                 ForEach-Object {
+                    $creationTime = if ($_.InstallDate) { $_.InstallDate.ToString('yyyy-MM-dd HH:mm:ss') } else { 'Unknown' }
                     @{
-                        SequenceNumber = $_.SequenceNumber
-                        Description    = $_.Description
-                        CreationTime   = $_.CreationTime.ToString('yyyy-MM-dd HH:mm:ss')
-                        EventType      = $_.EventType
-                        RestorePointType = $_.RestorePointType
+                        SequenceNumber = $_.ID -replace '.*{|}', ''
+                        Description    = $_.Description ?? 'System Restore Point'
+                        CreationTime   = $creationTime
+                        EventType      = 'ShadowCopy'
+                        RestorePointType = 'System'
                     }
                 })
             $inv.RestorePoints = $restorePoints
