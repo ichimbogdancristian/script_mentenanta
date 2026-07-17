@@ -1,282 +1,295 @@
-# Project Analysis — Windows Maintenance Automation
+# Project Analysis v2 — Windows Maintenance Automation
 
-_Analysis date: 2026-07-17 · Scope: entire repository (launcher, orchestrator, core, all module pairs, configs, logging, report generation)._
-
-This document captures the logic of each task, bugs and inconsistencies, cross-module
-integration, the logging system, report generation, and concrete opportunities to improve.
-Findings are tagged **[Sev: High/Med/Low]** and reference `file:line`.
+_Re-analysis 2026-07-17. Supersedes v1. Every finding below was **verified by execution or AST/source
+extraction**, not inferred — the evidence is quoted with each item. Reported coverage-first: nothing
+filtered for severity, each item carries confidence + severity so you can rank._
 
 ---
 
-## 1. Executive summary
+## 0. What changed since v1 (your brief is partly stale)
 
-The project is a well-structured, diff-driven Windows maintenance system: a batch launcher
-bootstraps the environment and a PowerShell 7 orchestrator runs audit→diff→action→report→cleanup
-in five stages. The Type1/Type2 pair model with a single combined diff per pair is clean and
-consistent. After the recent 6→4 module consolidation the module layer is coherent.
+Your standing brief (`xxx.md`) asks me to consider merging **SecurityEnhancement with TelemetryDisable**
+and **DiskCleanup with SystemOptimization**. The first is **already done** — the 6→4 consolidation merged
+Security+Telemetry (and SystemOptimization) into `SystemConfiguration`. The logging system was also
+rebuilt since that brief was written. Current state:
 
-The most impactful problems are **not** in the module logic itself but at the **integration seams**:
+| Pair | Type1 | Type2 | DiffKey | Discriminator |
+|---|---|---|---|---|
+| 1 | SoftwareManagementAudit | SoftwareManagement | `SoftwareManagement` | `Action` = remove/install/upgrade |
+| 2 | SystemConfigurationAudit | SystemConfiguration | `SystemConfiguration` | `ConfigType` = security/telemetry/optimization |
+| 3 | DiskCleanupAudit | DiskCleanup | `DiskCleanup` | `Type` |
+| 4 | WindowsUpdatesAudit | WindowsUpdates | `WindowsUpdates` | — |
+| 5 | SystemInventory | *(none)* | `SystemInventory` | report-only |
 
-- The **report generator has gone stale** relative to the consolidation — its diff-detail lookup
-  still maps deleted module names, so Type1 audit cards and the new merged modules lose their
-  per-item detail. **[High]**
-- **DiskCleanup's DISM path is dead** — it calls the core process helper with a `-TimeoutSeconds`
-  parameter that does not exist, so component-store cleanup always throws. **[High]**
-- **Large parts of the security baseline are defined but never applied** (`securityPolicy`,
-  `auditPolicy`), and several optimization config sections are marked not-implemented. **[Med]**
-- **Scheduled (SYSTEM) runs can't apply the per-user HKCU tweaks** the optimization module writes. **[Med]**
-
-None of these block a normal interactive run, but several silently reduce what the tool actually
-accomplishes.
+**Structural health is good.** Verified clean: DiffKey contract intact on all 5 pairs; **zero** config
+drift (skip flags ↔ `ConfigSkip` match exactly); **all 8** `config/lists/` folders consumed by a module;
+only referenced modules exist on disk.
 
 ---
 
-## 2. Architecture recap (as-built)
+## 1. The logic, as built (your "understand this" list)
 
-- **`script.bat`** — elevation → pending-WU reboot check → monthly task → **self-update from GitHub**
-  → winget/PS7/PSWindowsUpdate install → Defender exclusions → restore point → launches the
-  orchestrator in a new `pwsh` window and exits.
-- **`MaintenanceOrchestrator.ps1`** — single transcript; Stage 1 (Type1 audits, interactive menu),
-  Stage 2 (diff analysis), Stage 3 (Type2 actions on non-empty diffs), Stage 4 (HTML report),
-  Stage 5 (countdown → reboot+cleanup or abort).
-- **4 pairs + inventory** registered in `$ModulePairs`: SoftwareManagement, SystemConfiguration,
-  DiskCleanup, WindowsUpdates, (+ SystemInventory, report-only).
-- **`modules/core/Maintenance.psm1`** — logging, OS context, config/baseline loading, diff engine,
-  compare/apply helpers, AppX compat layer, shared queries, external-process helper.
-- **`modules/core/ReportGenerator.psm1`** — self-contained HTML report.
+**PS5 → PS7 relaunch.** `script.bat` runs under cmd/PS5.1. PS7 acquisition is now:
+`:FIND_PWSH` (delegates the search to PS5.1, checks PATH + MSI dirs + **AppX/MSIX InstallLocation** +
+WindowsApps alias + registry, and *validates each candidate by executing it* and requiring
+`PSVersion.Major >= 7`) → install via `winget --source winget --exact` (forces the **MSI**, not the
+msstore MSIX) → re-run `:FIND_PWSH` → continue in-process (relaunch only if still unreachable).
+The orchestrator is then launched in a dedicated `pwsh` window and the launcher exits.
 
----
+**Reboot policy — exactly two decision points, as you specified.** (1) `script.bat` startup: authoritative
+WU markers only (`Auto Update\RebootRequired`, `Orchestrator\RebootRequired`, `PostRebootReporting`, plus
+PSWindowsUpdate if present) → creates an ONLOGON task and reboots. (2) Stage 5: reboots on countdown
+expiry unless a key is pressed, or skips entirely when `rebootOnlyWhenRequired` is set and no module
+flagged `RebootRequired`. **Modules never reboot** — they only set the flag. This is correctly enforced.
 
-## 3. Bugs & correctness issues
-
-### 3.1 Report diff-detail lookup is stale after consolidation — **[High]**
-`ReportGenerator.psm1:356-379` (`Build-ModuleCard`). The per-module "N item(s) detailed" section
-loads diff data by `Get-DiffList -ModuleName $Result.ModuleName`, falling back to a hardcoded
-`keyMap`. After the 6→4 consolidation:
-- The `keyMap` (lines 360-375) still lists **deleted** module names (`BloatwareRemoval`,
-  `EssentialApps`, `SecurityEnhancement`, `TelemetryDisable`, `SystemOptimization`, `AppUpgrade`)
-  and has **no entries** for the current diff keys.
-- **Type2 cards** happen to work because `ModuleName == DiffKey` (`SoftwareManagement`,
-  `SystemConfiguration`, `DiskCleanup`, `WindowsUpdates`).
-- **Type1 audit cards** break: `ModuleName` is e.g. `SoftwareManagementAudit`, which matches no
-  diff file and no keyMap entry → the audit cards silently lose their item detail.
-
-_Fix:_ replace the keyMap with a suffix strip (`$moduleName -replace 'Audit$',''`) or an explicit
-map of the 4 audit names → diff keys. Also removes dead references to deleted modules.
-
-### 3.2 DiskCleanup DISM cleanup always fails — **[High]**
-`modules/type2/DiskCleanup.psm1:97-98` calls
-`Invoke-ExternalPackageCommand -FilePath dism.exe -ArgumentList $dismArgs -TimeoutSeconds 1800`,
-but `Invoke-ExternalPackageCommand` (`modules/core/Maintenance.psm1`) only declares `FilePath`
-and `ArgumentList`. The extra `-TimeoutSeconds` triggers a parameter-binding error → caught by the
-`try/catch` → logged as `DISM component cleanup failed`. **The `update-cleanup` path has never
-run successfully.**
-
-_Fix:_ add a `-TimeoutSeconds` parameter to `Invoke-ExternalPackageCommand` with a real
-`WaitForExit(ms)` timeout + kill-on-timeout (this is clearly the originally-intended contract),
-then the DISM and any long winget calls become bounded.
-
-### 3.3 `Invoke-ExternalPackageCommand` has no timeout and a deadlock risk — **[Med]**
-`modules/core/Maintenance.psm1` (`Invoke-ExternalPackageCommand`). It calls
-`StandardOutput.ReadToEnd()` then `StandardError.ReadToEnd()` then `WaitForExit()`. If a child
-process fills the stderr pipe buffer (~4KB) while we are blocked reading stdout, both sides block —
-a classic redirect deadlock. Verbose winget/choco/DISM output makes this reachable. There is also
-no timeout, so a hung package manager hangs the whole run. _Fix:_ use async reads
-(`BeginOutputReadLine`) or `Task`-based reads, plus a `WaitForExit(timeoutMs)` (ties into 3.2).
-
-### 3.4 Windows Update severity classification is muddled — **[Med]**
-`modules/type1/WindowsUpdatesAudit.psm1:57`
-`$isSecurity = [bool]$severity -or ($title -match 'Security|Cumulative')`. `[bool]$severity` is
-`$true` for **any** non-empty `MsrcSeverity` (`Low`, `Moderate`, `Unspecified`, …), so any update
-carrying a severity is classed "security" and pulled in even when `optional:false`. `isCritical` /
-`isImportant` are then computed but redundant (already swallowed by `isSecurity`). Net effect:
-category filtering is coarser than the config implies. _Fix:_ classify explicitly, e.g.
-`security = title -match 'Security'`, `critical = severity -eq 'Critical'`, etc., and only treat a
-real security classification as security.
-
-### 3.5 System Inventory is collected but not usefully shown — **[Med]**
-`modules/type1/SystemInventory.psm1:114-116` returns the whole nested inventory as
-`-ExtraData $inv`. In the report, `ReportGenerator.psm1:343-349` renders ExtraData with
-`"$($_.Value)"`, which stringifies nested hashtables (OS, CPU, Disks, …) to
-`System.Collections.Hashtable`. So the inventory card shows keys with useless values — the module's
-entire output is effectively invisible in the report. Secondary: `$inv` is `[ordered]`
-(`OrderedDictionary`) passed to a `[hashtable]$ExtraData` parameter — it coerces but loses ordering.
-_Fix:_ give the report a dedicated inventory renderer (recurse nested tables), or have the module
-flatten to display strings.
-
-### 3.6 Dead double-render of module cards — **[Low]**
-`ReportGenerator.psm1:101` computes `$moduleCards = ... Build-ModuleCard ...` for every result, but
-the variable is never emitted; lines 130-131 recompute `type1Cards`/`type2Cards` which are what the
-HTML uses. `Build-ModuleCard` (which also does a diff-file read each call) runs twice per module.
-_Fix:_ delete line 101.
-
-### 3.7 Batch log timestamp is locale-fragile — **[Low]**
-`script.bat:19-25` builds `LOG_DATE`/`LOG_TIME` by tokenizing `%DATE%`/`%TIME%` with fixed token
-order and `delims=/. `. This depends on the OS locale's date format and will produce wrong/garbled
-timestamps on many non-US locales. The PowerShell logger (`Write-Log`) is fine. _Fix:_ derive the
-timestamp via `pwsh -Command "Get-Date -Format o"` or `wmic os get localdatetime`.
-
-### 3.8 Loose bloatware registry matching — **[Low]**
-`modules/type1/SoftwareManagementAudit.psm1` (bloatware section) builds `regDiff` by
-`registryName -like "*$b*"` where `$b` is an AppX family id like `2414FC7A.Viber` — which never
-appears in a registry DisplayName, so the registry pass rarely contributes. Harmless (the AppX
-pass is authoritative) but the registry pass is close to a no-op. Pre-existing; carried over.
+**Diff lists — the contract.** A pair never calls across; they communicate only through
+`temp_files/diff/<DiffKey>-diff.json`. Type1 loads a baseline from `config/lists/`, scans live state,
+computes the delta, and `Save-DiffList`. Stage 2 reads that file: **non-empty diff ⇒ queue the Type2**;
+empty ⇒ Type2 never runs (recorded as `Skipped`). Type2 calls `Get-DiffList`, acts *only* on those items,
+returns `New-ModuleResult`. The `DiffKey` is the whole contract — it must match in the Type1's
+`Save-DiffList`, the Type2's `Get-DiffList`, and `$ModulePairs`. This is why a run on an
+already-compliant machine makes zero changes: every diff is empty.
 
 ---
 
-## 4. Unimplemented / dead configuration (promises the code doesn't keep)
+## 2. Verified bugs (ranked)
 
-### 4.1 CIS security baseline: `securityPolicy` and `auditPolicy` never applied — **[Med]**
-`config/lists/security/security-baseline.json` defines `securityPolicy` (password/lockout policy,
-account renames — normally via `secedit`) and a large `auditPolicy` array (normally via `auditpol`).
-Neither `SystemConfigurationAudit` nor `SystemConfiguration` reads these sections — only `registry`,
-`windowsDefender`, `services`, and `firewall.enabled` are handled. The file's `_comment` advertises
-"CIS … full coverage", but coverage is partial. _Opportunity:_ add a `secedit`-based policy applier
-and an `auditpol`-based audit applier, or trim the JSON to what's implemented so it isn't misleading.
+### 🔴 2.1 The Chocolatey PS7 fallback is **completely dead** — `[HIGH, confirmed]`
+`script.bat:791-794`
+```bat
+IF NOT "!INSTALL_STATUS!"=="SUCCESS" (
+    SET "CHOCO_EXE=choco"                              <- set INSIDE the block
+    IF EXIST "...\choco.exe" SET "CHOCO_EXE=...choco.exe"
+    "%CHOCO_EXE%" --version >nul 2>&1                  <- %-read, SAME block => parse-time
+```
+`%CHOCO_EXE%` resolves when the block is **parsed** — before line 791 runs — so it expands to **empty**.
+The command becomes `"" --version`, which always fails ⇒ the code always concludes *"Chocolatey not
+available"* and jumps to installing Chocolatey from scratch. **This matches both of your run logs
+verbatim.** Same defect at lines 797 and 823 (`"%CHOCO_EXE%" install powershell-core`), so even the
+freshly-installed Chocolatey is never used. Net effect: PS7 has **two** working install paths (winget,
+MSI), not three. Fix: `!CHOCO_EXE!`.
 
-### 4.2 Optimization config sections marked not-implemented — **[Low]**
-`config/lists/system-optimization/system-optimization-config.json` has `registryTweaks`,
-`uiOptimizations` (Win10/Win11) explicitly `"_status":"not-implemented — no audit/apply path exists
-yet"` (classic context menu, show extensions, disable widgets/chat, taskbar tweaks). These are
-genuinely useful Win10/11 tweaks with no code path. _Opportunity:_ wire them into the
-`optimization` ConfigType as `registry` items (they're all HKCU/HKLM registry values).
+### 🔴 2.2 DiskCleanup's DISM path always throws — `[HIGH, confirmed by AST]`
+`modules/type2/DiskCleanup.psm1:98` calls `Invoke-ExternalPackageCommand -TimeoutSeconds 1800`, but the
+core function declares only `FilePath, ArgumentList`. AST contract check output:
+```
+Caller           Line  Call                          BadParam         Declares
+DiskCleanup.psm1  98   Invoke-ExternalPackageCommand -TimeoutSeconds  FilePath,ArgumentList
+```
+Parameter-binding error → caught → logged as *"DISM component cleanup failed"*. The `update-cleanup`
+path has **never** succeeded. Fix: add a real `-TimeoutSeconds` to the core helper (see 2.8).
 
----
+### 🟠 2.3 False "All winget installation methods failed" — `[MED, confirmed]`
+`script.bat:734` `IF "%WINGET_AVAILABLE%"=="NO" (` sits *inside* the enclosing
+`IF "%WINGET_AVAILABLE%"=="NO" (...)` install block, and `WINGET_AVAILABLE=YES` is set at line 728 within
+it. The `%`-read is parse-time ⇒ always `"NO"` ⇒ the warning fires **even when winget was just installed
+successfully**. Fix: `!WINGET_AVAILABLE!`.
 
-## 5. Cross-module integration analysis
+### 🟠 2.4 Report: 3 of 5 audit cards silently lose their detail section — `[MED, confirmed]`
+`ReportGenerator.psm1:356-379`. Measured against the `ModuleName` values the modules actually emit:
 
-**Flow is sound.** Stage 1 runs Type1 audits (each persists a `<DiffKey>-diff.json`), Stage 2 reads
-those diffs and queues only non-empty, non-skipped pairs, Stage 3 runs the queued Type2 actions,
-Stage 4 reports, Stage 5 reboots/cleans. `RebootRequired` flows through the result schema into
-Stage 5 correctly. Observations:
+| ModuleName emitted | direct DiffKey hit | in keyMap | detail renders |
+|---|---|---|---|
+| `SoftwareManagementAudit` | ✗ | ✗ | **NO — lost** |
+| `SystemConfigurationAudit` | ✗ | ✗ | **NO — lost** |
+| `DiskCleanupAudit` | ✗ | ✗ | **NO — lost** |
+| `WindowsUpdatesAudit` | ✗ | ✓ | yes |
+| all four Type2 names | ✓ | ✗ | yes (ModuleName == DiffKey by luck) |
 
-### 5.1 Scheduled SYSTEM runs can't apply per-user (HKCU) settings — **[Med]**
-The monthly task is created `RU SYSTEM` (`script.bat:316-325`). But the optimization actions
-`visualfx`, `background`, and startup-entry cleanup, plus telemetry `advertising`/`privacy`/`cortana`
-HKCU keys, all write to **HKCU** — under SYSTEM that's SYSTEM's own hive, not the logged-in user's.
-So an unattended monthly run silently no-ops those user-scoped changes. The reboot-resume startup
-task (`RU %USERNAME%`) does run as the user. _Consider:_ run the monthly task as the user (or
-`INTERACTIVE`), or split machine-scope vs user-scope work and apply HKCU changes per loaded profile.
+Also: **12 keyMap entries reference deleted modules** (`BloatwareRemoval`, `EssentialApps`,
+`SecurityEnhancement`, `TelemetryDisable`, `SystemOptimization`, `AppUpgrade`, + their audits) — pure dead
+code. Fix: replace the whole map with `$moduleName -replace 'Audit$',''`.
 
-### 5.2 `-NoExit` interactive window under Task Scheduler — **[Low/Med]**
-`script.bat:1374-1406` always launches the orchestrator in a `-NoExit` interactive `pwsh` window and
-only passes `-NonInteractive` when `%1==-NonInteractive`. The scheduled tasks invoke `script.bat`
-with **no args**, so a scheduled run tries to open an interactive window with 10s/120s countdowns.
-The orchestrator guards `[Console]::KeyAvailable`, so it won't crash, but a `-NoExit` window spawned
-by a SYSTEM task is odd and may linger. _Consider:_ detect non-interactive sessions in the launcher
-and pass `-NonInteractive` automatically for scheduled runs.
+### 🟠 2.5 Nested `ExtraData` renders as `System.Collections.Hashtable` — `[MED, confirmed by execution]`
+`ReportGenerator.psm1:343-349` stringifies each value with `"$($_.Value)"`. Live output:
+```
+SystemInventory ExtraData:   Memory -> System.Collections.Hashtable
+                             OS     -> System.Collections.Hashtable
+DiskCleanup     ExtraData:   BreakdownByCategory -> System.Collections.Hashtable
+                             ReclaimedMB         -> 1234.5
+```
+So **the entire System Inventory module's output is invisible in the report** (its whole purpose), and
+DiskCleanup's per-category reclaimed-MB breakdown is lost. Fix: recurse nested tables, or add a dedicated
+inventory renderer.
 
-### 5.3 Redundant installed-apps enumeration — **[Low]** (perf)
-`Get-InstalledApp` (registry + AppX-via-powershell.exe) is invoked multiple times per run:
-twice inside `SoftwareManagementAudit` (bloatware `regApps`, essential `installed`) and again in
-`SystemInventory`. Each AppX enumeration spawns a Windows PowerShell 5.1 child. _Opportunity:_ cache
-the installed-app list for the session (e.g. a script-scoped memo in the core module).
+### 🟠 2.6 WU severity filter ignores `optional: false` — `[MED, confirmed by execution]`
+`WindowsUpdatesAudit.psm1:57` — `$isSecurity = [bool]$severity -or ...`. Measured:
+```
+MsrcSeverity=Low          -> isSecurity=True  isOptional=False
+MsrcSeverity=Moderate     -> isSecurity=True  isOptional=False
+MsrcSeverity=Unspecified  -> isSecurity=True  isOptional=False
+```
+**Any** update carrying **any** severity is classed "security", so `categories.optional:false` never
+excludes it, and `isCritical`/`isImportant` are computed but redundant. Fix: classify explicitly
+(`security = title -match 'Security'`, `critical = severity -eq 'Critical'`, …).
 
-### 5.4 Sysmon integration (new) — verify behavior — **[Low]**
-`SystemConfiguration` installs Sysmon via winget and applies `config/sysmon/sysmonconfig.xml`. The
-audit queues it only when the `Sysmon`/`Sysmon64` service is absent, so config drift on an existing
-install isn't re-applied. Acceptable for now; a future enhancement could compare the running config
-hash (`sysmon -c` dumps current config) and re-apply on drift.
+### 🟡 2.7 `WORKING_DIRECTORY` — stale value **and** dead — `[LOW, confirmed]`
+`script.bat:460` `SET "WORKING_DIRECTORY=%WORKING_DIR%"` reads `%WORKING_DIR%` in the same block it was
+just assigned (line 459) ⇒ captures the **pre-extraction** path. But a full-tree search shows it is
+**assigned twice and never read by anything** (`script.bat:164`, `:460` — no consumer in any `.ps1`/`.psm1`).
+The bug is real but inert. Fix: delete both lines.
 
----
+### 🟡 2.8 `Invoke-ExternalPackageCommand`: no timeout + deadlock risk — `[MED, by inspection]`
+Reads `StandardOutput.ReadToEnd()` then `StandardError.ReadToEnd()` then `WaitForExit()`. If a child fills
+the stderr pipe buffer (~4KB) while we block on stdout, both sides wedge — reachable with verbose
+winget/DISM output. No timeout either, so a hung package manager hangs the run forever. Fix: async reads
++ `WaitForExit(ms)` + kill-on-timeout. **This also unblocks 2.2.**
 
-## 6. Logging system analysis
-
-> **Status (2026-07-17): redesigned.** `maintenance.log` is now written directly by the core
-> logger through an auto-flushed `StreamWriter` (`FileShare.ReadWrite`), decoupled from the
-> transcript, which was demoted to a `transcript.log` sidecar. Added per-sink level gating
-> (console INFO / file DEBUG, config-driven via a `logging` block), a top-level
-> `try/catch/finally` fatal-capture guard in the orchestrator (`Write-LogException` dumps message
-> + `ScriptStackTrace` + position + recent `$Error`), guards on the previously-naked crash paths
-> (core import, `Get-MainConfig`, Stage 2 per-pair, menu key-read), and `Close-LogFile` before
-> project-folder deletion. The Stage-4 transcript stop/restart blind spot is gone. The points
-> below describe the pre-redesign state and the rationale.
-
-
-- **Two loggers, one format goal.** Batch `:LOG_MESSAGE` emits `[ts] [LEVEL] [COMPONENT] msg`;
-  PowerShell `Write-Log` emits the same shape. Good consistency of intent.
-- **Handoff is clean.** The launcher writes a bootstrap log to `%TEMP%`, passes it via
-  `$env:BOOTSTRAP_LOG`, and the orchestrator injects+deletes it into the transcript
-  (`MaintenanceOrchestrator.ps1:64-76`). Nicely done.
-- **Single transcript** captures everything Write-Log prints (it uses `Write-Host`), which is the
-  intended design.
-- **Gaps / opportunities:**
-  - No level filtering — `DEBUG` always prints. A `MAINT_LOG_LEVEL` env/config knob would cut noise
-    in the report transcript. **[Low]**
-  - `Write-Log` writes only to the console/transcript; there is no independent structured log file
-    (e.g. JSON lines) for machine parsing. **[Low, opportunity]**
-  - Stage 5 events (reboot/cleanup) occur **after** Stage 4 builds the report, so they never appear
-    in the embedded transcript. Acceptable, but worth a note in the report. **[Low]**
-  - Batch timestamp locale bug (3.7).
-
----
-
-## 7. Report generation analysis
-
-- **Strengths:** self-contained single-file HTML, no external deps, inline CSS, light/dark-agnostic
-  dark theme, per-module cards grouped by Type1/Type2, error aggregation, embedded transcript,
-  copy to the launcher folder. HTML-encoding is done defensively with a manual fallback when
-  `System.Web` is unavailable in PS7 Core (`ReportGenerator.psm1:21,144-151,328-336`).
-- **Issues:** stale diff keyMap (3.1), inventory rendering (3.5), dead double-render (3.6).
-- **Opportunities:**
-  - Render `DiskCleanup`'s `ExtraData.BreakdownByCategory` (reclaimed MB per category) as a small
-    table — the data is produced (`DiskCleanup.psm1:142-145`) but shows as `System.Collections.Hashtable`
-    (same root cause as 3.5). **[Med]**
-  - Add a dedicated **System Inventory** section (OS/CPU/RAM/disk/network) rather than dumping it as
-    ExtraData. **[Med]**
-  - Show the Stage-2 decision (which Type2 modules were skipped because the diff was empty) as an
-    explicit section. **[Low]**
-  - Consider emitting a machine-readable `report.json` alongside the HTML for trend tracking. **[Low]**
+### 🟡 2.9 Empty log values on two scheduled-task branches — `[LOW, confirmed]`
+`script.bat:147, :151` still use `%SCHEDULED_TASK_SCRIPT_PATH%` inside the block that sets it (line 143
+was already fixed to `!...!`). Log-cosmetic only.
 
 ---
 
-## 8. Optimization opportunities (performance)
+## 3. Config that the code never honours
 
-1. **Parallelize independent Type1 audits** — DiskCleanup's `DISM /AnalyzeComponentStore` and the WU
-   COM search are the slow ones and are independent. PS7 `ForEach-Object -Parallel` (or runspaces)
-   could overlap them; needs care because modules import into the global scope and share `$env:MAINT_*`.
-   Alternatively just reorder so the slow audits overlap with user think-time in the Stage 1 menu. **[Med]**
-2. **Batch/cache AppX enumeration** — the `*Compat` layer spawns `powershell.exe` per call; the
-   bloatware audit + removal issue many. Enumerate once, filter in-memory. **[Med]**
-3. **Cache `Get-InstalledApp`** per session (see 5.3). **[Low]**
-4. **Skip DISM analyze when free space is ample** or cache its result between the audit and any future
-   re-run. **[Low]**
+### 3.1 CIS baseline is **half-applied** — `[MED]`
+`config/lists/security/security-baseline.json` defines `securityPolicy` (password/lockout policy, account
+renames — normally `secedit`) and a **19-entry `auditPolicy`** array (normally `auditpol`). **No code path
+reads either.** `SystemConfigurationAudit` handles only `registry`, `windowsDefender`, `services`, and
+`firewall.enabled`. The file's `_comment` advertises *"CIS … v4.0.0"* coverage that doesn't exist.
 
----
-
-## 9. Enhancement opportunities (features)
-
-- **Bounded external commands** (3.2/3.3): a single robust `Invoke-ExternalPackageCommand` with
-  timeout + async capture unlocks safe DISM/winget/choco calls project-wide.
-- **secedit/auditpol appliers** (4.1) to actually deliver the advertised CIS baseline.
-- **Optimization registry tweaks** (4.2) — quick wins already described in config.
-- **Sysmon drift re-apply** (5.4).
-- **Rollback command** — `SystemConfiguration` already backs up pre-change Defender/firewall state
-  (`SystemConfiguration.psm1`); a companion "restore last backup" entry point would make hardening
-  reversible without a full system-restore.
-- **Dry-run / WhatIf mode** — Type2 modules could accept a `-WhatIf`/report-only switch to preview the
-  diff application (the diff already exists; only the apply loop needs gating).
-- **Per-module config `skip*` parity** — `main-config.json` now has exactly the 4 keys the
-  orchestrator reads; keep a test that asserts `$ModulePairs.ConfigSkip` ⊆ config keys so they can't
-  drift again.
+### 3.2 Optimization tweaks explicitly marked not-implemented — `[LOW]`
+`system-optimization-config.json` carries `registryTweaks` and `uiOptimizations` blocks tagged
+`"_status": "not-implemented — no audit/apply path exists yet"` (classic context menu, show file
+extensions, disable widgets/chat, taskbar tweaks). Real Win10/11 value, zero code — all are plain
+registry values that would drop straight into the `optimization` ConfigType.
 
 ---
 
-## 10. Prioritized recommendations
+## 4. Module-by-module: what actually touches the OS
 
-| Priority | Item | Why |
+| Module | OS surface | Primitives | Reboot | Risk |
+|---|---|---|---|---|
+| **SoftwareManagement** | AppX/MSIX store, winget, choco | `Remove-AppxPackageCompat` (+ provisioned), `winget install/upgrade/uninstall`, `choco` | No | Reversible |
+| **SystemConfiguration** | Defender, firewall, registry (HKLM+**HKCU**), services, scheduled tasks, powercfg, Sysmon | `Set-MpPreference`, `Set-NetFirewallProfile`, `Set-RegistryValue`, `Set-Service`, `Disable-ScheduledTask`, `powercfg`, winget+`sysmon -i` | **Yes** (Defender AV enable) | Reversible; backs up pre-state |
+| **DiskCleanup** | Filesystem, DISM, recycle bin | `Remove-Item`, `dism /StartComponentCleanup`, `Clear-RecycleBin` | No | **Destructive** |
+| **WindowsUpdates** | Windows Update (COM / PSWindowsUpdate / usoclient) | `Install-WindowsUpdate` | **Yes** | High-impact |
+| **SystemInventory** | read-only CIM queries | `Get-CimInstance` | No | None |
+
+**Cross-cutting: scheduled SYSTEM runs can't apply HKCU settings — `[MED]`.** The monthly task is created
+`RU SYSTEM` (`script.bat:324`), but `visualfx`, `background`, startup-entry cleanup, and the telemetry
+`advertising`/`privacy`/`cortana` keys all write **HKCU** — under SYSTEM that's SYSTEM's own hive, not the
+logged-in user's. An unattended monthly run silently no-ops all of them. (The reboot-resume ONLOGON task
+correctly runs as `%USERNAME%`.) Options: run the monthly task as the user, or split machine-scope from
+user-scope and apply HKCU per loaded profile.
+
+---
+
+## 5. Consolidation assessment (your explicit ask)
+
+**Already done:** SecurityEnhancement + TelemetryDisable + SystemOptimization → `SystemConfiguration`.
+Bloatware + EssentialApps + AppUpgrade → `SoftwareManagement`.
+
+**On merging DiskCleanup into SystemConfiguration — I recommend against.** Consolidation pays off when
+modules share *both* tooling and risk profile. SystemConfiguration is pure registry/service/policy state
+(idempotent, reversible, backed up). DiskCleanup is irreversible filesystem deletion plus DISM. They share
+neither primitive nor risk, and merging would mix a destructive failure class into a config-state module's
+status reporting.
+
+**The one merge with a real argument: DiskCleanup + WindowsUpdates → `SystemServicing`.** DISM
+`/StartComponentCleanup` *is* Windows-Update servicing cleanup, and correct ordering falls out naturally
+(install updates → then clean the component store; never `/ResetBase` before updates land). Cost: mixes a
+reboot-generating operation with destructive deletion behind one diff. **My call: keep 4.** The current
+split is at the right seams; further merging trades clarity for a smaller module count you don't need.
+
+**Better fluency win than merging — move one action.** DiskCleanup's `update-cleanup` item is the only
+thing in DiskCleanup that is really WU servicing. If you ever *do* want fluency, move that single item to
+the WindowsUpdates pair (post-install) rather than merging whole modules.
+
+---
+
+## 6. Logging & report
+
+**Logging is now sound.** `maintenance.log` is created next to `script.bat` at the first line
+(`:INIT_LOG`, append so elevation/PS7 relaunches continue it), migrated into `temp_files\logs\` after
+extraction (`:MIGRATE_LOG`), and the orchestrator appends to the **same file** via `MAINTENANCE_LOG` →
+`Initialize-Maintenance -LogPath`. Direct auto-flushed `StreamWriter` (`FileShare.ReadWrite`), so it
+survives crashes; `transcript.log` is a raw sidecar. Per-sink levels (console INFO, file DEBUG);
+`[FATAL]` + `ScriptStackTrace` on any uncaught error; log always closed in `finally`. Format
+`[ts] [LEVEL] [COMPONENT] msg` is greppable and consistent between batch and PowerShell. script.bat is
+now 100% ASCII → the `Γ£ô` mojibake class is gone.
+
+**Report.** Strengths: single self-contained HTML, inline CSS, Type1/Type2 grouping, error aggregation,
+embedded log, refreshed immediately before cleanup so the surviving copy holds the **complete** log.
+Defects: 2.4 (audit detail lost), 2.5 (inventory + cleanup breakdown invisible), and a dead
+double-render — `Build-ReportHtml:101` computes `$moduleCards` for every result and **never uses it**
+(lines 130-131 recompute `type1Cards`/`type2Cards`), so every card is built twice, each doing a diff-file
+read. `[LOW]`
+
+---
+
+## 7. Dead code / reduction
+
+| Item | Where | Action |
 |---|---|---|
-| P1 | Fix report diff keyMap (3.1) | Report is the primary deliverable; audit detail is currently missing |
-| P1 | Add timeout to `Invoke-ExternalPackageCommand` + fix DiskCleanup call (3.2/3.3) | Dead DISM path + hang/deadlock risk across all package ops |
-| P2 | Render inventory + cleanup breakdown in report (3.5/3.6, §7) | Collected data is invisible; low effort |
-| P2 | Decide SYSTEM vs user for scheduled runs (5.1/5.2) | Unattended runs silently skip user-scoped tweaks |
-| P2 | WU severity classification (3.4) | Category filtering doesn't match config intent |
-| P3 | Implement or trim securityPolicy/auditPolicy + optimization tweaks (4.1/4.2) | Align code with config promises |
-| P3 | Parallelize/cache audits & AppX (8.1-8.3) | Runtime on slow machines |
-| P3 | Batch timestamp locale fix (3.7) | Correct launcher logs everywhere |
+| 12 keyMap entries for deleted modules | `ReportGenerator.psm1:360-375` | delete; use `-replace 'Audit$',''` |
+| `$moduleCards` computed, never emitted | `ReportGenerator.psm1:101` | delete (halves card rendering) |
+| `WORKING_DIRECTORY` assigned ×2, read 0× | `script.bat:164, :460` | delete both |
+| `SR_VERIFY_STATUS` set, never read | `script.bat` restore-point block | delete |
+| Two identical `IF "%PS_EXECUTABLE%"==""` error blocks | `script.bat` (2nd unreachable) | already collapsed by the `:FIND_PWSH` rewrite — verify none remain |
+| `xxx.md` | repo root | it's your brief, not code — fold into CLAUDE.md or delete |
 
 ---
 
-_Notes: line references reflect the tree at analysis time. Items 3.1 and 3.2 are the two that most
-directly interact with the recent module consolidation and should be addressed first; neither was
-introduced by the consolidation (3.2 predates it; 3.1 is the report failing to keep pace with it)._
+## 8. Type2 feature proposals
+
+**SoftwareManagement**
+- `winget export` / `import` — snapshot the machine's app set; makes re-provisioning a first-class feature.
+- Version **pinning / hold list** (`winget pin`) so an upgrade can't move a business-critical app.
+- Retry-with-backoff on transient winget exit codes (network/source failures) instead of one-shot fail.
+- Detect and repair **broken installs** (`winget repair`, or reinstall on `--force`).
+- Report per-app *before → after* versions in `ExtraData` (drives a proper report table).
+
+**SystemConfiguration** *(highest-value additions — closes the §3.1 gap)*
+- **`secedit` applier** for `securityPolicy`, **`auditpol` applier** for the 19 `auditPolicy` entries. This is the single biggest promise-vs-reality gap in the project.
+- **Defender ASR rules** (`Add-MpPreference -AttackSurfaceReductionRules_Ids`) — high security value, pure `Set-MpPreference` family, fits the existing `defender` Type.
+- **BitLocker** status audit + optional enable; **SmartScreen**; **Controlled Folder Access** (baseline already has the flag, no code path).
+- **Sysmon config drift** — re-apply when the running config hash differs, not only when the service is absent.
+- **Rollback entry point** — you already write `config-pre-state-*.json`; a `-Rollback` switch that replays it would make hardening reversible without System Restore.
+
+**DiskCleanup**
+- `Windows.old`, Delivery Optimization cache, Windows Error Reporting queues, thumbnail/icon cache, memory dumps, `$Recycle.Bin` per-user, Teams/Slack/Discord caches.
+- Report **free space before/after** per drive (verifiable outcome, not an estimate).
+- Honour a `dryRun` flag to list-only — pairs naturally with the diff model.
+
+**WindowsUpdates**
+- Decode WU error codes (`0x8024xxxx`) into actionable messages instead of surfacing raw HRESULTs.
+- Optional **driver updates** (`categories.drivers` exists in config, unused) and feature-update deferral.
+- Auto-install PSWindowsUpdate when missing (the launcher tries; the module should too) so the reliable path is used instead of the unverifiable `usoclient` fallback.
+- Emit installed-KB list into `ExtraData` for the report.
+
+**Cross-cutting**
+- `-WhatIf`/dry-run on every Type2 — the diff already exists; only the apply loop needs gating.
+- A `docs`/schema test asserting `$ModulePairs.ConfigSkip` ⊆ config keys, so §D drift can't return.
+
+---
+
+## 9. Prioritized
+
+| P | Item | Why |
+|---|---|---|
+| **P1** | 2.1 Chocolatey `!CHOCO_EXE!` | An entire PS7 install path is dead; matches your logs |
+| **P1** | 2.8 + 2.2 timeout on `Invoke-ExternalPackageCommand` | Unblocks DISM cleanup *and* removes a hang/deadlock class |
+| **P1** | 2.4 report keyMap | Report is the deliverable; audit detail is missing today |
+| **P2** | 2.5 render nested ExtraData | SystemInventory is 100% invisible right now |
+| **P2** | 2.3 / 2.9 `!VAR!` fixes | Misleading logs; same class that caused the outages |
+| **P2** | §4 SYSTEM vs user for the monthly task | Unattended runs silently skip all HKCU work |
+| **P2** | 2.6 WU severity | `optional:false` doesn't do what the config says |
+| **P3** | §3.1 secedit/auditpol | Delivers the advertised CIS baseline |
+| **P3** | §7 dead-code sweep | ~40 lines, zero risk |
+| **P3** | §3.2 optimization registry tweaks | Cheap, already specified in config |
+
+---
+
+## 10. Extensibility (for the modules you'll add)
+
+The pair model holds up well. To add a feature: one Type1 (`Save-DiffList -ModuleName <Key>`), one Type2
+(`Get-DiffList -ModuleName <Key>`), one `$ModulePairs` entry, one `skip*` flag. The combined-diff +
+discriminator pattern (`Action` / `ConfigType`) is the right way to grow *within* a pair without adding
+modules. Route registry/service work through `Compare-RegistryBaseline` / `Compare-ServiceBaseline` and
+`Invoke-RegistryChangeItem` / `Invoke-ServiceChangeItem` rather than reimplementing inline — that's what
+kept SystemConfiguration small despite absorbing three former modules.
+
+_The automated checks used here (AST function/param contract, DiffKey contract, config drift,
+batch delayed-expansion audit) are worth re-running as a pre-commit gate — they found 5 of the 9 bugs above._

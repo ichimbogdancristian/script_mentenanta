@@ -1092,26 +1092,40 @@ function Set-RegistryValue {
 
 <#
 .SYNOPSIS
-    Runs an external executable (e.g. winget, choco) and returns its exit code.
+    Runs an external executable (e.g. winget, choco, dism) and returns its exit code.
 .DESCRIPTION
-    Wraps System.Diagnostics.Process for silent, non-interactive external
-    command execution.  Captures stdout/stderr so they don't pollute the
-    console and returns only the integer exit code.
-    Used by Type2 modules (EssentialApps, AppUpgrade) that invoke package
-    managers to install or upgrade software.
+    Wraps System.Diagnostics.Process for silent, non-interactive external command
+    execution. Captures stdout/stderr so they don't pollute the console and returns
+    only the integer exit code.
+
+    Two deliberate implementation details:
+
+    * BOTH pipes are drained ASYNCHRONOUSLY (ReadToEndAsync) before waiting. A
+      sequential `StandardOutput.ReadToEnd()` then `StandardError.ReadToEnd()` can
+      deadlock: if the child fills the stderr pipe buffer (~4KB) while we are blocked
+      reading stdout, neither side can progress. Verbose winget/DISM output reaches
+      that easily.
+    * WaitForExit takes a TIMEOUT and the process tree is killed if it elapses, so a
+      hung package manager can never hang the whole maintenance run.
 .PARAMETER FilePath
     Full path or name of the executable (resolved by the OS PATH).
 .PARAMETER ArgumentList
     Array of arguments passed to the executable.
+.PARAMETER TimeoutSeconds
+    Max seconds to wait before killing the process tree. Default 600. Pass 0 (or a
+    negative value) to wait indefinitely. Long operations should pass an explicit
+    value (e.g. DISM component cleanup uses 1800).
 .OUTPUTS
-    [int] — process exit code (0 typically means success).
+    [int] — process exit code (0 typically means success); -1 if the call timed out
+    and the process tree was killed.
 #>
 function Invoke-ExternalPackageCommand {
     [CmdletBinding()]
     [OutputType([int])]
     param(
         [Parameter(Mandatory)] [string]$FilePath,
-        [Parameter(Mandatory)] [string[]]$ArgumentList
+        [Parameter(Mandatory)] [string[]]$ArgumentList,
+        [int]$TimeoutSeconds = 600
     )
 
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
@@ -1124,11 +1138,36 @@ function Invoke-ExternalPackageCommand {
 
     $proc = [System.Diagnostics.Process]::new()
     $proc.StartInfo = $psi
-    $null = $proc.Start()
-    $null = $proc.StandardOutput.ReadToEnd()
-    $null = $proc.StandardError.ReadToEnd()
-    $proc.WaitForExit()
-    return $proc.ExitCode
+    try {
+        $null = $proc.Start()
+
+        # Start draining both pipes before waiting - see deadlock note above.
+        $outTask = $proc.StandardOutput.ReadToEndAsync()
+        $errTask = $proc.StandardError.ReadToEndAsync()
+
+        $exited = if ($TimeoutSeconds -gt 0) {
+            $proc.WaitForExit([int][Math]::Min($TimeoutSeconds * 1000L, [int]::MaxValue))
+        }
+        else {
+            $proc.WaitForExit(); $true
+        }
+
+        if (-not $exited) {
+            try { $proc.Kill($true) } catch { try { $proc.Kill() } catch { } }
+            Write-Log -Level WARN -Component CORE `
+                -Message "Timed out after ${TimeoutSeconds}s, process tree killed: $FilePath $($ArgumentList -join ' ')"
+            return -1
+        }
+
+        # Reap the readers so the pipes are fully consumed before we read ExitCode.
+        try { $null = $outTask.GetAwaiter().GetResult() } catch { }
+        try { $null = $errTask.GetAwaiter().GetResult() } catch { }
+
+        return $proc.ExitCode
+    }
+    finally {
+        $proc.Dispose()
+    }
 }
 
 #endregion

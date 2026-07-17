@@ -98,7 +98,9 @@ function Build-ReportHtml {
         elseif ($skipped -gt 0) { 'Completed with Skips' } `
         else { 'All tasks completed successfully' }
 
-    $moduleCards = ($SessionResults | ForEach-Object { Build-ModuleCard -Result $_ }) -join "`n"
+    # NOTE: cards are built once, below, grouped into $type1Cards / $type2Cards. Do not add an
+    # ungrouped "build every card" pass here - it is never emitted and doubles the work (each
+    # Build-ModuleCard call re-reads the module's diff file).
 
     # Error aggregation across all modules
     $allErrors = [System.Collections.Generic.List[string]]::new()
@@ -349,32 +351,22 @@ function Build-ModuleCard {
         $extraHtml = "<div class='extra'>$exRows</div>"
     }
 
-    # Detailed items from diff list (what was audited/changed)
+    # Detailed items from the diff list (what was audited/changed).
+    #
+    # A Type2 result's ModuleName already equals its DiffKey (e.g. 'SoftwareManagement'); a Type1
+    # result's is the audit function name ('SoftwareManagementAudit'). Stripping the 'Audit' suffix
+    # maps an audit back to the diff its pair shares. This replaces a hardcoded lookup table that
+    # still listed only pre-consolidation module names (BloatwareRemoval, EssentialApps,
+    # SecurityEnhancement, TelemetryDisable, SystemOptimization, AppUpgrade) and therefore silently
+    # dropped the detail section for every current audit card except WindowsUpdatesAudit.
     $detailHtml = ''
     $moduleName = $Result.ModuleName
-    $diffKey = $moduleName  # Try to load diff data for this module
     try {
-        $diffData = Get-DiffList -ModuleName $diffKey -ErrorAction SilentlyContinue
+        $diffData = Get-DiffList -ModuleName $moduleName
         if (-not $diffData -or $diffData.Count -eq 0) {
-            # Try common key mappings
-            $keyMap = @{
-                'BloatwareDetectionAudit' = 'BloatwareRemoval'
-                'BloatwareRemoval'        = 'BloatwareRemoval'
-                'EssentialAppsAudit'      = 'EssentialApps'
-                'EssentialApps'           = 'EssentialApps'
-                'SecurityAudit'           = 'SecurityEnhancement'
-                'SecurityEnhancement'     = 'SecurityEnhancement'
-                'TelemetryAudit'          = 'TelemetryDisable'
-                'TelemetryDisable'        = 'TelemetryDisable'
-                'SystemOptimizationAudit' = 'SystemOptimization'
-                'SystemOptimization'      = 'SystemOptimization'
-                'WindowsUpdatesAudit'     = 'WindowsUpdates'
-                'WindowsUpdates'          = 'WindowsUpdates'
-                'AppUpgradeAudit'         = 'AppUpgrade'
-                'AppUpgrade'              = 'AppUpgrade'
-            }
-            if ($keyMap[$moduleName]) {
-                $diffData = Get-DiffList -ModuleName $keyMap[$moduleName] -ErrorAction SilentlyContinue
+            $pairKey = $moduleName -replace 'Audit$', ''
+            if ($pairKey -ne $moduleName) {
+                $diffData = Get-DiffList -ModuleName $pairKey
             }
         }
         if ($diffData -and $diffData.Count -gt 0) {
