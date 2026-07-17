@@ -47,10 +47,13 @@ install/verify → launch `MaintenanceOrchestrator.ps1` under `pwsh`.
   `script_mentenanta-master\`, overwrites its own `script.bat`, and re-points the working
   directory into the extracted folder. Editing `script.bat` in place is overwritten on the
   next real run unless the change is also pushed to `master`.
-- **Log handoff:** the launcher writes a bootstrap log to `%TEMP%` and passes it via the
-  `BOOTSTRAP_LOG` env var; the orchestrator injects its contents into `maintenance.log` and
-  deletes it. `ORIGINAL_SCRIPT_DIR` env var tells the orchestrator where to copy the final
-  HTML report (the folder the user launched from, e.g. a USB drive).
+- **Unified `maintenance.log`:** the launcher creates `maintenance.log` next to `script.bat`
+  at the very first line (`:INIT_LOG`, append mode so elevation/PS7 relaunches continue it),
+  then after extraction migrates it into `<extracted>\temp_files\logs\` (`:MIGRATE_LOG`) and
+  passes that path via the `MAINTENANCE_LOG` env var. The orchestrator opens the SAME file in
+  append mode (`Initialize-Maintenance -LogPath`), so one log captures the whole run from launch
+  through the five stages. `ORIGINAL_SCRIPT_DIR` env var tells the orchestrator where to copy the
+  final HTML report (the folder the user launched from, e.g. a USB drive).
 
 ### Orchestrator: five stages
 [MaintenanceOrchestrator.ps1](MaintenanceOrchestrator.ps1) opens the structured log

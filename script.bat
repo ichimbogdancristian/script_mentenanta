@@ -54,23 +54,59 @@ IF DEFINED SYSTEM_PATH IF DEFINED USER_PATH (
 )
 EXIT /B
 
+:INIT_LOG
+REM Append a session banner to %LOG_FILE% (creates the file if it does not exist).
+REM Append mode means elevation/PS7 relaunches continue the same maintenance.log.
+FOR /F "tokens=1-4 delims=/ " %%A IN ('DATE /T') DO SET "BANNER_DATE=%%A %%B %%C %%D"
+FOR /F "tokens=1-2 delims=/:" %%A IN ('TIME /T') DO SET "BANNER_TIME=%%A:%%B"
+(
+    ECHO.
+    ECHO ================================================
+    ECHO  Windows Maintenance Automation - Launcher
+    ECHO  Session: %COMPUTERNAME% \ %USERNAME%
+    ECHO  Date: %BANNER_DATE%  Time: %BANNER_TIME%
+    ECHO ================================================
+) >> "%LOG_FILE%" 2>nul
+EXIT /B
+
+:MIGRATE_LOG
+REM Move maintenance.log from next-to-script.bat into the extracted repo's
+REM temp_files\logs and repoint LOG_FILE so the rest of the launcher (and then the
+REM orchestrator) keep writing to the same file in its permanent location.
+SET "MAINT_LOG_DEST_DIR=%EXTRACTED_PATH%\temp_files\logs"
+IF NOT EXIST "%MAINT_LOG_DEST_DIR%" MKDIR "%MAINT_LOG_DEST_DIR%" >nul 2>&1
+SET "MAINT_LOG_DEST=%MAINT_LOG_DEST_DIR%\maintenance.log"
+IF EXIST "%LOG_FILE%" MOVE /Y "%LOG_FILE%" "%MAINT_LOG_DEST%" >nul 2>&1
+SET "LOG_FILE=%MAINT_LOG_DEST%"
+CALL :LOG_MESSAGE "maintenance.log migrated to: %LOG_FILE%" "INFO" "LAUNCHER"
+EXIT /B
+
 :MAIN_SCRIPT
 
 REM -----------------------------------------------------------------------------
 REM Self-Discovery Environment Setup
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Starting Windows Maintenance Automation Launcher v2.0" "INFO" "LAUNCHER"
-CALL :LOG_MESSAGE "Environment: %USERNAME%@%COMPUTERNAME%" "INFO" "LAUNCHER"
-
-REM Enhanced path detection - works from any location
+REM Path detection FIRST - needed to place maintenance.log next to script.bat.
 SET "SCRIPT_PATH=%~f0"
 SET "SCRIPT_DIR=%~dp0"
 SET "SCRIPT_NAME=%~nx0"
 SET "WORKING_DIR=%SCRIPT_DIR%"
 
-REM v3.1 FIX: Store original script directory BEFORE any updates (used for log file location)
+REM Store original script directory BEFORE any updates (log location + report copy target)
 SET "ORIGINAL_SCRIPT_DIR=%SCRIPT_DIR%"
+
+REM -----------------------------------------------------------------------------
+REM Unified maintenance.log - created next to script.bat immediately so the whole run
+REM is captured from launch. After extraction it is migrated into temp_files\logs
+REM (see :MIGRATE_LOG) and both the launcher and orchestrator keep appending to it.
+REM -----------------------------------------------------------------------------
+SET "LOG_FILE=%ORIGINAL_SCRIPT_DIR%maintenance.log"
+CALL :INIT_LOG
+
+CALL :LOG_MESSAGE "Starting Windows Maintenance Automation Launcher v2.0" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Environment: %USERNAME%@%COMPUTERNAME%" "INFO" "LAUNCHER"
 CALL :LOG_MESSAGE "Original script directory stored: %ORIGINAL_SCRIPT_DIR%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "maintenance.log created next to script.bat: %LOG_FILE%" "INFO" "LAUNCHER"
 
 REM Robust Script Path Detection for Scheduled Tasks (use the exact running script path)
 SET "SCHEDULED_TASK_SCRIPT_PATH="
@@ -96,35 +132,7 @@ IF "%SCRIPT_PATH:~0,2%"=="\\" (
     CALL :LOG_MESSAGE "Running from local location: %SCRIPT_PATH%" "INFO" "LAUNCHER"
 )
 
-REM ============================================================================
-REM CRITICAL FIX: Use bootstrap log in TEMP until repository is extracted
-REM This ensures all logs end up in ONE location: extracted_repo\temp_files\logs
-REM ============================================================================
-SET "BOOTSTRAP_LOG=%TEMP%\maintenance_bootstrap_%RANDOM%.log"
-SET "LOG_FILE=%BOOTSTRAP_LOG%"
-
-REM Initialize bootstrap log with banner BEFORE any LOG_MESSAGE calls
-FOR /F "tokens=1-4 delims=/ " %%A IN ('DATE /T') DO SET "BANNER_DATE=%%A %%B %%C %%D"
-FOR /F "tokens=1-2 delims=/:" %%A IN ('TIME /T') DO SET "BANNER_TIME=%%A:%%B"
-
-(
-    ECHO ================================================
-    ECHO  Windows Maintenance Automation Launcher v2.0
-    ECHO ================================================
-    ECHO.
-    ECHO  Computer: %COMPUTERNAME%
-    ECHO  User: %USERNAME%
-    ECHO  Date: %BANNER_DATE%
-    ECHO  Time: %BANNER_TIME%
-    ECHO  Bootstrap Phase: Using temporary log until repository extraction
-    ECHO.
-    ECHO ================================================
-    ECHO.
-) > "%LOG_FILE%"
-
-CALL :LOG_MESSAGE "Bootstrap log initialized: %BOOTSTRAP_LOG% (will be consolidated after extraction)" "DEBUG" "LAUNCHER"
-
-REM Environment variables for PowerShell orchestrator
+REM Environment variables for PowerShell orchestrator (maintenance.log already open above)
 SET "WORKING_DIRECTORY=%WORKING_DIR%"
 SET "SCRIPT_LOG_FILE=%LOG_FILE%"
 
@@ -428,14 +436,13 @@ IF EXIST "%EXTRACTED_PATH%" (
     SET "WORKING_DIR=%EXTRACTED_PATH%\"
     SET "WORKING_DIRECTORY=%WORKING_DIR%"
     CALL :LOG_MESSAGE "Updated working directory to: %WORKING_DIR%" "INFO" "LAUNCHER"
-    
-    REM Keep bootstrap log alive - orchestrator will inject it into maintenance.log
-    REM via $env:BOOTSTRAP_LOG (inherited by the child pwsh process)
-    CALL :LOG_MESSAGE "Bootstrap log ready for orchestrator injection: %BOOTSTRAP_LOG%" "DEBUG" "LAUNCHER"
-    
-    REM Update environment variable for PowerShell orchestrator
-    SET "SCRIPT_LOG_FILE=%WORKING_DIR%temp_files\logs\maintenance.log"
-    CALL :LOG_MESSAGE "SCRIPT_LOG_FILE set for orchestrator: %SCRIPT_LOG_FILE%" "DEBUG" "LAUNCHER"
+
+    REM Migrate maintenance.log from next-to-script.bat into temp_files\logs and keep
+    REM writing there. The orchestrator appends to this same file (via MAINTENANCE_LOG).
+    CALL :MIGRATE_LOG
+    SET "SCRIPT_LOG_FILE=%LOG_FILE%"
+    SET "MAINTENANCE_LOG=%LOG_FILE%"
+    CALL :LOG_MESSAGE "Orchestrator will append to: %MAINTENANCE_LOG%" "DEBUG" "LAUNCHER"
     
     REM Set orchestrator path within the extracted folder
     IF EXIST "%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1" (
@@ -1397,14 +1404,14 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     SET "PS_ARGS=!PS_ARGS!Write-Host '✅ Maintenance session completed. You can close this window or run additional commands.' -ForegroundColor Green; "
     SET "PS_ARGS=!PS_ARGS!}"
     
-    REM Write all remaining launcher messages BEFORE START so the bootstrap log
-    REM is complete by the time the orchestrator reads and deletes it.
+    REM Write all remaining launcher lines BEFORE START so maintenance.log is complete
+    REM (the orchestrator opens the same file in append mode via MAINTENANCE_LOG).
     CALL :LOG_MESSAGE "Launching: \"%PS_EXECUTABLE%\" !PS_ARGS!" "DEBUG" "LAUNCHER"
     CALL :LOG_MESSAGE "PowerShell 7+ window launching - batch launcher exiting" "SUCCESS" "LAUNCHER"
     CALL :LOG_MESSAGE "All further operations will run in the dedicated PowerShell window" "INFO" "LAUNCHER"
-    CALL :LOG_MESSAGE "=== END OF LAUNCHER LOG ===" "INFO" "LAUNCHER"
-    
-    REM Clear LOG_FILE now so no stray write can race with the orchestrator's delete
+    CALL :LOG_MESSAGE "=== LAUNCHER HANDING OFF TO ORCHESTRATOR ===" "INFO" "LAUNCHER"
+
+    REM Stop launcher file writes so nothing races the orchestrator appending to the same log
     SET "LOG_FILE="
     
     START "Windows Maintenance Automation - PowerShell 7" "%PS_EXECUTABLE%" !PS_ARGS!

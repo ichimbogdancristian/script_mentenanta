@@ -48,7 +48,9 @@ if (-not $ProjectRoot) { $ProjectRoot = (Get-Location).Path }
 $TempDir = Join-Path $ProjectRoot 'temp_files'
 # maintenance.log = authoritative structured log (direct-write, auto-flushed by the
 # core logger). transcript.log = raw PowerShell transcript sidecar (native output).
-$LogPath = Join-Path $TempDir 'logs\maintenance.log'
+# script.bat creates maintenance.log at launch and migrates it into temp_files\logs,
+# passing the path via $env:MAINTENANCE_LOG so this process appends to the SAME file.
+$LogPath = if ($env:MAINTENANCE_LOG) { $env:MAINTENANCE_LOG } else { Join-Path $TempDir 'logs\maintenance.log' }
 $TranscriptPath = Join-Path $TempDir 'logs\transcript.log'
 
 # Create temp_files structure before transcript starts
@@ -96,23 +98,13 @@ catch {
     exit 1
 }
 
-# Initialise (sets env vars, creates temp dirs, opens maintenance.log)
-Initialize-Maintenance -ProjectRoot $ProjectRoot
+# Initialise (sets env vars, creates temp dirs, opens/append maintenance.log). The
+# launcher already wrote its phase into this same file, so we just continue appending.
+Initialize-Maintenance -ProjectRoot $ProjectRoot -LogPath $LogPath
 
-# Fold the launcher bootstrap log into maintenance.log (and echo to console), now that
-# the log writer is open. script.bat passes its temp log path via $env:BOOTSTRAP_LOG.
-if ($env:BOOTSTRAP_LOG -and (Test-Path $env:BOOTSTRAP_LOG)) {
-    Add-LogRaw ('=' * 70)
-    Add-LogRaw '  LAUNCHER LOG  (script.bat — pre-orchestrator phase)'
-    Add-LogRaw ('=' * 70)
-    Write-Host ('  Launcher log folded into maintenance.log') -ForegroundColor DarkGray
-    Get-Content $env:BOOTSTRAP_LOG | ForEach-Object { Add-LogRaw $_ }
-    Add-LogRaw ('=' * 70)
-    Add-LogRaw '  END LAUNCHER LOG'
-    Add-LogRaw ('=' * 70)
-    Remove-Item $env:BOOTSTRAP_LOG -Force -ErrorAction SilentlyContinue
-    [System.Environment]::SetEnvironmentVariable('BOOTSTRAP_LOG', $null, 'Process')
-}
+Add-LogRaw ('=' * 70)
+Add-LogRaw "  ORCHESTRATOR SESSION START  $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+Add-LogRaw ('=' * 70)
 
 #endregion
 
@@ -495,24 +487,39 @@ else {
 }
 
 $reportFile = $null
-try {
-    $reportFile = New-MaintenanceReport -SessionResults $SessionResults.ToArray() `
-        -OSContext      $global:OSContext `
-        -TranscriptPath $LogPath `
-        -ReportTitle    'Windows Maintenance Report'
+$destReport = $null
 
-    Write-Log -Level SUCCESS -Component ORCH -Message "Report: $reportFile"
+# (Re)generate the HTML report embedding the CURRENT maintenance.log and copy it to the
+# launcher folder. Called here in Stage 4 (so a report survives a later crash) and again
+# right before cleanup deletes the project folder — that second call captures the full log
+# (incl. Stage 5) into the copy that survives, since the on-disk maintenance.log is deleted.
+function Publish-MaintenanceReport {
+    [CmdletBinding()]
+    param()
+    try {
+        $rf = New-MaintenanceReport -SessionResults $SessionResults.ToArray() `
+            -OSContext      $global:OSContext `
+            -TranscriptPath $LogPath `
+            -ReportTitle    'Windows Maintenance Report'
 
-    # Copy report to the folder where script.bat was launched from (e.g. USB drive / Desktop)
-    $launcherDir = $env:ORIGINAL_SCRIPT_DIR
-    $copyTarget = if ($launcherDir -and (Test-Path $launcherDir)) { $launcherDir } else { $ProjectRoot }
-    $destReport = Join-Path $copyTarget (Split-Path $reportFile -Leaf)
-    Copy-Item -Path $reportFile -Destination $destReport -Force
-    Write-Log -Level SUCCESS -Component ORCH -Message "Report also saved to: $destReport"
+        $launcherDir = $env:ORIGINAL_SCRIPT_DIR
+        $copyTarget = if ($launcherDir -and (Test-Path $launcherDir)) { $launcherDir } else { $ProjectRoot }
+        $dest = Join-Path $copyTarget (Split-Path $rf -Leaf)
+        # Avoid leaving two copies in the launcher folder if the filename changed.
+        if ($script:destReport -and $script:destReport -ne $dest -and (Test-Path $script:destReport)) {
+            Remove-Item $script:destReport -Force -ErrorAction SilentlyContinue
+        }
+        Copy-Item -Path $rf -Destination $dest -Force
+        $script:reportFile = $rf
+        $script:destReport = $dest
+        Write-Log -Level SUCCESS -Component ORCH -Message "Report published to: $dest"
+    }
+    catch {
+        Write-Log -Level ERROR -Component ORCH -Message "Report generation failed: $_"
+    }
 }
-catch {
-    Write-Log -Level ERROR -Component ORCH -Message "Report generation failed: $_"
-}
+
+Publish-MaintenanceReport
 
 #endregion
 
@@ -557,11 +564,13 @@ if ($doReboot -and $rebootOnlyWhenRequired) {
     }
     if (-not $needsReboot) {
         Write-Host "  [INFO] Reboot skipped — no module flagged a reboot requirement." -ForegroundColor Cyan
+        Write-Log -Level INFO -Component ORCH -Message "Stage 5: reboot skipped — no module flagged a reboot requirement."
         $doReboot = $false
     }
     else {
         $rebootModules = ($needsReboot | ForEach-Object { $_.ModuleName }) -join ', '
         Write-Host "  [INFO] Reboot required by: $rebootModules" -ForegroundColor Yellow
+        Write-Log -Level WARN -Component ORCH -Message "Stage 5: reboot required by: $rebootModules"
     }
 }
 
@@ -578,6 +587,10 @@ if (-not $doReboot) {
     Write-Host ""
 
     if ($doCleanup) {
+        Write-Log -Level INFO -Component ORCH -Message "No reboot required; cleaning up. Refreshing report so the full log is embedded before deletion."
+        # Regenerate so the surviving report copy embeds the complete maintenance.log
+        # (the on-disk log is deleted with the folder below).
+        Publish-MaintenanceReport
         Write-Host "  Removing project folder..." -ForegroundColor DarkGray
         Remove-DefenderSessionExclusions -WorkingDir $ProjectRoot
         try {
@@ -639,6 +652,8 @@ if ($aborted) {
     Write-Host "     Project files kept at: $ProjectRoot" -ForegroundColor Cyan
     if ($reportFile) { Write-Host "     Report saved at:   $reportFile" -ForegroundColor Cyan }
     Write-Host ""
+    # Files are kept, so maintenance.log survives on disk; no republish needed.
+    Write-Log -Level INFO -Component ORCH -Message "Stage 5: reboot aborted by user — project files (and maintenance.log) kept."
     exit 0
 }
 
@@ -646,8 +661,13 @@ if ($aborted) {
 
 Write-Host ""
 Write-Host "  Countdown complete. Proceeding with cleanup and reboot..." -ForegroundColor Yellow
+Write-Log -Level INFO -Component ORCH -Message "Countdown elapsed; proceeding with cleanup and reboot."
 
 if ($doCleanup) {
+    Write-Log -Level INFO -Component ORCH -Message "Cleaning up. Refreshing report so the full log is embedded before deletion."
+    # Regenerate so the surviving report copy embeds the complete maintenance.log
+    # (the on-disk log is deleted with the folder below, before the reboot).
+    Publish-MaintenanceReport
     Write-Host "  Removing project folder: $ProjectRoot ..." -ForegroundColor DarkGray
     Remove-DefenderSessionExclusions -WorkingDir $ProjectRoot
     try {

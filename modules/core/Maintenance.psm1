@@ -34,12 +34,17 @@ Set-StrictMode -Version 1.0
     Initializes path environment variables from the known project root.
 .PARAMETER ProjectRoot
     Absolute path to the project folder (where script.bat lives).
+.PARAMETER LogPath
+    Optional explicit path for maintenance.log. When script.bat has already created and
+    migrated the log (passed via $env:MAINTENANCE_LOG), the orchestrator supplies that path
+    so both processes append to the SAME file. Defaults to temp_files\logs\maintenance.log.
 #>
 function Initialize-Maintenance {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [string]$ProjectRoot
+        [string]$ProjectRoot,
+        [string]$LogPath
     )
     $env:MAINT_ROOT = $ProjectRoot
     $env:MAINT_CONFIG = Join-Path $ProjectRoot 'config'
@@ -56,7 +61,9 @@ function Initialize-Maintenance {
 
     # Open the authoritative, auto-flushed maintenance.log (default levels; the
     # orchestrator re-applies configured levels after main-config.json loads).
-    Initialize-LogFile -Path (Join-Path $env:MAINT_TEMP 'logs\maintenance.log')
+    # Prefer the explicit path the launcher already created & migrated, else default.
+    if (-not $LogPath) { $LogPath = Join-Path $env:MAINT_TEMP 'logs\maintenance.log' }
+    Initialize-LogFile -Path $LogPath
 
     Write-Log -Level INFO -Component CORE -Message "Maintenance initialized. Root: $ProjectRoot"
 }
