@@ -32,8 +32,14 @@ IF "%COMPONENT%"=="" SET "COMPONENT=LAUNCHER"
 REM Unified format: [TIMESTAMP] [LEVEL] [COMPONENT] MESSAGE
 SET "LOG_ENTRY=[%LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] %~1"
 
-ECHO %LOG_ENTRY%
-IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
+REM Use DELAYED expansion (!LOG_ENTRY!) for the echoed text: with %LOG_ENTRY% the value is
+REM substituted at parse time, so any >, <, & or | inside a message is treated as a shell
+REM operator. That silently truncated messages and created stray files
+REM (e.g. "...allocation is sufficient (5 GB >= 10 GB)" echoed only "...sufficient (5 GB").
+REM Delayed expansion substitutes AFTER parsing, so the text stays literal.
+REM Console shows INFO/SUCCESS/WARN/ERROR; DEBUG goes to maintenance.log only.
+IF /I NOT "%LEVEL%"=="DEBUG" ECHO !LOG_ENTRY!
+IF EXIST "%LOG_FILE%" ECHO !LOG_ENTRY!>>"%LOG_FILE%" 2>nul
 EXIT /B
 
 :REFRESH_TOOL_PATHS
@@ -407,26 +413,21 @@ SET "EXTRACTED_PATH=%WORKING_DIR%%EXTRACT_FOLDER%"
 IF EXIST "%EXTRACTED_PATH%" (
     CALL :LOG_MESSAGE "Repository extracted to: %EXTRACTED_PATH%" "SUCCESS" "LAUNCHER"
     
-    REM Replace script.bat with the one from extracted folder
+    REM ---------------------------------------------------------------------------------
+    REM Self-update: DEFERRED ON PURPOSE - do NOT overwrite script.bat while it is running.
+    REM
+    REM cmd.exe streams a .bat file from disk by BYTE OFFSET as it executes. Replacing the
+    REM file mid-run makes execution resume at that same offset inside the NEW content, so
+    REM it jumps into the middle of unrelated code. Observed symptoms: the launcher skipped
+    REM the whole PS7-detection section, logged mutually exclusive IF/ELSE branches together,
+    REM and then launched the orchestrator with an EMPTY PS_EXECUTABLE (the "crash").
+    REM
+    REM The orchestrator (a separate pwsh process that starts after this launcher exits)
+    REM performs the copy instead - see PENDING_SCRIPT_UPDATE below.
+    REM ---------------------------------------------------------------------------------
     IF EXIST "%EXTRACTED_PATH%\script.bat" (
-        CALL :LOG_MESSAGE "Updating script.bat from extracted repository" "INFO" "LAUNCHER"
-        
-        REM Use ORIGINAL_SCRIPT_DIR to ensure we overwrite the correct script.bat location
-        SET "ORIGINAL_SCRIPT_BAT=%ORIGINAL_SCRIPT_DIR%script.bat"
-        SET "BACKUP_SCRIPT=%ORIGINAL_SCRIPT_DIR:~0,-1%.bat.backup"
-        
-        IF EXIST "%ORIGINAL_SCRIPT_BAT%" (
-            COPY /Y "%ORIGINAL_SCRIPT_BAT%" "%BACKUP_SCRIPT%" >nul 2>&1
-            CALL :LOG_MESSAGE "Original script.bat backed up to: %BACKUP_SCRIPT%" "DEBUG" "LAUNCHER"
-        )
-        
-        REM Copy extracted script.bat to original location
-        COPY /Y "%EXTRACTED_PATH%\script.bat" "%ORIGINAL_SCRIPT_BAT%" >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Successfully replaced script.bat with version from repository at: !ORIGINAL_SCRIPT_BAT!" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "Failed to replace script.bat at %ORIGINAL_SCRIPT_BAT% - continuing with current version" "WARN" "LAUNCHER"
-        )
+        SET "PENDING_SCRIPT_UPDATE=%EXTRACTED_PATH%\script.bat"
+        CALL :LOG_MESSAGE "script.bat self-update deferred to the orchestrator (a running .bat cannot safely overwrite itself)" "INFO" "LAUNCHER"
     ) ELSE (
         CALL :LOG_MESSAGE "No script.bat found in extracted repository" "WARN" "LAUNCHER"
     )
@@ -439,8 +440,10 @@ IF EXIST "%EXTRACTED_PATH%" (
     REM Migrate maintenance.log from next-to-script.bat into temp_files\logs and keep
     REM writing there. The orchestrator appends to this same file (via MAINTENANCE_LOG).
     CALL :MIGRATE_LOG
-    SET "SCRIPT_LOG_FILE=%LOG_FILE%"
-    SET "MAINTENANCE_LOG=%LOG_FILE%"
+    REM !LOG_FILE! (delayed) - %LOG_FILE% would capture the stale PRE-migration path, and the
+    REM orchestrator would then open/append to the wrong maintenance.log.
+    SET "SCRIPT_LOG_FILE=!LOG_FILE!"
+    SET "MAINTENANCE_LOG=!LOG_FILE!"
     CALL :LOG_MESSAGE "Orchestrator will append to: !MAINTENANCE_LOG!" "DEBUG" "LAUNCHER"
     
     REM Set orchestrator path within the extracted folder
@@ -881,12 +884,14 @@ IF "%PS7_FOUND%"=="NO" (
             REM Create restart flag with timestamp to prevent infinite loops
             ECHO POWERSHELL_RESTART_%DATE:~-4,4%%DATE:~-10,2%%DATE:~-7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2% > "%WORKING_DIR%restart_flag.tmp"
 
-            REM Restart the script with a fresh environment (give Windows a moment to update PATH)
+            REM Restart the script with a fresh environment (give Windows a moment to update PATH).
+            REM No /WAIT: the relaunched instance takes over, so this window must close instead
+            REM of sitting idle behind it until the whole run finishes.
             TIMEOUT /T 3 /NOBREAK >nul 2>&1
-            START "" /WAIT cmd.exe /C ""%SCRIPT_PATH%" %*"
+            START "" cmd.exe /C ""%SCRIPT_PATH%" %*"
 
-            REM Exit current instance after new instance completes
-            EXIT /B !ERRORLEVEL!
+            REM Hand off to the new instance and close this window
+            EXIT /B 0
         )
     ) ELSE (
         CALL :LOG_MESSAGE "All automated installation methods for PowerShell 7 failed." "ERROR" "LAUNCHER"

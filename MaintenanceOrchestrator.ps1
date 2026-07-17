@@ -521,6 +521,28 @@ function Publish-MaintenanceReport {
 
 Publish-MaintenanceReport
 
+# ── Deferred self-update ───────────────────────────────────────────────────────────
+# script.bat cannot overwrite itself while cmd.exe is streaming it from disk (doing so
+# makes execution resume at the same byte offset inside the new content and jump into
+# unrelated code). The launcher therefore hands the freshly-extracted copy to us via
+# $env:PENDING_SCRIPT_UPDATE, and we copy it into the launcher folder from this separate
+# process, after the launcher has exited.
+if ($env:PENDING_SCRIPT_UPDATE -and (Test-Path $env:PENDING_SCRIPT_UPDATE)) {
+    try {
+        $launcherDir = $env:ORIGINAL_SCRIPT_DIR
+        if ($launcherDir -and (Test-Path $launcherDir)) {
+            $destBat = Join-Path $launcherDir 'script.bat'
+            $backupBat = Join-Path $launcherDir 'script.bat.backup'
+            if (Test-Path $destBat) { Copy-Item -Path $destBat -Destination $backupBat -Force -ErrorAction SilentlyContinue }
+            Copy-Item -Path $env:PENDING_SCRIPT_UPDATE -Destination $destBat -Force -ErrorAction Stop
+            Write-Log -Level SUCCESS -Component ORCH -Message "script.bat self-update applied: $destBat (backup: $backupBat)"
+        }
+    }
+    catch {
+        Write-Log -Level WARN -Component ORCH -Message "script.bat self-update failed: $_"
+    }
+}
+
 #endregion
 
 #region ─── STAGE 5: COUNTDOWN + CLEANUP + REBOOT ─────────────────────────────
