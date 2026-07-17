@@ -228,16 +228,18 @@ function Invoke-SystemConfiguration {
                 'security' {
                     switch ($type) {
                         'registry' {
-                            $backup = Backup-RegistryValue -Path $item.Path -Name $item.ValueName
-                            $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
-                            if ($changed) {
-                                $verified = Test-RegistryValueApplied -Path $item.Path -Name $item.ValueName -ExpectedValue $item.DesiredValue
-                                if (-not $verified) {
-                                    Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$($item.ValueName)"
-                                    if ($backup) { Restore-RegistryValue -Backup $backup | Out-Null }
-                                    $errors += "[Verification Failed] $name"; $failed++; $changed = $false
+                            $vname = $item.ValueName ?? $item.Name
+                            if ($vname) {
+                                $backup = Backup-RegistryValue -Path $item.Path -Name $vname
+                                $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
+                                if ($changed) {
+                                    $verified = Test-RegistryValueApplied -Path $item.Path -Name $vname -ExpectedValue $item.DesiredValue
+                                    if (-not $verified) {
+                                        Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$vname"
+                                        if ($backup) { Restore-RegistryValue -Backup $backup | Out-Null }
+                                        $errors += "[Verification Failed] $name"; $failed++; $changed = $false
+                                    }
                                 }
-                                $registryBackups += $backup
                             }
                         }
                         'service' { $changed = Invoke-ServiceChangeItem -Item $item -Component 'CONFIG' }
@@ -286,16 +288,18 @@ function Invoke-SystemConfiguration {
                     switch ($type) {
                         'service' { $changed = Invoke-ServiceChangeItem -Item $item -Component 'CONFIG' }
                         'registry' {
-                            $backup = Backup-RegistryValue -Path $item.Path -Name $item.ValueName
-                            $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
-                            if ($changed) {
-                                $verified = Test-RegistryValueApplied -Path $item.Path -Name $item.ValueName -ExpectedValue $item.DesiredValue
-                                if (-not $verified) {
-                                    Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$($item.ValueName)"
-                                    if ($backup) { Restore-RegistryValue -Backup $backup | Out-Null }
-                                    $errors += "[Verification Failed] $name"; $failed++; $changed = $false
+                            $vname = $item.ValueName ?? $item.Name
+                            if ($vname) {
+                                $backup = Backup-RegistryValue -Path $item.Path -Name $vname
+                                $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
+                                if ($changed) {
+                                    $verified = Test-RegistryValueApplied -Path $item.Path -Name $vname -ExpectedValue $item.DesiredValue
+                                    if (-not $verified) {
+                                        Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$vname"
+                                        if ($backup) { Restore-RegistryValue -Backup $backup | Out-Null }
+                                        $errors += "[Verification Failed] $name"; $failed++; $changed = $false
+                                    }
                                 }
-                                $registryBackups += $backup
                             }
                         }
                         'scheduledtask' {
@@ -317,16 +321,18 @@ function Invoke-SystemConfiguration {
                     switch ($type) {
                         'service' { $changed = Invoke-ServiceChangeItem -Item $item -Component 'CONFIG' }
                         'registry' {
-                            $backup = Backup-RegistryValue -Path $item.Path -Name $item.ValueName
-                            $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
-                            if ($changed) {
-                                $verified = Test-RegistryValueApplied -Path $item.Path -Name $item.ValueName -ExpectedValue $item.DesiredValue
-                                if (-not $verified) {
-                                    Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$($item.ValueName)"
-                                    if ($backup) { Restore-RegistryValue -Backup $backup | Out-Null }
-                                    $errors += "[Verification Failed] $name"; $failed++; $changed = $false
+                            $vname = $item.ValueName ?? $item.Name
+                            if ($vname) {
+                                $backup = Backup-RegistryValue -Path $item.Path -Name $vname
+                                $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
+                                if ($changed) {
+                                    $verified = Test-RegistryValueApplied -Path $item.Path -Name $vname -ExpectedValue $item.DesiredValue
+                                    if (-not $verified) {
+                                        Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$vname"
+                                        if ($backup) { Restore-RegistryValue -Backup $backup | Out-Null }
+                                        $errors += "[Verification Failed] $name"; $failed++; $changed = $false
+                                    }
                                 }
-                                $registryBackups += $backup
                             }
                         }
                         'powerplan' {
