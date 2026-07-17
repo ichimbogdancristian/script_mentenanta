@@ -127,6 +127,13 @@ console defaults to INFO, file to DEBUG, both overridable via the `logging` bloc
   (audit side, emit diff items) and `Invoke-RegistryChangeItem` / `Invoke-ServiceChangeItem`
   (action side, apply one item). Registry/service audit and action modules should route through
   these rather than reimplementing the compare/set logic inline.
+- **Registry safety pattern:** High-risk Type2 modules that modify registry (e.g., `SystemConfiguration`)
+  wrap registry changes with backup/verify/rollback:
+  1. `Backup-RegistryValue` captures current state before change (or use in-module equivalent)
+  2. Apply change via `Set-RegistryValue` or `Invoke-RegistryChangeItem`
+  3. `Test-RegistryValueApplied` verifies change took effect (post-write validation)
+  4. If verification fails, `Restore-RegistryValue` rolls back automatically
+  This pattern prevents system corruption from failed registry writes.
 
 ### Config and generated files
 - `config/settings/main-config.json` — execution/shutdown behavior and per-module `skip*` flags.
