@@ -64,8 +64,8 @@ function Invoke-SoftwareManagement {
             $removed = $false
 
             if ($pkgName) {
-                $pkg = Get-AppxPackageCompat -Name "*$pkgName*" -AllUsers
-                if (-not $pkg) { $pkg = Get-AppxPackageCompat -Name "*$pkgName*" }
+                $pkg = Get-AppxPackageCompat -Name $pkgName -AllUsers -ErrorAction SilentlyContinue
+                if (-not $pkg) { $pkg = Get-AppxPackageCompat -Name "*$pkgName*" -AllUsers -ErrorAction SilentlyContinue }
                 if ($pkg) {
                     $pkg | ForEach-Object { Remove-AppxPackageCompat -PackageFullName $_.PackageFullName -AllUsers }
                     Write-Log -Level SUCCESS -Component SOFTWARE -Message "Removed AppX: $pkgName"

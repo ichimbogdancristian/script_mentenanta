@@ -71,11 +71,29 @@ function Invoke-SoftwareManagementAudit {
             } | Select-Object -Unique
 
             $combined = @(@($appxDiff) + @($regDiff)) | Select-Object -Unique
+            $hasWinget = Test-CommandAvailable 'winget'
+
             foreach ($name in $combined) {
+                $wingetId = ''
+
+                # Try to find winget ID for fallback removal (AppX may fail on some systems)
+                if ($hasWinget) {
+                    try {
+                        $searchResult = & winget search --name $name --accept-source-agreements --disable-interactivity 2>&1 | Select-Object -First 2
+                        if ($searchResult -match '^\s*(\S+)\s+') {
+                            $wingetId = $Matches[1]
+                        }
+                    }
+                    catch {
+                        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Winget search failed for '$name' (will continue without winget fallback)"
+                    }
+                }
+
                 $diff.Add(@{
                         Action      = 'remove'
                         Name        = $name
                         PackageName = $name
+                        WingetId    = $wingetId
                     })
                 $removeFound++
             }

@@ -1,11 +1,4 @@
-[
-  {
-    "name": "PowerShell 7",
-    "winget": "Microsoft.Powershell",
-    "choco": "powershell",
-    "category": "System",
-    "description": "Modern PowerShell cross-platform"
-  },
+[  
   {
     "name": "Windows Terminal",
     "winget": "Microsoft.WindowsTerminal",

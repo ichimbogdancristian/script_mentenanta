@@ -181,6 +181,26 @@ $ModulePairs = @(
         Type2File  = ''   # No Type2 pair
         Type2Func  = ''
         ConfigSkip = ''
+    },
+    @{
+        Num        = 6
+        Label      = 'System Health (Events, Defender, Exclusions - report only)'
+        DiffKey    = 'SystemHealth'
+        Type1File  = 'modules\type1\SystemHealthAudit.psm1'
+        Type1Func  = 'Invoke-SystemHealthAudit'
+        Type2File  = ''   # No Type2 pair
+        Type2Func  = ''
+        ConfigSkip = ''
+    },
+    @{
+        Num        = 7
+        Label      = 'Restore Point Management (Create/Consolidate)'
+        DiffKey    = 'RestorePoint'
+        Type1File  = 'modules\type1\RestorePointAudit.psm1'
+        Type1Func  = 'Invoke-RestorePointAudit'
+        Type2File  = 'modules\type2\RestorePointManagement.psm1'
+        Type2Func  = 'Invoke-RestorePointManagement'
+        ConfigSkip = 'skipRestorePointManagement'
     }
 )
 

@@ -50,7 +50,7 @@ function Invoke-DiskCleanup {
                         # folder with the right permissions is the browser/OS's job, not ours.
                         # Locked files (in-use by a running browser/process) are expected and
                         # non-fatal: partial cleanup of an active cache is still a success.
-                        Get-ChildItem -Path $path -Force -ErrorAction SilentlyContinue | ForEach-Object {
+                        @(Get-ChildItem -Path $path -Force -ErrorAction SilentlyContinue) | ForEach-Object {
                             Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
                         }
                         $remainingMB = 0
@@ -133,7 +133,7 @@ function Invoke-DiskCleanup {
     }
 
     $reclaimedMB = [math]::Round($reclaimedMB, 1)
-    $reclaimedByCategory.Keys | ForEach-Object { $reclaimedByCategory[$_] = [math]::Round($reclaimedByCategory[$_], 1) }
+    @($reclaimedByCategory.Keys) | ForEach-Object { $reclaimedByCategory[$_] = [math]::Round($reclaimedByCategory[$_], 1) }
 
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
     Write-Log -Level INFO -Component DISKCLEAN -Message "Done: $processed cleaned, $failed failed, ~$reclaimedMB MB reclaimed"

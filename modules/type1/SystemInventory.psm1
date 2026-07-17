@@ -75,18 +75,67 @@ function Invoke-SystemInventory {
         }
         catch { Write-Log -Level WARN -Component INVENTORY -Message "Disk query failed: $_" }
 
-        # Network adapters
+        # Network adapters & DNS
         try {
             $nics = Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=True' -ErrorAction Stop
             $inv.Network = @($nics | ForEach-Object {
                 @{
                     Description = $_.Description
                     MAC         = $_.MACAddress
-                    IPs         = $_.IPAddress
+                    IPs         = @($_.IPAddress | Where-Object { $_ })
+                    DNSServers  = @($_.DNSServerSearchOrder | Where-Object { $_ })
                 }
             })
         }
         catch { Write-Log -Level WARN -Component INVENTORY -Message "Network query failed: $_" }
+
+        # External IP address
+        try {
+            $externalIP = $null
+            $result = Invoke-RestMethod -Uri 'https://api.ipify.org?format=json' -TimeoutSec 5 -ErrorAction Stop
+            if ($result.ip) { $externalIP = $result.ip }
+            $inv.ExternalIP = @{ Address = $externalIP ?? 'Unable to determine' }
+            Write-Log -Level DEBUG -Component INVENTORY -Message "External IP: $($inv.ExternalIP.Address)"
+        }
+        catch {
+            Write-Log -Level WARN -Component INVENTORY -Message "External IP query failed (non-critical): $_"
+            $inv.ExternalIP = @{ Address = 'Unable to determine' }
+        }
+
+        # OS Users (exclude system accounts)
+        try {
+            $systemAccounts = @('Administrator', 'Guest', 'DefaultAccount', 'WDAGUtilityAccount', 'SYSTEM', 'LOCAL SERVICE', 'NETWORK SERVICE')
+            $localUsers = @(Get-LocalUser -ErrorAction Stop |
+                Where-Object { $_.Enabled -and $_.Name -notin $systemAccounts } |
+                ForEach-Object {
+                    @{
+                        Name       = $_.Name
+                        FullName   = $_.FullName
+                        Enabled    = $_.Enabled
+                        LastLogon  = if ($_.LastLogon) { $_.LastLogon.ToString('yyyy-MM-dd HH:mm:ss') } else { 'Never' }
+                    }
+                })
+            $inv.LocalUsers = $localUsers
+            Write-Log -Level DEBUG -Component INVENTORY -Message "Local users found: $($localUsers.Count)"
+        }
+        catch { Write-Log -Level WARN -Component INVENTORY -Message "Local users query failed: $_"; $inv.LocalUsers = @() }
+
+        # System Restore Points
+        try {
+            $restorePoints = @(Get-ComputerRestorePoint -ErrorAction Stop | Sort-Object -Property CreationTime -Descending |
+                ForEach-Object {
+                    @{
+                        SequenceNumber = $_.SequenceNumber
+                        Description    = $_.Description
+                        CreationTime   = $_.CreationTime.ToString('yyyy-MM-dd HH:mm:ss')
+                        EventType      = $_.EventType
+                        RestorePointType = $_.RestorePointType
+                    }
+                })
+            $inv.RestorePoints = $restorePoints
+            Write-Log -Level DEBUG -Component INVENTORY -Message "Restore points found: $($restorePoints.Count)"
+        }
+        catch { Write-Log -Level WARN -Component INVENTORY -Message "Restore points query failed: $_"; $inv.RestorePoints = @() }
 
         # Installed apps count
         try {
