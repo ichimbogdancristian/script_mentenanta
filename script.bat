@@ -1006,20 +1006,49 @@ IF DEFINED PWSH_PATH (
     SET "AUTO_NONINTERACTIVE=YES"
     CALL :LOG_MESSAGE "Using PowerShell 7+: !PWSH_PATH!" "SUCCESS" "LAUNCHER"
 ) ELSE (
-    CALL :LOG_MESSAGE "CRITICAL: no usable PowerShell 7+ found after install attempts" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "The orchestrator requires PS7+; Windows PowerShell 5.1 cannot run it." "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Install manually: winget install --id Microsoft.PowerShell --source winget" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  or download from https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
-    REM No PAUSE here: a PAUSE blocks an unattended/scheduled run forever. Short timeout so
-    REM an interactive user can read the error, then exit with a failure code.
-    TIMEOUT /T 20 >nul 2>&1
-    EXIT /B 1
+    REM Try refreshing PATH and retry once (handles stale WindowsApps alias on re-run)
+    CALL :LOG_MESSAGE "PowerShell 7+ not found on first attempt, refreshing PATH and retrying..." "WARN" "LAUNCHER"
+    CALL :REFRESH_TOOL_PATHS
+    CALL :FIND_PWSH
+
+    IF DEFINED PWSH_PATH (
+        SET "PS_EXECUTABLE=!PWSH_PATH!"
+        SET "AUTO_NONINTERACTIVE=YES"
+        CALL :LOG_MESSAGE "Using PowerShell 7+ (found after PATH refresh): !PWSH_PATH!" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        REM Final fallback: check known installation path directly
+        IF EXIST "C:\Program Files\PowerShell\7\pwsh.exe" (
+            SET "PS_EXECUTABLE=C:\Program Files\PowerShell\7\pwsh.exe"
+            SET "AUTO_NONINTERACTIVE=YES"
+            CALL :LOG_MESSAGE "Using PowerShell 7+ (direct path fallback): !PS_EXECUTABLE!" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "CRITICAL: no usable PowerShell 7+ found after install attempts" "ERROR" "LAUNCHER"
+            CALL :LOG_MESSAGE "The orchestrator requires PS7+; Windows PowerShell 5.1 cannot run it." "ERROR" "LAUNCHER"
+            CALL :LOG_MESSAGE "Install manually: winget install --id Microsoft.PowerShell --source winget" "ERROR" "LAUNCHER"
+            CALL :LOG_MESSAGE "  or download from https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
+            REM No PAUSE here: a PAUSE blocks an unattended/scheduled run forever. Short timeout so
+            REM an interactive user can read the error, then exit with a failure code.
+            TIMEOUT /T 20 >nul 2>&1
+            EXIT /B 1
+        )
+    )
 )
 
 REM -----------------------------------------------------------------------------
 REM System Restore Point Creation (before orchestrator execution)
 REM Includes: Availability check, space allocation (minimum 10GB), and creation
+REM DEFENSIVE: Verify PS_EXECUTABLE is actually set and accessible before using it
 REM -----------------------------------------------------------------------------
+IF NOT DEFINED PS_EXECUTABLE (
+    CALL :LOG_MESSAGE "System Protection check failed (PowerShell not available) - skipping restore point" "WARN" "LAUNCHER"
+    GOTO SKIP_RESTORE_POINT
+)
+
+IF NOT EXIST "%PS_EXECUTABLE%" (
+    CALL :LOG_MESSAGE "System Protection check failed (PowerShell executable not found) - skipping restore point" "WARN" "LAUNCHER"
+    GOTO SKIP_RESTORE_POINT
+)
+
 CALL :LOG_MESSAGE "Checking System Protection status..." "INFO" "LAUNCHER"
 
 SET "SYS_DRIVE=%SystemDrive%"
@@ -1028,14 +1057,14 @@ SET "SR_VERIFY_STATUS=UNKNOWN"
 SET "MIN_RESTORE_SPACE_GB=10"
 
 REM Simple check for System Protection availability
-FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Stop'; if (Get-Command 'Get-ComputerRestorePoint' -ErrorAction SilentlyContinue) { try { $rp = Get-ComputerRestorePoint -ErrorAction SilentlyContinue; Write-Host 'SR_AVAILABLE' } catch { Write-Host 'SR_ERROR' } } else { Write-Host 'SR_NOT_SUPPORTED' } } catch { Write-Host 'SR_FAILED' }" 2^>nul`) DO SET "SR_CHECK=%%i"
+FOR /F "usebackq tokens=* delims=" %%i IN (`"%PS_EXECUTABLE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Stop'; if (Get-Command 'Get-ComputerRestorePoint' -ErrorAction SilentlyContinue) { try { $rp = Get-ComputerRestorePoint -ErrorAction SilentlyContinue; Write-Host 'SR_AVAILABLE' } catch { Write-Host 'SR_ERROR' } } else { Write-Host 'SR_NOT_SUPPORTED' } } catch { Write-Host 'SR_FAILED' }" 2^>nul`) DO SET "SR_CHECK=%%i"
 
 REM Check and allocate System Restore Point space (minimum 10GB)
 IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
     CALL :LOG_MESSAGE "Checking System Protection disk space allocation..." "INFO" "LAUNCHER"
     
     REM Use vssadmin to check current shadow storage allocation (modern method)
-    FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $vssOutput = & vssadmin list shadowstorage 2>&1 | Out-String; if ($vssOutput -match 'Maximum Shadow Copy Storage space.*?([0-9.]+)\s*(GB|MB|TB)') { $size = [decimal]$matches[1]; $unit = $matches[2]; $sizeGB = switch ($unit) { 'TB' { $size * 1024 } 'GB' { $size } 'MB' { $size / 1024 } default { 0 } }; Write-Host ('CURRENT:' + [math]::Round($sizeGB, 2)) } elseif ($vssOutput -match 'UNBOUNDED|No.*found') { Write-Host 'UNBOUNDED' } else { Write-Host 'NO_CONFIG' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_SPACE_CHECK=%%i"
+    FOR /F "usebackq tokens=* delims=" %%i IN (`"%PS_EXECUTABLE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $vssOutput = & vssadmin list shadowstorage 2>&1 | Out-String; if ($vssOutput -match 'Maximum Shadow Copy Storage space.*?([0-9.]+)\s*(GB|MB|TB)') { $size = [decimal]$matches[1]; $unit = $matches[2]; $sizeGB = switch ($unit) { 'TB' { $size * 1024 } 'GB' { $size } 'MB' { $size / 1024 } default { 0 } }; Write-Host ('CURRENT:' + [math]::Round($sizeGB, 2)) } elseif ($vssOutput -match 'UNBOUNDED|No.*found') { Write-Host 'UNBOUNDED' } else { Write-Host 'NO_CONFIG' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_SPACE_CHECK=%%i"
     
     REM Parse current allocation
     IF "!SR_SPACE_CHECK:~0,8!"=="CURRENT:" (
