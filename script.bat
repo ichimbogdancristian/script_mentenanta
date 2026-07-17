@@ -36,22 +36,21 @@ ECHO %LOG_ENTRY%
 IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
 EXIT /B
 
-:REFRESH_PATH_FROM_REGISTRY
-REM Refresh PATH environment variable from system registry
-FOR /F "tokens=2*" %%i IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul') DO (
-    SET "SYSTEM_PATH=%%j"
-)
-FOR /F "tokens=2*" %%i IN ('REG QUERY "HKCU\Environment" /v PATH 2^>nul') DO (
-    SET "USER_PATH=%%j"
-)
-REM Combine system and user PATH
-IF DEFINED SYSTEM_PATH IF DEFINED USER_PATH (
-    SET "PATH=%SYSTEM_PATH%;%USER_PATH%"
-) ELSE IF DEFINED SYSTEM_PATH (
-    SET "PATH=%SYSTEM_PATH%"
-) ELSE IF DEFINED USER_PATH (
-    SET "PATH=%USER_PATH%"
-)
+:REFRESH_TOOL_PATHS
+REM Make freshly-installed tools reachable by APPENDING their known install directories
+REM to the CURRENT PATH.
+REM
+REM Do NOT rebuild PATH from the registry. HKLM/HKCU PATH are REG_EXPAND_SZ values holding
+REM unexpanded placeholders (e.g. "%SystemRoot%\system32"). REG QUERY returns that text
+REM verbatim, and assigning it to PATH leaves literal "%SystemRoot%" entries Windows cannot
+REM resolve - which silently breaks EVERY command, including powershell.exe and pwsh.exe.
+REM (That is exactly what happened: a PATH "refresh" after installing PS7 wiped the PATH,
+REM  causing the Chocolatey/MSI fallbacks, PSWindowsUpdate, Defender exclusions and all
+REM  PS7 detection to fail with "'powershell' is not recognized".)
+REM Appending known-good absolute directories can never destroy a working PATH.
+IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
+IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "PATH=%PATH%;%ProgramData%\chocolatey\bin"
+IF EXIST "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" SET "PATH=%PATH%;%LocalAppData%\Microsoft\WindowsApps"
 EXIT /B
 
 :INIT_LOG
@@ -112,7 +111,7 @@ REM Robust Script Path Detection for Scheduled Tasks (use the exact running scri
 SET "SCHEDULED_TASK_SCRIPT_PATH="
 IF EXIST "%SCRIPT_PATH%" (
     SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
-    CALL :LOG_MESSAGE "Scheduled tasks will use current script path: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+    CALL :LOG_MESSAGE "Scheduled tasks will use current script path: !SCHEDULED_TASK_SCRIPT_PATH!" "DEBUG" "LAUNCHER"
 )
 IF NOT DEFINED SCHEDULED_TASK_SCRIPT_PATH IF EXIST "%SCRIPT_DIR%script.bat" (
     SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_DIR%script.bat"
@@ -424,7 +423,7 @@ IF EXIST "%EXTRACTED_PATH%" (
         REM Copy extracted script.bat to original location
         COPY /Y "%EXTRACTED_PATH%\script.bat" "%ORIGINAL_SCRIPT_BAT%" >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Successfully replaced script.bat with version from repository at: %ORIGINAL_SCRIPT_BAT%" "SUCCESS" "LAUNCHER"
+            CALL :LOG_MESSAGE "Successfully replaced script.bat with version from repository at: !ORIGINAL_SCRIPT_BAT!" "SUCCESS" "LAUNCHER"
         ) ELSE (
             CALL :LOG_MESSAGE "Failed to replace script.bat at %ORIGINAL_SCRIPT_BAT% - continuing with current version" "WARN" "LAUNCHER"
         )
@@ -435,14 +434,14 @@ IF EXIST "%EXTRACTED_PATH%" (
     REM Update working directory to extracted folder for proper module loading
     SET "WORKING_DIR=%EXTRACTED_PATH%\"
     SET "WORKING_DIRECTORY=%WORKING_DIR%"
-    CALL :LOG_MESSAGE "Updated working directory to: %WORKING_DIR%" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "Updated working directory to: !WORKING_DIR!" "INFO" "LAUNCHER"
 
     REM Migrate maintenance.log from next-to-script.bat into temp_files\logs and keep
     REM writing there. The orchestrator appends to this same file (via MAINTENANCE_LOG).
     CALL :MIGRATE_LOG
     SET "SCRIPT_LOG_FILE=%LOG_FILE%"
     SET "MAINTENANCE_LOG=%LOG_FILE%"
-    CALL :LOG_MESSAGE "Orchestrator will append to: %MAINTENANCE_LOG%" "DEBUG" "LAUNCHER"
+    CALL :LOG_MESSAGE "Orchestrator will append to: !MAINTENANCE_LOG!" "DEBUG" "LAUNCHER"
     
     REM Set orchestrator path within the extracted folder
     IF EXIST "%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1" (
@@ -771,7 +770,10 @@ IF "%PS7_FOUND%"=="NO" (
     REM 1) Try installing PowerShell via winget (if available)
     IF "%WINGET_AVAILABLE%"=="YES" (
         CALL :LOG_MESSAGE "Installing PowerShell 7 via winget..." "INFO" "LAUNCHER"
-        "%WINGET_EXE%" install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements
+        REM --source winget --exact is REQUIRED: without it winget may resolve to the
+        REM msstore package, which installs an MSIX into WindowsApps instead of the MSI in
+        REM "%ProgramFiles%\PowerShell\7" - and then none of the detection paths find pwsh.exe.
+        "%WINGET_EXE%" install --id Microsoft.PowerShell --source winget --exact --silent --accept-package-agreements --accept-source-agreements
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "PowerShell 7 installed successfully via winget" "SUCCESS" "LAUNCHER"
             SET "INSTALL_STATUS=SUCCESS"
@@ -779,7 +781,7 @@ IF "%PS7_FOUND%"=="NO" (
             
             REM Refresh PATH environment to pick up newly installed PowerShell
             CALL :LOG_MESSAGE "Refreshing PATH environment after PowerShell 7 installation..." "DEBUG" "LAUNCHER"
-            CALL :REFRESH_PATH_FROM_REGISTRY
+            CALL :REFRESH_TOOL_PATHS
         ) ELSE (
             CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "WARN" "LAUNCHER"
         )
@@ -788,7 +790,7 @@ IF "%PS7_FOUND%"=="NO" (
     )
 
     REM 2) Try Chocolatey (prioritize existing installation or install it first)
-    IF NOT "%INSTALL_STATUS%"=="SUCCESS" (
+    IF NOT "!INSTALL_STATUS!"=="SUCCESS" (
         REM Check if Chocolatey is available
         SET "CHOCO_EXE=choco"
         IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
@@ -804,7 +806,7 @@ IF "%PS7_FOUND%"=="NO" (
                 
                 REM Refresh PATH after installation
                 CALL :LOG_MESSAGE "Refreshing PATH after PowerShell 7 installation..." "DEBUG" "LAUNCHER"
-                CALL :REFRESH_PATH_FROM_REGISTRY
+                CALL :REFRESH_TOOL_PATHS
             ) ELSE (
                 CALL :LOG_MESSAGE "Chocolatey failed to install PowerShell 7" "WARN" "LAUNCHER"
             )
@@ -830,7 +832,7 @@ IF "%PS7_FOUND%"=="NO" (
                     
                     REM Refresh PATH after installation
                     CALL :LOG_MESSAGE "Refreshing PATH after PowerShell 7 installation..." "DEBUG" "LAUNCHER"
-                    CALL :REFRESH_PATH_FROM_REGISTRY
+                    CALL :REFRESH_TOOL_PATHS
                 ) ELSE (
                     CALL :LOG_MESSAGE "PowerShell 7 installation failed even with fresh Chocolatey" "WARN" "LAUNCHER"
                 )
@@ -841,7 +843,7 @@ IF "%PS7_FOUND%"=="NO" (
     )
 
     REM 3) MSI fallback from GitHub Releases (latest stable PowerShell)
-    IF NOT "%INSTALL_STATUS%"=="SUCCESS" (
+    IF NOT "!INSTALL_STATUS!"=="SUCCESS" (
         CALL :LOG_MESSAGE "Attempting PowerShell 7 MSI fallback from GitHub Releases..." "INFO" "LAUNCHER"
         DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
         powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; $headers=@{ 'User-Agent'='WinMaintLauncher' }; $arch = if([Environment]::Is64BitOperatingSystem){ 'x64' } else { 'x86' }; $rel = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -match ('win-' + $arch + '\\.msi$') } | Select-Object -First 1; if(-not $asset){ Write-Host 'ASSET_NOT_FOUND'; exit 2 }; $url = $asset.browser_download_url; Invoke-WebRequest -Headers $headers -Uri $url -OutFile '%WORKING_DIR%pwsh.msi'; Write-Host 'MSI_DOWNLOADED' } catch { Write-Host 'MSI_DOWNLOAD_FAILED'; exit 1 }" >nul 2>&1
@@ -861,18 +863,31 @@ IF "%PS7_FOUND%"=="NO" (
     )
 
     REM Post-install verification and restart logic
-    IF "%INSTALL_STATUS%"=="SUCCESS" (
-        CALL :LOG_MESSAGE "Restarting script with fresh environment to detect PowerShell 7..." "INFO" "LAUNCHER"
-        
-        REM Create restart flag with timestamp to prevent infinite loops
-        ECHO POWERSHELL_RESTART_%DATE:~-4,4%%DATE:~-10,2%%DATE:~-7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2% > "%WORKING_DIR%restart_flag.tmp"
-        
-        REM Restart the script with a fresh environment (give Windows a moment to update PATH)
-        TIMEOUT /T 3 /NOBREAK >nul 2>&1
-        START "" /WAIT cmd.exe /C ""%SCRIPT_PATH%" %*"
-        
-        REM Exit current instance after new instance completes
-        EXIT /B !ERRORLEVEL!
+    IF "!INSTALL_STATUS!"=="SUCCESS" (
+        REM PowerShell 7 installs to a deterministic absolute path and :REFRESH_TOOL_PATHS
+        REM has already appended it to PATH, so the detection section below can find it in
+        REM THIS process. Only relaunch if pwsh is somehow still unreachable - a relaunch
+        REM costs a second full download/extract cycle and wipes the migrated maintenance.log.
+        IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
+            CALL :LOG_MESSAGE "PowerShell 7 installed and reachable - continuing without relaunch" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Restarting script with fresh environment to detect PowerShell 7..." "INFO" "LAUNCHER"
+
+            REM Preserve the log across the relaunch: copy it back next to script.bat so the
+            REM new instance's :INIT_LOG appends to it (the relaunched instance wipes and
+            REM re-extracts the repo folder, taking the migrated copy with it).
+            IF EXIST "!LOG_FILE!" COPY /Y "!LOG_FILE!" "%ORIGINAL_SCRIPT_DIR%maintenance.log" >nul 2>&1
+
+            REM Create restart flag with timestamp to prevent infinite loops
+            ECHO POWERSHELL_RESTART_%DATE:~-4,4%%DATE:~-10,2%%DATE:~-7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2% > "%WORKING_DIR%restart_flag.tmp"
+
+            REM Restart the script with a fresh environment (give Windows a moment to update PATH)
+            TIMEOUT /T 3 /NOBREAK >nul 2>&1
+            START "" /WAIT cmd.exe /C ""%SCRIPT_PATH%" %*"
+
+            REM Exit current instance after new instance completes
+            EXIT /B !ERRORLEVEL!
+        )
     ) ELSE (
         CALL :LOG_MESSAGE "All automated installation methods for PowerShell 7 failed." "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE "Troubleshooting tips:" "ERROR" "LAUNCHER"
@@ -883,7 +898,7 @@ IF "%PS7_FOUND%"=="NO" (
     )
 ) ELSE (
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-    CALL :LOG_MESSAGE "PowerShell 7 available: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "PowerShell 7 available: !PS7_VERSION!" "SUCCESS" "LAUNCHER"
 )
 
 REM -----------------------------------------------------------------------------
@@ -922,7 +937,7 @@ IF !ERRORLEVEL! EQU 0 (
     IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
         FOR /F "tokens=*" %%i IN ('"%LocalAppData%\Microsoft\WindowsApps\winget.exe" --version 2^>nul') DO SET WINGET_VERSION=%%i
         IF DEFINED WINGET_VERSION (
-            CALL :LOG_MESSAGE "Winget available via WindowsApps path: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
+            CALL :LOG_MESSAGE "Winget available via WindowsApps path: !WINGET_VERSION!" "SUCCESS" "LAUNCHER"
         ) ELSE (
             CALL :LOG_MESSAGE "Winget appears installed but not yet ready (App Execution Alias may require session refresh)" "INFO" "LAUNCHER"
         )
