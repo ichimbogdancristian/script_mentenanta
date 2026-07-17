@@ -18,6 +18,93 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
 
 <#
 .SYNOPSIS
+    Backs up the current registry value before applying a change. Used for rollback.
+.OUTPUTS
+    [hashtable] with backup data: Path, Name, Exists, Value, Backed, Timestamp.
+#>
+function Backup-RegistryValue {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory)] [string]$Path,
+        [Parameter(Mandatory)] [string]$Name
+    )
+
+    $current = Get-RegistryValue -Path $Path -Name $Name
+    $exists = Test-Path -Path "$Path" -ErrorAction SilentlyContinue
+
+    return @{
+        Path = $Path
+        Name = $Name
+        Exists = $exists
+        Value = $current
+        Backed = $true
+        Timestamp = Get-Date -Format 'o'
+    }
+}
+
+<#
+.SYNOPSIS
+    Verifies that a registry value was successfully applied to the system.
+.OUTPUTS
+    [bool] $true if the value matches the expected value.
+#>
+function Test-RegistryValueApplied {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)] [string]$Path,
+        [Parameter(Mandatory)] [string]$Name,
+        [Parameter(Mandatory)] [object]$ExpectedValue
+    )
+
+    try {
+        $actual = Get-RegistryValue -Path $Path -Name $Name
+        return $actual -eq $ExpectedValue
+    }
+    catch {
+        Write-Log -Level DEBUG -Component CONFIG -Message "Registry verification failed for $Path\$Name : $_"
+        return $false
+    }
+}
+
+<#
+.SYNOPSIS
+    Rolls back a registry value to its pre-change state using a backup hashtable.
+.OUTPUTS
+    [bool] $true if rollback succeeded.
+#>
+function Restore-RegistryValue {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)] [hashtable]$Backup
+    )
+
+    try {
+        $path = $Backup.Path
+        $name = $Backup.Name
+        $value = $Backup.Value
+        $existed = $Backup.Exists
+
+        if (-not $existed -and (Test-Path $path)) {
+            Remove-ItemProperty -Path $path -Name $name -Force -ErrorAction Stop
+            Write-Log -Level INFO -Component CONFIG -Message "Rollback: Removed $path\$name (did not exist before)"
+        }
+        elseif ($existed -and $null -ne $value) {
+            Set-ItemProperty -Path $path -Name $name -Value $value -Force -ErrorAction Stop
+            Write-Log -Level INFO -Component CONFIG -Message "Rollback: Restored $path\$name to previous value"
+        }
+        return $true
+    }
+    catch {
+        Write-Log -Level ERROR -Component CONFIG -Message "Rollback FAILED for $($Backup.Path)\$($Backup.Name): $_"
+        return $false
+    }
+}
+
+<#
+.SYNOPSIS
     Installs Sysinternals Sysmon via winget and applies the bundled sysmonconfig.xml.
 .DESCRIPTION
     Idempotent: if the Sysmon service already exists the config is re-applied (-c) rather
@@ -134,12 +221,25 @@ function Invoke-SystemConfiguration {
 
         try {
             $changed = $false
+            $backup = $null
 
             switch ($configType) {
                 # ─── SECURITY ────────────────────────────────────────────────
                 'security' {
                     switch ($type) {
-                        'registry' { $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG' }
+                        'registry' {
+                            $backup = Backup-RegistryValue -Path $item.Path -Name $item.ValueName
+                            $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
+                            if ($changed) {
+                                $verified = Test-RegistryValueApplied -Path $item.Path -Name $item.ValueName -ExpectedValue $item.DesiredValue
+                                if (-not $verified) {
+                                    Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$($item.ValueName)"
+                                    if ($backup) { Restore-RegistryValue -Backup $backup | Out-Null }
+                                    $errors += "[Verification Failed] $name"; $failed++; $changed = $false
+                                }
+                                $registryBackups += $backup
+                            }
+                        }
                         'service' { $changed = Invoke-ServiceChangeItem -Item $item -Component 'CONFIG' }
                         'defender' {
                             $feature = $item.Feature ?? $item.Name
@@ -185,7 +285,19 @@ function Invoke-SystemConfiguration {
                 'telemetry' {
                     switch ($type) {
                         'service' { $changed = Invoke-ServiceChangeItem -Item $item -Component 'CONFIG' }
-                        'registry' { $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG' }
+                        'registry' {
+                            $backup = Backup-RegistryValue -Path $item.Path -Name $item.ValueName
+                            $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
+                            if ($changed) {
+                                $verified = Test-RegistryValueApplied -Path $item.Path -Name $item.ValueName -ExpectedValue $item.DesiredValue
+                                if (-not $verified) {
+                                    Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$($item.ValueName)"
+                                    if ($backup) { Restore-RegistryValue -Backup $backup | Out-Null }
+                                    $errors += "[Verification Failed] $name"; $failed++; $changed = $false
+                                }
+                                $registryBackups += $backup
+                            }
+                        }
                         'scheduledtask' {
                             $taskPath = $item.TaskPath ?? '\Microsoft\Windows\'
                             $taskName = $item.TaskName ?? $item.Name
@@ -204,7 +316,19 @@ function Invoke-SystemConfiguration {
                 'optimization' {
                     switch ($type) {
                         'service' { $changed = Invoke-ServiceChangeItem -Item $item -Component 'CONFIG' }
-                        'registry' { $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG' }
+                        'registry' {
+                            $backup = Backup-RegistryValue -Path $item.Path -Name $item.ValueName
+                            $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
+                            if ($changed) {
+                                $verified = Test-RegistryValueApplied -Path $item.Path -Name $item.ValueName -ExpectedValue $item.DesiredValue
+                                if (-not $verified) {
+                                    Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$($item.ValueName)"
+                                    if ($backup) { Restore-RegistryValue -Backup $backup | Out-Null }
+                                    $errors += "[Verification Failed] $name"; $failed++; $changed = $false
+                                }
+                                $registryBackups += $backup
+                            }
+                        }
                         'powerplan' {
                             $planGuid = $item.GUID ?? '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
                             $powercfg = Join-Path $env:SystemRoot 'System32\powercfg.exe'

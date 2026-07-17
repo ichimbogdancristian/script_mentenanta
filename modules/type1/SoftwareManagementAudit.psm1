@@ -1,13 +1,13 @@
 #Requires -Version 7.0
 <#
-.SYNOPSIS    Software Management Audit - Type 1 (Consolidated Bloatware + Install + Upgrade)
-.DESCRIPTION Single software-lifecycle audit. Produces one diff whose items are tagged
-             with an Action discriminator:
-               Action = 'remove'   bloatware present that should be uninstalled
-               Action = 'install'  essential apps missing that should be installed
-               Action = 'upgrade'  installed apps with an available newer version
-             Consumes baselines: bloatware, essential-apps, app-upgrade.
-.NOTES       Module Type: Type1 | DiffKey: SoftwareManagement | Version: 6.0 (Consolidated)
+.SYNOPSIS    Software Management Audit - Type 1 (Enhanced Multi-Source Detection)
+.DESCRIPTION Enhanced audit with multi-source detection (AppX, Provisioned, WinGet, Registry).
+             Uses protected packages and dependency matrix for safety.
+             Produces diff tagged with Action discriminator:
+               Action = 'remove'   bloatware detected from any source
+               Action = 'install'  essential apps missing
+               Action = 'upgrade'  installed apps with newer version
+.NOTES       Module Type: Type1 | DiffKey: SoftwareManagement | Version: 7.0 (Enhanced Multi-Source)
 #>
 
 $_corePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\Maintenance.psm1'
@@ -15,12 +15,178 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
 }
 
+function Test-CanRemovePackage {
+    param([string]$PackageName, [hashtable]$Protected, [hashtable]$Dependencies)
+
+    $lowerName = $PackageName.ToLowerInvariant()
+
+    # Check protected list (critical dependencies + system packages)
+    foreach ($section in $Protected.PSObject.Properties) {
+        $pkgs = $section.Value
+        foreach ($key in $pkgs.PSObject.Properties) {
+            $protected_item = $key.Value
+            if ($protected_item.protected -eq $true) {
+                if ($lowerName -eq $key.Name.ToLowerInvariant() -or
+                    $lowerName -like $key.Name.ToLowerInvariant()) {
+                    Write-Log -Level WARN -Component SOFTWARE-AUDIT `
+                        -Message "Package '$PackageName' is protected - will NOT remove"
+                    return $false
+                }
+            }
+        }
+    }
+
+    # Check if other packages depend on it
+    if ($Dependencies.dependencies) {
+        foreach ($depKey in $Dependencies.dependencies.PSObject.Properties) {
+            $dep = $depKey.Value
+            if ($dep.protected -eq $true) {
+                if ($lowerName -eq $depKey.Name.ToLowerInvariant() -or
+                    $lowerName -like $depKey.Name.ToLowerInvariant()) {
+                    Write-Log -Level WARN -Component SOFTWARE-AUDIT `
+                        -Message "Package '$PackageName' has dependents - will NOT remove"
+                    return $false
+                }
+            }
+        }
+    }
+
+    return $true
+}
+
+function Get-BloatwareFromAllSources {
+    param([hashtable]$BloatwareConfig, [hashtable]$Protected, [hashtable]$Dependencies)
+
+    $detected = @{}  # hashtable for deduplication
+
+    # Source 1: AppX packages (modern UWP apps)
+    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning AppX packages...'
+    try {
+        $appxPackages = Get-AppxPackageCompat -AllUsers -ErrorAction Stop |
+            Select-Object -ExpandProperty Name | Where-Object { $_ }
+
+        foreach ($pattern in $BloatwareConfig.patterns) {
+            foreach ($app in $appxPackages) {
+                if ($app -like $pattern) {
+                    if ((Test-CanRemovePackage -PackageName $app -Protected $Protected -Dependencies $Dependencies)) {
+                        $key = $app.ToLowerInvariant()
+                        if (-not $detected.ContainsKey($key)) {
+                            $detected[$key] = @{
+                                Name = $app
+                                Sources = @('AppX')
+                                Patterns = @($pattern)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "AppX detection found: $($detected.Count)"
+    }
+    catch {
+        Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "AppX query failed: $_"
+    }
+
+    # Source 2: Provisioned packages (pre-installed for new users)
+    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning provisioned packages...'
+    try {
+        $provisionedPackages = Get-AppxProvisionedPackageCompat -Online -ErrorAction Stop |
+            Select-Object -ExpandProperty PackageName | Where-Object { $_ }
+
+        foreach ($pattern in $BloatwareConfig.patterns) {
+            foreach ($pkg in $provisionedPackages) {
+                if ($pkg -like $pattern) {
+                    if ((Test-CanRemovePackage -PackageName $pkg -Protected $Protected -Dependencies $Dependencies)) {
+                        $key = $pkg.ToLowerInvariant()
+                        if ($detected.ContainsKey($key)) {
+                            $detected[$key].Sources += 'Provisioned'
+                        } else {
+                            $detected[$key] = @{
+                                Name = $pkg
+                                Sources = @('Provisioned')
+                                Patterns = @($pattern)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Provisioned packages found: $(($detected.Count))"
+    }
+    catch {
+        Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "Provisioned packages query failed: $_"
+    }
+
+    # Source 3: Registry (Win32 programs)
+    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning registry for Win32 programs...'
+    try {
+        $regApps = Get-InstalledApp -ErrorAction Stop | Select-Object -ExpandProperty Name | Where-Object { $_ }
+
+        foreach ($pattern in $BloatwareConfig.patterns) {
+            foreach ($app in $regApps) {
+                if ($app -like $pattern) {
+                    if ((Test-CanRemovePackage -PackageName $app -Protected $Protected -Dependencies $Dependencies)) {
+                        $key = $app.ToLowerInvariant()
+                        if ($detected.ContainsKey($key)) {
+                            $detected[$key].Sources += 'Registry'
+                        } else {
+                            $detected[$key] = @{
+                                Name = $app
+                                Sources = @('Registry')
+                                Patterns = @($pattern)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Registry programs found: $($detected.Count)"
+    }
+    catch {
+        Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "Registry query failed: $_"
+    }
+
+    # Source 4: WinGet (if available)
+    if ((Test-CommandAvailable 'winget')) {
+        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning WinGet packages...'
+        try {
+            $wingetList = & winget list --accept-source-agreements --disable-interactivity 2>&1 |
+                Where-Object { $_ -is [string] }
+
+            foreach ($pattern in $BloatwareConfig.patterns) {
+                foreach ($line in $wingetList) {
+                    if ($line -like $pattern) {
+                        if ((Test-CanRemovePackage -PackageName $line -Protected $Protected -Dependencies $Dependencies)) {
+                            $key = $line.ToLowerInvariant()
+                            if ($detected.ContainsKey($key)) {
+                                $detected[$key].Sources += 'WinGet'
+                            } else {
+                                $detected[$key] = @{
+                                    Name = $line
+                                    Sources = @('WinGet')
+                                    Patterns = @($pattern)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "WinGet packages found: $($detected.Count)"
+        }
+        catch {
+            Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "WinGet query failed (non-critical): $_"
+        }
+    }
+
+    return $detected.Values
+}
+
 function Invoke-SoftwareManagementAudit {
     [CmdletBinding()]
     [OutputType([hashtable])]
     param()
 
-    Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'Starting software management audit (remove + install + upgrade)'
+    Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'Starting enhanced software management audit (multi-source detection)'
 
     try {
         $diff = [System.Collections.Generic.List[hashtable]]::new()
@@ -32,72 +198,80 @@ function Invoke-SoftwareManagementAudit {
         if (-not $osCtx) { $osCtx = Get-OSContext }
 
         # ─── BLOATWARE (REMOVE) AUDIT ────────────────────────────────────────
-        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Auditing bloatware to remove...'
+        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Auditing bloatware to remove (multi-source)...'
 
-        $baseline = Get-BaselineList -ModuleFolder 'bloatware' -FileName 'bloatware-list.json'
-        if (-not $baseline -or -not $baseline.common) {
-            Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message 'Bloatware baseline missing/invalid - skipping remove audit'
+        # Load configuration files
+        $protected = Get-BaselineList -ModuleFolder 'bloatware' -FileName 'protected-packages.json'
+        if (-not $protected) {
+            Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message 'Protected packages config not found - using minimal safe list'
+            $protected = @{
+                critical_dependencies = @{
+                    'Microsoft.Advertising.Xaml' = @{ protected = $true }
+                    'Microsoft.WindowsStore' = @{ protected = $true }
+                }
+            }
+        }
+
+        $dependencies = Get-BaselineList -ModuleFolder 'bloatware' -FileName 'dependency-matrix.json'
+        if (-not $dependencies) {
+            Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message 'Dependency matrix not found - continuing without dependency checks'
+            $dependencies = @{ dependencies = @{} }
+        }
+
+        # Load bloatware patterns
+        $bloatConfig = Get-BaselineList -ModuleFolder 'bloatware' -FileName 'bloatware-detection.json'
+        if (-not $bloatConfig -or -not $bloatConfig.categories) {
+            # Fallback to old format
+            Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message 'New bloatware detection config not found, using legacy format'
+            $legacyBaseline = Get-BaselineList -ModuleFolder 'bloatware' -FileName 'bloatware-list.json'
+            if (-not $legacyBaseline -or -not $legacyBaseline.common) {
+                Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message 'No bloatware configuration available - skipping remove audit'
+            }
+            else {
+                $allPatterns = [System.Collections.Generic.List[string]]::new()
+                $legacyBaseline.common | ForEach-Object { $allPatterns.Add($_) }
+                if ($osCtx.IsWindows11 -and $legacyBaseline.windows11) {
+                    $legacyBaseline.windows11 | ForEach-Object { $allPatterns.Add($_) }
+                }
+                elseif (-not $osCtx.IsWindows11 -and $legacyBaseline.windows10) {
+                    $legacyBaseline.windows10 | ForEach-Object { $allPatterns.Add($_) }
+                }
+                $bloatConfig = @{ patterns = $allPatterns }
+            }
         }
         else {
-            $allBaseline = [System.Collections.Generic.List[string]]::new()
-            $baseline.common | ForEach-Object { $allBaseline.Add($_) }
-            if ($osCtx.IsWindows11 -and $baseline.windows11) {
-                $baseline.windows11 | ForEach-Object { $allBaseline.Add($_) }
-            }
-            elseif (-not $osCtx.IsWindows11 -and $baseline.windows10) {
-                $baseline.windows10 | ForEach-Object { $allBaseline.Add($_) }
-            }
-            Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message "Bloatware baseline entries: $($allBaseline.Count) (OS: $($osCtx.DisplayText))"
-
-            # Scan AppX packages (primary bloatware source)
-            $appxInstalled = @()
-            try {
-                $appxInstalled = @(Get-AppxPackageCompat | ForEach-Object { $_.Name } | Where-Object { $_ })
-            }
-            catch {
-                Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "AppX query failed: $_ - continuing with registry apps only"
-            }
-
-            $appxDiff = $allBaseline | Where-Object {
-                $b = $_.ToLowerInvariant()
-                $appxInstalled | Where-Object { $_.ToLowerInvariant() -eq $b -or $_.ToLowerInvariant().StartsWith($b) }
-            } | Select-Object -Unique
-
-            # Registry-installed programs
-            $regApps = @(Get-InstalledApp | ForEach-Object { $_.Name } | Where-Object { $_ })
-            $regDiff = $allBaseline | Where-Object {
-                $b = $_.ToLowerInvariant()
-                $regApps | Where-Object { $_.ToLowerInvariant() -like "*$b*" }
-            } | Select-Object -Unique
-
-            $combined = @(@($appxDiff) + @($regDiff)) | Select-Object -Unique
-            $hasWinget = Test-CommandAvailable 'winget'
-
-            foreach ($name in $combined) {
-                $wingetId = ''
-
-                # Try to find winget ID for fallback removal (AppX may fail on some systems)
-                if ($hasWinget) {
-                    try {
-                        $searchResult = & winget search --name $name --accept-source-agreements --disable-interactivity 2>&1 | Select-Object -First 2
-                        if ($searchResult -match '^\s*(\S+)\s+') {
-                            $wingetId = $Matches[1]
+            # Extract all patterns from new config
+            $patterns = [System.Collections.Generic.List[string]]::new()
+            foreach ($category in $bloatConfig.categories.PSObject.Properties) {
+                foreach ($app in $category.Value.apps) {
+                    if ($app.removable -ne $false) {
+                        if ($app.appx_pattern) {
+                            $patterns.Add($app.appx_pattern)
+                        } else {
+                            $patterns.Add($app.name)
                         }
                     }
-                    catch {
-                        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Winget search failed for '$name' (will continue without winget fallback)"
-                    }
                 }
+            }
+            $bloatConfig = @{ patterns = $patterns }
+        }
 
+        if ($bloatConfig -and $bloatConfig.patterns) {
+            Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message "Bloatware patterns: $($bloatConfig.patterns.Count)"
+
+            $detected = Get-BloatwareFromAllSources -BloatwareConfig $bloatConfig -Protected $protected -Dependencies $dependencies
+
+            foreach ($item in $detected) {
                 $diff.Add(@{
-                        Action      = 'remove'
-                        Name        = $name
-                        PackageName = $name
-                        WingetId    = $wingetId
-                    })
+                    Action      = 'remove'
+                    Name        = $item.Name
+                    PackageName = $item.Name
+                    Sources     = $item.Sources -join ','
+                    WingetId    = ''
+                })
                 $removeFound++
             }
-            Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message "Bloatware to remove: $removeFound"
+            Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message "Bloatware to remove: $removeFound (from $($detected.Count) detection(s))"
         }
 
         # ─── ESSENTIAL APPS (INSTALL) AUDIT ──────────────────────────────────

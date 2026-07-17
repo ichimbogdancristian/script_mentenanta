@@ -1,0 +1,69 @@
+{
+  "_comment": "System packages that should NEVER be removed. Removing these breaks Windows or other critical apps.",
+  "critical_dependencies": {
+    "Microsoft.Advertising.Xaml": {
+      "protected": true,
+      "reason": "Required by many UWP apps; removing breaks app compatibility",
+      "severity": "Critical"
+    },
+    "Microsoft.WindowsStore": {
+      "protected": true,
+      "reason": "Microsoft Store; removing breaks app installation",
+      "severity": "Critical"
+    },
+    "Microsoft.Windows.SecHealthUI": {
+      "protected": true,
+      "reason": "Security Dashboard UI; required for system security reporting",
+      "severity": "Critical"
+    },
+    "Windows.CBSPreview": {
+      "protected": true,
+      "reason": "Windows Update system component",
+      "severity": "Critical"
+    },
+    "dmwappushservice": {
+      "protected": true,
+      "reason": "Required by Windows Update and Intune telemetry",
+      "severity": "Critical"
+    }
+  },
+  "essential_system": {
+    "Microsoft.WindowsCalculator": {
+      "protected": true,
+      "reason": "System utility",
+      "severity": "High"
+    },
+    "Microsoft.WindowsNotepad": {
+      "protected": true,
+      "reason": "System utility; required for troubleshooting",
+      "severity": "High"
+    },
+    "Microsoft.WindowsTerminal": {
+      "protected": true,
+      "reason": "Modern terminal for PowerShell; development tool",
+      "severity": "High"
+    },
+    "Microsoft.ScreenSketch": {
+      "protected": true,
+      "reason": "Screenshot and annotation tool",
+      "severity": "High"
+    }
+  },
+  "optional_but_safe": {
+    "Microsoft.Paint": {
+      "protected": false,
+      "reason": "Can be removed if Paint 3D provides equivalent",
+      "severity": "Low"
+    },
+    "Microsoft.People": {
+      "protected": false,
+      "reason": "Contact management; can remove if not using Mail",
+      "severity": "Low"
+    },
+    "Microsoft.WindowsAlarms": {
+      "protected": false,
+      "reason": "Clock and alarm utility; can remove",
+      "severity": "Low"
+    }
+  }
+}

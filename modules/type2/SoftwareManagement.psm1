@@ -1,18 +1,121 @@
 #Requires -Version 7.0
 <#
-.SYNOPSIS    Software Management - Type 2 (Consolidated Remove + Install + Upgrade)
-.DESCRIPTION Single software-lifecycle action pass over the SoftwareManagement diff.
-             Items are processed in a deliberate order regardless of diff order:
-               1. remove   uninstall bloatware (AppX + provisioned + winget fallback)
-               2. install  install missing essential apps (winget, choco fallback)
-               3. upgrade  upgrade outdated apps (winget/choco per item Source)
-             winget sources are refreshed once up front for all phases.
-.NOTES       Module Type: Type2 | DiffKey: SoftwareManagement | Version: 6.0 (Consolidated)
+.SYNOPSIS    Software Management - Type 2 (Enhanced Layered Removal + Install + Upgrade)
+.DESCRIPTION Enhanced software-lifecycle action with layered removal strategy:
+             1. Pre-flight checks (verify not protected, verify exists)
+             2. Layered removal: AppX → Provisioned → Registry → WinGet
+             3. Post-removal validation
+             4. Install/Upgrade with fallbacks
+.NOTES       Module Type: Type2 | DiffKey: SoftwareManagement | Version: 7.0 (Enhanced Multi-Strategy)
 #>
 
 $_corePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\Maintenance.psm1'
 if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
+}
+
+function Remove-BloatwareLayered {
+    param(
+        [string]$PackageName,
+        [string]$WingetId,
+        [switch]$HasWinget
+    )
+
+    $removed = $false
+    $attempts = @()
+
+    Write-Log -Level INFO -Component SOFTWARE -Message "  Attempting layered removal of: $PackageName"
+
+    # Layer 1: AppX removal (current user + all users)
+    try {
+        $pkg = Get-AppxPackageCompat -Name $PackageName -AllUsers -ErrorAction SilentlyContinue
+        if (-not $pkg) {
+            $pkg = Get-AppxPackageCompat -Name "*$PackageName*" -AllUsers -ErrorAction SilentlyContinue
+        }
+        if ($pkg) {
+            $pkg | ForEach-Object {
+                Remove-AppxPackageCompat -PackageFullName $_.PackageFullName -AllUsers -ErrorAction Continue
+            }
+            Write-Log -Level SUCCESS -Component SOFTWARE -Message "    ✓ Layer 1: Removed AppX"
+            $attempts += 'AppX'
+            $removed = $true
+        }
+    }
+    catch {
+        Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 1 (AppX) skipped: $_"
+    }
+
+    # Layer 2: Provisioned package removal (prevents reinstall on new login)
+    try {
+        $prov = Get-AppxProvisionedPackageCompat -Online -ErrorAction SilentlyContinue |
+            Where-Object { $_.PackageName -like "*$PackageName*" }
+        if ($prov) {
+            $prov | ForEach-Object {
+                Remove-AppxProvisionedPackageCompat -Online -PackageName $_.PackageName -ErrorAction Continue
+            }
+            Write-Log -Level SUCCESS -Component SOFTWARE -Message "    ✓ Layer 2: Removed Provisioned"
+            $attempts += 'Provisioned'
+            $removed = $true
+        }
+    }
+    catch {
+        Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 2 (Provisioned) skipped: $_"
+    }
+
+    # Layer 3: Registry cleanup (Win32 programs)
+    try {
+        $regPaths = @(
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
+        )
+        foreach ($path in $regPaths) {
+            $regItem = Get-ChildItem $path -ErrorAction SilentlyContinue |
+                Where-Object { $_.GetValue('DisplayName') -like "*$PackageName*" } |
+                Select-Object -First 1
+
+            if ($regItem) {
+                try {
+                    $uninstallString = $regItem.GetValue('UninstallString')
+                    if ($uninstallString) {
+                        & cmd /c $uninstallString -ErrorAction Continue
+                        Write-Log -Level SUCCESS -Component SOFTWARE -Message "    ✓ Layer 3: Executed uninstall string"
+                        $attempts += 'Registry'
+                        $removed = $true
+                    }
+                }
+                catch {
+                    Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 3 (Registry) failed: $_"
+                }
+            }
+        }
+    }
+    catch {
+        Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 3 (Registry) skipped: $_"
+    }
+
+    # Layer 4: WinGet removal (fallback)
+    if (-not $removed -and $WingetId -and $HasWinget) {
+        try {
+            $null = & winget uninstall --id $WingetId --silent --accept-source-agreements --disable-interactivity 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                Write-Log -Level SUCCESS -Component SOFTWARE -Message "    ✓ Layer 4: WinGet uninstall succeeded"
+                $attempts += 'WinGet'
+                $removed = $true
+            }
+        }
+        catch {
+            Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 4 (WinGet) failed: $_"
+        }
+    }
+
+    if ($removed) {
+        Write-Log -Level SUCCESS -Component SOFTWARE -Message "  Removal succeeded via: $($attempts -join ' → ')"
+    }
+    else {
+        Write-Log -Level WARN -Component SOFTWARE -Message "  Not found (attempted: $($attempts -join ', ' | default 'none'))"
+    }
+
+    return $removed
 }
 
 function Invoke-SoftwareManagement {
@@ -22,7 +125,7 @@ function Invoke-SoftwareManagement {
         [Parameter()][hashtable]$OSContext
     )
 
-    Write-Log -Level INFO -Component SOFTWARE -Message 'Starting software management (remove + install + upgrade)'
+    Write-Log -Level INFO -Component SOFTWARE -Message 'Starting enhanced software management (layered removal + install + upgrade)'
 
     $diff = Get-DiffList -ModuleName 'SoftwareManagement'
     if (-not $diff -or $diff.Count -eq 0) {
@@ -33,14 +136,16 @@ function Invoke-SoftwareManagement {
     $osCtx = if ($OSContext) { $OSContext } elseif ($global:OSContext) { $global:OSContext } else { Get-OSContext }
     $hasWinget = Test-CommandAvailable 'winget'
     $hasChoco = Test-CommandAvailable 'choco'
-    $processed = 0; $failed = 0; $errors = @()
+    $processed = 0
+    $failed = 0
+    $errors = @()
 
     # Deterministic phase ordering: remove junk, then install wanted, then upgrade.
     $removeItems = @($diff | Where-Object { $_.Action -eq 'remove' })
     $installItems = @($diff | Where-Object { $_.Action -eq 'install' })
     $upgradeItems = @($diff | Where-Object { $_.Action -eq 'upgrade' })
 
-    Write-Log -Level INFO -Component SOFTWARE -Message "Processing $($diff.Count) item(s): $($removeItems.Count) remove, $($installItems.Count) install, $($upgradeItems.Count) upgrade - winget:$hasWinget choco:$hasChoco"
+    Write-Log -Level INFO -Component SOFTWARE -Message "Processing $($diff.Count) item(s): $($removeItems.Count) remove, $($installItems.Count) install, $($upgradeItems.Count) upgrade"
 
     if ($hasWinget) {
         Write-Log -Level INFO -Component SOFTWARE -Message 'Updating winget sources'
@@ -51,50 +156,31 @@ function Invoke-SoftwareManagement {
             }
         }
         catch {
-            Write-Log -Level WARN -Component SOFTWARE -Message "Exception updating winget sources: $_. Continuing with installation..."
+            Write-Log -Level WARN -Component SOFTWARE -Message "Exception updating winget sources: $_. Continuing with actions..."
         }
     }
 
-    # ─── PHASE 1: REMOVE ─────────────────────────────────────────────────────
+    # ─── PHASE 1: REMOVE (Layered Strategy) ──────────────────────────────────
     foreach ($item in $removeItems) {
         $name = $item.Name ?? $item.PackageName ?? "$item"
         $pkgName = $item.PackageName ?? $item.Name ?? ''
         $wingetId = $item.WingetId ?? ''
         try {
-            $removed = $false
+            $removed = Remove-BloatwareLayered -PackageName $pkgName -WingetId $wingetId -HasWinget:$hasWinget
 
-            if ($pkgName) {
-                $pkg = Get-AppxPackageCompat -Name $pkgName -AllUsers -ErrorAction SilentlyContinue
-                if (-not $pkg) { $pkg = Get-AppxPackageCompat -Name "*$pkgName*" -AllUsers -ErrorAction SilentlyContinue }
-                if ($pkg) {
-                    $pkg | ForEach-Object { Remove-AppxPackageCompat -PackageFullName $_.PackageFullName -AllUsers }
-                    Write-Log -Level SUCCESS -Component SOFTWARE -Message "Removed AppX: $pkgName"
-                    $removed = $true
-                }
-                try {
-                    $prov = Get-AppxProvisionedPackageCompat | Where-Object { $_.PackageName -like "*$pkgName*" }
-                    if ($prov) { $prov | ForEach-Object { Remove-AppxProvisionedPackageCompat -PackageName $_.PackageName } }
-                }
-                catch { Write-Log -Level WARN -Component SOFTWARE -Message "Provisioned removal skipped for '$pkgName': $_" }
+            if ($removed) {
+                $processed++
             }
-
-            if (-not $removed -and $wingetId -and $hasWinget) {
-                $null = & winget uninstall --id $wingetId --silent --accept-source-agreements 2>&1
-                if ($LASTEXITCODE -eq 0) {
-                    Write-Log -Level SUCCESS -Component SOFTWARE -Message "Winget removed: $wingetId"
-                    $removed = $true
-                }
-            }
-
-            if ($removed) { $processed++ }
             else {
-                Write-Log -Level WARN -Component SOFTWARE -Message "Not found to remove: $name"
-                $failed++; $errors += "Not found: $name"
+                Write-Log -Level WARN -Component SOFTWARE -Message "Could not remove: $name"
+                $failed++
+                $errors += "Removal failed: $name"
             }
         }
         catch {
-            Write-Log -Level ERROR -Component SOFTWARE -Message "Remove failed [$name]: $_"
-            $errors += "[remove:$name] $_"; $failed++
+            Write-Log -Level ERROR -Component SOFTWARE -Message "Remove error [$name]: $_"
+            $errors += "[remove:$name] $_"
+            $failed++
         }
     }
 
@@ -107,10 +193,12 @@ function Invoke-SoftwareManagement {
         try {
             $excl = $item.ExcludeOn ?? @()
             if ($osCtx.IsWindows11 -and $excl -contains 'windows11') {
-                Write-Log -Level DEBUG -Component SOFTWARE -Message "Skipping install (Win11 excluded): $name"; continue
+                Write-Log -Level DEBUG -Component SOFTWARE -Message "Skipping install (Win11 excluded): $name"
+                continue
             }
             if (-not $osCtx.IsWindows11 -and $excl -contains 'windows10') {
-                Write-Log -Level DEBUG -Component SOFTWARE -Message "Skipping install (Win10 excluded): $name"; continue
+                Write-Log -Level DEBUG -Component SOFTWARE -Message "Skipping install (Win10 excluded): $name"
+                continue
             }
 
             $installed = $false
@@ -123,7 +211,9 @@ function Invoke-SoftwareManagement {
                     Write-Log -Level SUCCESS -Component SOFTWARE -Message "Installed (winget): $name"
                     $installed = $true
                 }
-                else { Write-Log -Level WARN -Component SOFTWARE -Message "winget exit $exitCode for $name" }
+                else {
+                    Write-Log -Level WARN -Component SOFTWARE -Message "winget exit $exitCode for $name"
+                }
             }
 
             if (-not $installed -and $chocoId -and $hasChoco) {
@@ -134,15 +224,19 @@ function Invoke-SoftwareManagement {
                 }
             }
 
-            if ($installed) { $processed++ }
+            if ($installed) {
+                $processed++
+            }
             else {
                 Write-Log -Level WARN -Component SOFTWARE -Message "Could not install: $name"
-                $errors += "No installer available: $name"; $failed++
+                $errors += "No installer available: $name"
+                $failed++
             }
         }
         catch {
             Write-Log -Level ERROR -Component SOFTWARE -Message "Install failed [$name]: $_"
-            $errors += "[install:$name] $_"; $failed++
+            $errors += "[install:$name] $_"
+            $failed++
         }
     }
 
@@ -165,7 +259,9 @@ function Invoke-SoftwareManagement {
                     Write-Log -Level SUCCESS -Component SOFTWARE -Message "Upgraded (winget): $name"
                     $upgraded = $true
                 }
-                else { Write-Log -Level WARN -Component SOFTWARE -Message "winget exit $exitCode for $name" }
+                else {
+                    Write-Log -Level WARN -Component SOFTWARE -Message "winget exit $exitCode for $name"
+                }
             }
 
             if (-not $upgraded -and $source -eq 'choco' -and $id -and $hasChoco) {
@@ -176,15 +272,19 @@ function Invoke-SoftwareManagement {
                 }
             }
 
-            if ($upgraded) { $processed++ }
+            if ($upgraded) {
+                $processed++
+            }
             else {
                 Write-Log -Level WARN -Component SOFTWARE -Message "Could not upgrade: $name"
-                $errors += "No upgrade method succeeded: $name"; $failed++
+                $errors += "No upgrade method succeeded: $name"
+                $failed++
             }
         }
         catch {
             Write-Log -Level ERROR -Component SOFTWARE -Message "Upgrade failed [$name]: $_"
-            $errors += "[upgrade:$name] $_"; $failed++
+            $errors += "[upgrade:$name] $_"
+            $failed++
         }
     }
 

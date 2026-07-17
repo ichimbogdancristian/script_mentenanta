@@ -1,0 +1,44 @@
+{
+  "_comment": "Dependency relationships between packages. Removing a package may break its dependents.",
+  "dependencies": {
+    "Microsoft.WindowsSearch": {
+      "protected": true,
+      "reason": "Cortana integration; removing breaks Windows Search",
+      "dependents": ["Microsoft.Cortana"],
+      "cascadeRisk": "High"
+    },
+    "Microsoft.Xbox*": {
+      "protected": false,
+      "reason": "Xbox services often come as package group",
+      "dependents": ["Microsoft.XboxGameCallableUI", "Microsoft.XboxGameOverlay", "Microsoft.XboxIdentityProvider"],
+      "cascadeRisk": "High"
+    },
+    "Microsoft.XboxIdentityProvider": {
+      "protected": false,
+      "reason": "Required by all Xbox services",
+      "dependents": ["Microsoft.XboxApp", "Microsoft.XboxGameOverlay"],
+      "cascadeRisk": "High"
+    },
+    "Microsoft.WebMediaExtensions": {
+      "protected": true,
+      "reason": "Required by video playback in apps",
+      "dependents": ["Media.* apps"],
+      "cascadeRisk": "Medium"
+    },
+    "Microsoft.Advertising.Xaml": {
+      "protected": true,
+      "reason": "Common XAML framework; many apps depend on it",
+      "dependents": ["Many UWP apps"],
+      "cascadeRisk": "Critical"
+    }
+  },
+  "cascade_safety": {
+    "safe_to_cascade": [
+      { "parent": "Microsoft.CandyCrush*", "no_dependents": true },
+      { "parent": "Microsoft.BingNews", "no_dependents": true },
+      { "parent": "Microsoft.BingWeather", "no_dependents": true },
+      { "parent": "Facebook.Facebook", "no_dependents": true },
+      { "parent": "Netflix.Netflix", "no_dependents": true }
+    ]
+  }
+}

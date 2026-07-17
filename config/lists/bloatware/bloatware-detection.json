@@ -1,0 +1,345 @@
+{
+  "_comment": "v5.0 - Multi-source bloatware detection. Each entry includes detection methods (AppX/Registry/WinGet) and removal strategies.",
+  "metadata": {
+    "version": "5.0",
+    "updated": "2026-01-17",
+    "detection_sources": ["AppX", "Provisioned", "Registry", "WinGet"]
+  },
+  "categories": {
+    "games_entertainment": {
+      "description": "Games and entertainment apps bundled by OEM",
+      "apps": [
+        {
+          "name": "CandyCrush*",
+          "display_name": "Candy Crush Saga",
+          "detection": ["AppX", "Provisioned"],
+          "appx_pattern": "king.com.CandyCrush*",
+          "removable": true,
+          "notes": "Common pre-installed game, safe to remove"
+        },
+        {
+          "name": "Microsoft.MicrosoftSolitaireCollection",
+          "display_name": "Solitaire Collection",
+          "detection": ["AppX", "Provisioned"],
+          "removable": true,
+          "notes": "Safe to remove"
+        },
+        {
+          "name": "Minecraft.Minecraft",
+          "display_name": "Minecraft",
+          "detection": ["AppX"],
+          "removable": true
+        },
+        {
+          "name": "Microsoft.GamingApp",
+          "display_name": "Xbox Games Pass",
+          "detection": ["AppX", "Provisioned"],
+          "removable": true,
+          "notes": "Related to Xbox services"
+        },
+        {
+          "name": "WildTangent*",
+          "display_name": "WildTangent Games",
+          "detection": ["AppX", "Registry"],
+          "removable": true,
+          "notes": "OEM bloatware on many systems"
+        }
+      ]
+    },
+    "oem_specific": {
+      "description": "Original Equipment Manufacturer pre-installed software",
+      "apps": [
+        {
+          "name": "Dell.*",
+          "display_name": "Dell Software",
+          "detection": ["AppX", "Registry", "WinGet"],
+          "removable": true,
+          "subentries": [
+            "Dell.CommandUpdate",
+            "Dell.DellDigitalDelivery",
+            "Dell.DellUpdate",
+            "Dell.MyDell",
+            "Dell.SupportAssist",
+            "Dell.DellPowerManagement",
+            "Dell.DellThermalController"
+          ]
+        },
+        {
+          "name": "HP.*",
+          "display_name": "HP Software",
+          "detection": ["AppX", "Registry", "WinGet"],
+          "removable": true,
+          "subentries": [
+            "HP.HPDesktopSupportUtilities",
+            "HP.HPJumpStart",
+            "HP.HPPCHardwareDiagnosticsWindows",
+            "HP.HPQuickActions",
+            "HP.HPSupportAssistant",
+            "HP.HPSystemInformation"
+          ]
+        },
+        {
+          "name": "Lenovo.*",
+          "display_name": "Lenovo Software",
+          "detection": ["AppX", "Registry", "WinGet"],
+          "removable": true,
+          "subentries": [
+            "Lenovo.LenovoID",
+            "Lenovo.LenovoNow",
+            "Lenovo.LenovoVantage",
+            "Lenovo.LenovoVoice",
+            "Lenovo.LenovoWiFiSecurity",
+            "Lenovo.LenovoSystemAgent"
+          ]
+        },
+        {
+          "name": "ASUS.*",
+          "display_name": "ASUS Software",
+          "detection": ["AppX", "Registry", "WinGet"],
+          "removable": true,
+          "subentries": [
+            "ASUS.ASUSLiveUpdate",
+            "ASUS.ASUSSmartGesture",
+            "ASUS.GamingCenter",
+            "ASUS.MyASUS",
+            "ASUS.ROGLiveService",
+            "ASUS.ASUSAIBoosterLite"
+          ]
+        },
+        {
+          "name": "Acer.*",
+          "display_name": "Acer Software",
+          "detection": ["AppX", "Registry"],
+          "removable": true,
+          "subentries": [
+            "Acer.AcerPowerManagement",
+            "Acer.AcerQuickAccess",
+            "Acer.AcerUEIPFramework"
+          ]
+        }
+      ]
+    },
+    "microsoft_bloatware": {
+      "description": "Microsoft pre-installed apps that can be safely removed",
+      "apps": [
+        {
+          "name": "Microsoft.BingNews",
+          "display_name": "Bing News",
+          "detection": ["AppX", "Provisioned"],
+          "removable": true
+        },
+        {
+          "name": "Microsoft.BingWeather",
+          "display_name": "Weather",
+          "detection": ["AppX", "Provisioned"],
+          "removable": true
+        },
+        {
+          "name": "Microsoft.BingFinance",
+          "display_name": "Money (Finance)",
+          "detection": ["AppX", "Provisioned"],
+          "removable": true
+        },
+        {
+          "name": "Microsoft.GetHelp",
+          "display_name": "Get Help",
+          "detection": ["AppX", "Provisioned"],
+          "removable": true
+        },
+        {
+          "name": "Microsoft.Getstarted",
+          "display_name": "Tips",
+          "detection": ["AppX", "Provisioned"],
+          "removable": true
+        },
+        {
+          "name": "Microsoft.MicrosoftOfficeHub",
+          "display_name": "Office Hub",
+          "detection": ["AppX", "Provisioned"],
+          "removable": true
+        },
+        {
+          "name": "Microsoft.WindowsFeedback",
+          "display_name": "Feedback Hub",
+          "detection": ["AppX", "Provisioned"],
+          "removable": true
+        },
+        {
+          "name": "Microsoft.WindowsTips",
+          "display_name": "Tips",
+          "detection": ["AppX", "Provisioned"],
+          "removable": true
+        },
+        {
+          "name": "Microsoft.ZuneMusic",
+          "display_name": "Groove Music",
+          "detection": ["AppX", "Provisioned"],
+          "removable": true
+        },
+        {
+          "name": "Microsoft.ZuneVideo",
+          "display_name": "Movies & TV",
+          "detection": ["AppX", "Provisioned"],
+          "removable": true
+        },
+        {
+          "name": "Microsoft.Xbox*",
+          "display_name": "Xbox Services",
+          "detection": ["AppX", "Provisioned"],
+          "removable": true,
+          "subentries": [
+            "Microsoft.Xbox.TCUI",
+            "Microsoft.XboxApp",
+            "Microsoft.XboxGameCallableUI",
+            "Microsoft.XboxGameOverlay",
+            "Microsoft.XboxGamingOverlay",
+            "Microsoft.XboxIdentityProvider",
+            "Microsoft.XboxSpeechToTextOverlay"
+          ]
+        },
+        {
+          "name": "Microsoft.Copilot",
+          "display_name": "Copilot (AI Assistant)",
+          "detection": ["AppX", "Provisioned"],
+          "removable": true,
+          "notes": "Windows 11 24H2+ AI feature, safe to remove"
+        }
+      ]
+    },
+    "third_party_bloatware": {
+      "description": "Third-party applications commonly pre-installed",
+      "apps": [
+        {
+          "name": "Netflix.Netflix",
+          "display_name": "Netflix",
+          "detection": ["AppX"],
+          "removable": true
+        },
+        {
+          "name": "Spotify.Spotify*",
+          "display_name": "Spotify",
+          "detection": ["AppX"],
+          "removable": true
+        },
+        {
+          "name": "Discord.Discord",
+          "display_name": "Discord",
+          "detection": ["AppX", "WinGet"],
+          "removable": true
+        },
+        {
+          "name": "TikTok.TikTok",
+          "display_name": "TikTok",
+          "detection": ["AppX"],
+          "removable": true
+        },
+        {
+          "name": "Snapchat.Snapchat",
+          "display_name": "Snapchat",
+          "detection": ["AppX"],
+          "removable": true
+        },
+        {
+          "name": "Facebook.Facebook",
+          "display_name": "Facebook",
+          "detection": ["AppX"],
+          "removable": true
+        },
+        {
+          "name": "Instagram.Instagram",
+          "display_name": "Instagram",
+          "detection": ["AppX"],
+          "removable": true
+        },
+        {
+          "name": "Twitter.Twitter",
+          "display_name": "Twitter/X",
+          "detection": ["AppX"],
+          "removable": true
+        }
+      ]
+    },
+    "toolbars_extensions": {
+      "description": "Toolbars and browser extensions",
+      "apps": [
+        {
+          "name": "Ask.AskToolbar",
+          "display_name": "Ask Toolbar",
+          "detection": ["Registry"],
+          "removable": true
+        },
+        {
+          "name": "Babylon.BabylonToolbar",
+          "display_name": "Babylon Toolbar",
+          "detection": ["Registry"],
+          "removable": true
+        }
+      ]
+    },
+    "security_questionable": {
+      "description": "Security software and utilities of questionable value",
+      "apps": [
+        {
+          "name": "Avast.Avast*",
+          "display_name": "Avast Antivirus",
+          "detection": ["AppX", "Registry", "WinGet"],
+          "removable": true,
+          "notes": "Use Windows Defender instead"
+        },
+        {
+          "name": "AVG.AVG*",
+          "display_name": "AVG Antivirus",
+          "detection": ["Registry", "WinGet"],
+          "removable": true,
+          "notes": "Redundant with Windows Defender"
+        },
+        {
+          "name": "Norton.Norton*",
+          "display_name": "Norton Security",
+          "detection": ["Registry", "WinGet"],
+          "removable": true,
+          "notes": "Redundant with Windows Defender"
+        },
+        {
+          "name": "McAfee.*",
+          "display_name": "McAfee Security",
+          "detection": ["Registry", "WinGet"],
+          "removable": true,
+          "notes": "Resource-heavy; use Windows Defender"
+        },
+        {
+          "name": "Kaspersky.*",
+          "display_name": "Kaspersky Antivirus",
+          "detection": ["Registry", "WinGet"],
+          "removable": true,
+          "notes": "Redundant with Windows Defender"
+        }
+      ]
+    },
+    "utilities_questionable": {
+      "description": "Utility software of questionable necessity",
+      "apps": [
+        {
+          "name": "IOBit.AdvancedSystemCare",
+          "display_name": "Advanced SystemCare",
+          "detection": ["Registry", "WinGet"],
+          "removable": true,
+          "notes": "Windows Defender Optimization sufficient"
+        },
+        {
+          "name": "Piriform.CCleaner",
+          "display_name": "CCleaner",
+          "detection": ["Registry", "WinGet"],
+          "removable": true,
+          "notes": "Built-in Storage Sense is sufficient"
+        },
+        {
+          "name": "TuneUp.TuneUpUtilities",
+          "display_name": "TuneUp Utilities",
+          "detection": ["Registry"],
+          "removable": true
+        }
+      ]
+    }
+  }
+}

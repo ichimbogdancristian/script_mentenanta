@@ -24,9 +24,19 @@ function Invoke-RestorePointAudit {
         $restorePoints = @()
         $removeCount = 0
 
-        # Get current restore points
+        # Get current restore points (use CIM since Get-ComputerRestorePoint is PS5.1 only)
         try {
-            $restorePoints = @(Get-ComputerRestorePoint -ErrorAction Stop | Sort-Object -Property CreationTime -Descending)
+            $restorePoints = @(Get-CimInstance -ClassName Win32_ShadowCopy -ErrorAction Stop |
+                Sort-Object -Property InstallDate -Descending |
+                ForEach-Object {
+                    [PSCustomObject]@{
+                        SequenceNumber = $_.ID -replace '.*{|}', ''
+                        Description    = $_.Description ?? 'System Restore Point'
+                        CreationTime   = if ($_.InstallDate) { $_.InstallDate } else { [datetime]::Now }
+                        EventType      = 'ShadowCopy'
+                        RestorePointType = 'System'
+                    }
+                })
         }
         catch {
             Write-Log -Level WARN -Component RESTORE-AUDIT -Message "Could not query restore points: $_"

@@ -15,6 +15,54 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
 }
 
+function Compare-RegistryBaselineWithFallback {
+    param([Parameter(Mandatory)] $Entries)
+
+    $results = @()
+
+    # Layer 1: Try PowerShell native (fastest)
+    try {
+        $results = @(Compare-RegistryBaseline -Entries $Entries -ErrorAction Stop)
+        Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message "Registry baseline comparison via PowerShell succeeded (Layer 1)"
+        return $results
+    }
+    catch {
+        Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message "PowerShell registry comparison failed: $_. Trying Layer 2 (registry.exe fallback)"
+    }
+
+    # Layer 2: Fallback to registry.exe queries
+    try {
+        foreach ($entry in $Entries) {
+            if (-not $entry.path -or -not $entry.name) { continue }
+
+            $regPath = $entry.path -replace 'HKEY_LOCAL_MACHINE\\', 'HKLM\'
+            $regPath = $regPath -replace 'HKEY_CURRENT_USER\\', 'HKCU\'
+
+            $regQuery = & reg query $regPath /v $entry.name 2>&1
+            if ($regQuery -match 'REG_\w+\s+(.+?)(?:\s|$)') {
+                $currentValue = $Matches[1].Trim()
+                if ($currentValue -ne $entry.desiredValue.ToString()) {
+                    $results += @{
+                        path = $entry.path
+                        name = $entry.name
+                        currentValue = $currentValue
+                        desiredValue = $entry.desiredValue
+                        DetectionMethod = 'registry.exe'
+                    }
+                }
+            }
+        }
+        if ($results) {
+            Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message "Registry baseline comparison via registry.exe succeeded (Layer 2)"
+        }
+        return $results
+    }
+    catch {
+        Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Registry fallback also failed: $_"
+        return @()
+    }
+}
+
 function Invoke-SystemConfigurationAudit {
     [CmdletBinding()]
     [OutputType([hashtable])]
@@ -36,9 +84,9 @@ function Invoke-SystemConfigurationAudit {
         if ($securityBaseline) {
             Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message 'Auditing security settings...'
 
-            # Security registry
+            # Security registry (with fallback detection)
             if ($securityBaseline.registry) {
-                Compare-RegistryBaseline -Entries @($securityBaseline.registry) | ForEach-Object {
+                Compare-RegistryBaselineWithFallback -Entries @($securityBaseline.registry) | ForEach-Object {
                     $_.ConfigType = 'security'
                     $diff.Add($_); $securityFound++
                 }
@@ -138,7 +186,7 @@ function Invoke-SystemConfigurationAudit {
             if ($telemetryBaseline.registry) {
                 foreach ($grp in @('telemetry', 'advertising', 'cortana', 'privacy')) {
                     if (-not $telemetryBaseline.registry.$grp) { continue }
-                    Compare-RegistryBaseline -Entries @($telemetryBaseline.registry.$grp) | ForEach-Object {
+                    Compare-RegistryBaselineWithFallback -Entries @($telemetryBaseline.registry.$grp) | ForEach-Object {
                         $_.ConfigType = 'telemetry'
                         $diff.Add($_); $telemetryFound++
                     }
