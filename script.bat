@@ -707,6 +707,14 @@ CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
 REM -----------------------------------------------------------------------------
 REM PowerShell 7 Detection and Installation (Moved after winget setup)
 REM -----------------------------------------------------------------------------
+REM 5-second countdown before checking the PowerShell path
+CALL :LOG_MESSAGE "Preparing to check PowerShell 7 availability in 5 seconds..." "INFO" "LAUNCHER"
+FOR /L %%s IN (5,-1,1) DO (
+    <nul SET /P "=Checking PowerShell path in %%s second(s)...  "
+    TIMEOUT /T 1 >nul 2>&1
+)
+ECHO.
+
 CALL :LOG_MESSAGE "Checking PowerShell 7 availability..." "INFO" "LAUNCHER"
 
 REM Try multiple detection methods before deciding to install

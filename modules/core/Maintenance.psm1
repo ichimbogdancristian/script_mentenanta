@@ -365,6 +365,187 @@ function Compare-ListDiff {
 
 <#
 .SYNOPSIS
+    Compares registry baseline entries against the live registry and returns diff items.
+.DESCRIPTION
+    For each baseline entry ({ path, name, type, desiredValue, description }), reads the
+    current value and emits a standardized diff item when it does not match the desired
+    value (or is missing). The emitted items are consumed by Invoke-RegistryChangeItem.
+    Used by audit (Type1) modules that harden/optimize via the registry.
+.PARAMETER Entries
+    Array of baseline registry entries. Each must expose 'path' and 'name'; 'type'
+    defaults to 'DWord' and 'desiredValue' supplies the target value.
+.OUTPUTS
+    [hashtable[]] — diff items with Type='registry'. Empty array when all compliant.
+#>
+function Compare-RegistryBaseline {
+    [CmdletBinding()]
+    [OutputType([hashtable[]])]
+    param(
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$Entries
+    )
+
+    $diff = [System.Collections.Generic.List[hashtable]]::new()
+    foreach ($entry in $Entries) {
+        if (-not $entry) { continue }
+        $path = $entry.path ?? $entry.Path
+        $vname = $entry.name ?? $entry.Name
+        if (-not $path -or -not $vname) { continue }
+
+        $desired = $entry.desiredValue ?? $entry.DesiredValue
+        $vtype = $entry.type ?? $entry.Type ?? 'DWord'
+        $current = Get-RegistryValue -Path $path -Name $vname
+
+        # A 'nonEmpty' baseline entry is satisfied by any non-empty value (e.g. legal
+        # notice text): only flag it when the current value is missing/blank.
+        $nonEmpty = [bool]($entry.nonEmpty ?? $entry.NonEmpty ?? $false)
+        $isMismatch = if ($nonEmpty) {
+            [string]::IsNullOrEmpty([string]$current)
+        }
+        else {
+            "$current" -ne "$desired"
+        }
+
+        if ($isMismatch) {
+            $diff.Add(@{
+                    Type         = 'registry'
+                    Name         = $vname
+                    ValueName    = $vname
+                    Path         = $path
+                    DesiredValue = $desired
+                    ValueType    = $vtype
+                    CurrentState = $current
+                    DesiredState = $desired
+                    Description  = $entry.description ?? $entry.Description ?? $vname
+                })
+        }
+    }
+    return $diff.ToArray()
+}
+
+<#
+.SYNOPSIS
+    Compares service start-type against a desired action and returns diff items.
+.PARAMETER ServiceNames
+    Array of Windows service short names to evaluate.
+.PARAMETER Action
+    'EnsureDisabled' — flag services whose StartType is not Disabled.
+    'EnsureRunning'  — flag services that are not set to Automatic / not running.
+.OUTPUTS
+    [hashtable[]] — diff items with Type='service'. Missing services are ignored.
+#>
+function Compare-ServiceBaseline {
+    [CmdletBinding()]
+    [OutputType([hashtable[]])]
+    param(
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [string[]]$ServiceNames,
+        [Parameter(Mandatory)] [ValidateSet('EnsureDisabled', 'EnsureRunning')] [string]$Action
+    )
+
+    $diff = [System.Collections.Generic.List[hashtable]]::new()
+    foreach ($svcName in $ServiceNames) {
+        if (-not $svcName) { continue }
+        $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
+        if (-not $svc) { continue }   # Not present on this SKU — nothing to do
+
+        if ($Action -eq 'EnsureDisabled' -and $svc.StartType -ne 'Disabled') {
+            $diff.Add(@{
+                    Type             = 'service'
+                    Name             = $svcName
+                    ServiceName      = $svcName
+                    DesiredStartType = 'Disabled'
+                    CurrentState     = $svc.StartType.ToString()
+                    DesiredState     = 'Disabled'
+                })
+        }
+        elseif ($Action -eq 'EnsureRunning' -and ($svc.StartType -eq 'Disabled' -or $svc.Status -ne 'Running')) {
+            $diff.Add(@{
+                    Type             = 'service'
+                    Name             = $svcName
+                    ServiceName      = $svcName
+                    DesiredStartType = 'Automatic'
+                    CurrentState     = "$($svc.StartType)/$($svc.Status)"
+                    DesiredState     = 'Automatic/Running'
+                })
+        }
+    }
+    return $diff.ToArray()
+}
+
+<#
+.SYNOPSIS
+    Applies a single registry diff item produced by Compare-RegistryBaseline.
+.PARAMETER Item
+    Diff item exposing Path, ValueName, DesiredValue, ValueType.
+.PARAMETER Component
+    Log component tag for the calling module.
+.OUTPUTS
+    [bool] — $true if a change was written, $false if already compliant.
+#>
+function Invoke-RegistryChangeItem {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)] [hashtable]$Item,
+        [Parameter()] [string]$Component = 'CORE'
+    )
+
+    $path = $Item.Path ?? $Item.RegistryPath
+    $vname = $Item.ValueName ?? $Item.Name
+    $val = $Item.DesiredValue
+    $vtype = $Item.ValueType ?? 'DWord'
+
+    if (-not $path -or -not $vname -or $null -eq $val) {
+        Write-Log -Level WARN -Component $Component -Message "Registry item incomplete, skipped: $($Item.Name)"
+        return $false
+    }
+
+    $changed = Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
+    if ($changed) {
+        Write-Log -Level SUCCESS -Component $Component -Message "Registry set: $path\$vname = $val"
+    }
+    return $changed
+}
+
+<#
+.SYNOPSIS
+    Applies a single service diff item produced by Compare-ServiceBaseline.
+.PARAMETER Item
+    Diff item exposing ServiceName and DesiredStartType.
+.PARAMETER Component
+    Log component tag for the calling module.
+.OUTPUTS
+    [bool] — $true if the service start-type/state was changed.
+#>
+function Invoke-ServiceChangeItem {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)] [hashtable]$Item,
+        [Parameter()] [string]$Component = 'CORE'
+    )
+
+    $svcName = $Item.ServiceName ?? $Item.Name
+    $start = $Item.DesiredStartType ?? $Item.DesiredState ?? 'Disabled'
+    if (-not $svcName) {
+        Write-Log -Level WARN -Component $Component -Message 'Service item missing name, skipped'
+        return $false
+    }
+
+    if ($start -eq 'Disabled') {
+        Stop-Service -Name $svcName -Force -ErrorAction SilentlyContinue
+        Set-Service -Name $svcName -StartupType Disabled -ErrorAction Stop
+        Write-Log -Level SUCCESS -Component $Component -Message "Service '$svcName' -> Disabled"
+    }
+    else {
+        Set-Service -Name $svcName -StartupType $start -ErrorAction Stop
+        Start-Service -Name $svcName -ErrorAction SilentlyContinue
+        Write-Log -Level SUCCESS -Component $Component -Message "Service '$svcName' -> $start"
+    }
+    return $true
+}
+
+<#
+.SYNOPSIS
     Persists a diff list to temp_files/diff/[ModuleName]-diff.json.
 #>
 function Save-DiffList {
@@ -813,6 +994,10 @@ Export-ModuleMember -Function @(
     'Get-BaselineList',
     'Get-TempPath',
     'Compare-ListDiff',
+    'Compare-RegistryBaseline',
+    'Compare-ServiceBaseline',
+    'Invoke-RegistryChangeItem',
+    'Invoke-ServiceChangeItem',
     'Save-DiffList',
     'Get-DiffList',
     'New-ModuleResult',

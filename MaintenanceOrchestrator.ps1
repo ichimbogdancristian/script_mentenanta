@@ -117,56 +117,26 @@ Write-Log -Level SUCCESS -Component ORCH -Message "OS: $($global:OSContext.Displ
 $ModulePairs = @(
     @{
         Num        = 1
-        Label      = 'Bloatware Detection & Removal'
-        DiffKey    = 'BloatwareRemoval'
-        Type1File  = 'modules\type1\BloatwareDetectionAudit.psm1'
-        Type1Func  = 'Invoke-BloatwareAudit'
-        Type2File  = 'modules\type2\BloatwareRemoval.psm1'
-        Type2Func  = 'Invoke-BloatwareRemoval'
-        ConfigSkip = 'skipBloatwareRemoval'
+        Label      = 'Software Management (Remove/Install/Upgrade)'
+        DiffKey    = 'SoftwareManagement'
+        Type1File  = 'modules\type1\SoftwareManagementAudit.psm1'
+        Type1Func  = 'Invoke-SoftwareManagementAudit'
+        Type2File  = 'modules\type2\SoftwareManagement.psm1'
+        Type2Func  = 'Invoke-SoftwareManagement'
+        ConfigSkip = 'skipSoftwareManagement'
     },
     @{
         Num        = 2
-        Label      = 'App Management (Install & Upgrade)'
-        DiffKey    = 'AppManagement'
-        Type1File  = 'modules\type1\AppManagementAudit.psm1'
-        Type1Func  = 'Invoke-AppManagementAudit'
-        Type2File  = 'modules\type2\AppManagement.psm1'
-        Type2Func  = 'Invoke-AppManagement'
-        ConfigSkip = 'skipAppManagement'
+        Label      = 'System Configuration (Security/Privacy/Optimization)'
+        DiffKey    = 'SystemConfiguration'
+        Type1File  = 'modules\type1\SystemConfigurationAudit.psm1'
+        Type1Func  = 'Invoke-SystemConfigurationAudit'
+        Type2File  = 'modules\type2\SystemConfiguration.psm1'
+        Type2Func  = 'Invoke-SystemConfiguration'
+        ConfigSkip = 'skipSystemConfiguration'
     },
     @{
         Num        = 3
-        Label      = 'System Hardening (Security & Privacy)'
-        DiffKey    = 'SystemHardening'
-        Type1File  = 'modules\type1\SystemHardeningAudit.psm1'
-        Type1Func  = 'Invoke-SystemHardeningAudit'
-        Type2File  = 'modules\type2\SystemHardening.psm1'
-        Type2Func  = 'Invoke-SystemHardening'
-        ConfigSkip = 'skipSystemHardening'
-    },
-    @{
-        Num        = 4
-        Label      = 'System Optimization'
-        DiffKey    = 'SystemOptimization'
-        Type1File  = 'modules\type1\SystemOptimizationAudit.psm1'
-        Type1Func  = 'Invoke-SystemOptimizationAudit'
-        Type2File  = 'modules\type2\SystemOptimization.psm1'
-        Type2Func  = 'Invoke-SystemOptimization'
-        ConfigSkip = 'skipSystemOptimization'
-    },
-    @{
-        Num        = 5
-        Label      = 'Windows Updates'
-        DiffKey    = 'WindowsUpdates'
-        Type1File  = 'modules\type1\WindowsUpdatesAudit.psm1'
-        Type1Func  = 'Invoke-WindowsUpdatesAudit'
-        Type2File  = 'modules\type2\WindowsUpdates.psm1'
-        Type2Func  = 'Invoke-WindowsUpdate'
-        ConfigSkip = 'skipWindowsUpdates'
-    },
-    @{
-        Num        = 6
         Label      = 'Disk Cleanup (Temp/Browser/Updates)'
         DiffKey    = 'DiskCleanup'
         Type1File  = 'modules\type1\DiskCleanupAudit.psm1'
@@ -176,7 +146,17 @@ $ModulePairs = @(
         ConfigSkip = 'skipDiskCleanup'
     },
     @{
-        Num        = 7
+        Num        = 4
+        Label      = 'Windows Updates'
+        DiffKey    = 'WindowsUpdates'
+        Type1File  = 'modules\type1\WindowsUpdatesAudit.psm1'
+        Type1Func  = 'Invoke-WindowsUpdatesAudit'
+        Type2File  = 'modules\type2\WindowsUpdates.psm1'
+        Type2Func  = 'Invoke-WindowsUpdate'
+        ConfigSkip = 'skipWindowsUpdates'
+    },
+    @{
+        Num        = 5
         Label      = 'System Inventory (report only)'
         DiffKey    = 'SystemInventory'
         Type1File  = 'modules\type1\SystemInventory.psm1'

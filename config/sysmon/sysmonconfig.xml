@@ -1,0 +1,584 @@
+<!--
+  Sysmon Configuration for Wazuh Integration (Enhanced 2025)
+  
+  Advanced Sysmon configuration optimized for security monitoring and Wazuh SIEM integration.
+  Based on SwiftOnSecurity and sysmon-modular best practices with MITRE ATT&CK framework mapping.
+  
+  Installation: sysmon.exe -accepteula -i sysmonconfig.xml  
+  Update: sysmon.exe -c sysmonconfig.xml
+  Uninstall: sysmon.exe -u
+  
+  REQUIRED: Sysmon version 15 or higher (schema 4.50+)
+  Compatible with: Wazuh 4.x and later
+  
+  This configuration focuses on:
+  - High-signal security events for effective threat hunting
+  - Reduced noise while maintaining comprehensive monitoring
+  - MITRE ATT&CK technique coverage
+  - Performance optimization for enterprise environments
+  - Advanced threat detection capabilities
+  
+  Key improvements:
+  - Enhanced process creation monitoring with parent-child relationships
+  - Advanced network connection filtering with suspicious port detection
+  - Comprehensive file system monitoring for persistence mechanisms
+  - Registry monitoring for common attack vectors
+  - Named pipe monitoring for lateral movement detection
+  - WMI event monitoring for persistence and execution
+  - DNS query analysis for C2 communication detection
+  - Image/DLL load monitoring for injection techniques
+  - Driver load monitoring for rootkit detection
+-->
+
+<Sysmon schemaversion="4.50">
+	<!-- SYSMON META CONFIG -->
+	<HashAlgorithms>md5,sha256,IMPHASH</HashAlgorithms>
+	<CheckRevocation/>
+	
+	<!-- Archive Directory for large log files (Wazuh optimization) -->
+	<ArchiveDirectory enabled="false"/>
+	
+	<!-- ProcessTerminate: Set to false to reduce log volume -->
+	<ProcessTerminate onmatch="include"/>
+	
+	<!-- DnsLookup: DNS client resolution (Event ID 22) -->
+	<DnsLookup onmatch="exclude"/>
+
+	<EventFiltering>
+
+	<!--SYSMON EVENT ID 1 : PROCESS CREATION [ProcessCreate]-->
+	<!--DATA: UtcTime, ProcessGuid, ProcessID, Image, FileVersion, Description, Product, Company, 
+	CommandLine, CurrentDirectory, User, LogonGuid, LogonId, TerminalSessionId, IntegrityLevel, 
+	Hashes, ParentProcessGuid, ParentProcessId, ParentImage, ParentCommandLine, RuleName-->
+	
+	<!-- Include: Suspicious process executions (MITRE ATT&CK T1059, T1055, T1036) -->
+	<RuleGroup name="ProcessCreate_Suspicious" groupRelation="or">
+		<ProcessCreate onmatch="include">
+			<!--SECTION: Suspicious execution locations-->
+			<Image name="T1036.005" condition="begin with">C:\Users\</Image> <!--Masquerading: Match Legitimate Name or Location-->
+			<Image name="T1036.005" condition="begin with">C:\ProgramData\</Image>
+			<Image name="T1036.005" condition="begin with">C:\Windows\Temp\</Image>
+			<Image name="T1036.005" condition="begin with">C:\Temp\</Image>
+			<Image name="T1036.005" condition="begin with">C:\$Recycle.bin\</Image>
+			<Image name="T1036.005" condition="begin with">C:\Intel\Logs\</Image>
+			<Image name="T1036.005" condition="begin with">C:\PerfLogs\</Image>
+			
+			<!--SECTION: Suspicious Windows native tools (Living off the Land)-->
+			<Image name="T1059.003" condition="image">powershell.exe</Image> <!--Command and Scripting Interpreter: Windows Command Shell-->
+			<Image name="T1059.003" condition="image">pwsh.exe</Image>
+			<Image name="T1059.001" condition="image">powershell_ise.exe</Image>
+			<Image name="T1059.005" condition="image">cscript.exe</Image> <!--Command and Scripting Interpreter: Visual Basic-->
+			<Image name="T1059.005" condition="image">wscript.exe</Image>
+			<Image name="T1218.005" condition="image">mshta.exe</Image> <!--Signed Binary Proxy Execution: Mshta-->
+			<Image name="T1218.010" condition="image">regsvr32.exe</Image> <!--Signed Binary Proxy Execution: Regsvr32-->
+			<Image name="T1218.011" condition="image">rundll32.exe</Image> <!--Signed Binary Proxy Execution: Rundll32-->
+			<Image name="T1218.004" condition="image">InstallUtil.exe</Image> <!--Signed Binary Proxy Execution: InstallUtil-->
+			<Image name="T1218.009" condition="image">regsvcs.exe</Image> <!--Signed Binary Proxy Execution: Regsvcs/Regasm-->
+			<Image name="T1218.009" condition="image">regasm.exe</Image>
+			<Image name="T1047" condition="image">wmic.exe</Image> <!--Windows Management Instrumentation-->
+			<Image name="T1218.014" condition="image">mavinject.exe</Image> <!--Signed Binary Proxy Execution: MMC-->
+			<Image name="T1218.003" condition="image">cmstp.exe</Image> <!--Signed Binary Proxy Execution: CMSTP-->
+			<Image name="T1055.001" condition="image">schtasks.exe</Image> <!--Process Injection: Dynamic-link Library Injection-->
+			<Image name="T1053.005" condition="image">at.exe</Image> <!--Scheduled Task/Job: Scheduled Task-->
+			<Image name="T1105" condition="image">certutil.exe</Image> <!--Ingress Tool Transfer-->
+			<Image name="T1105" condition="image">bitsadmin.exe</Image>
+			<Image name="T1218.007" condition="image">msiexec.exe</Image> <!--Signed Binary Proxy Execution: Msiexec-->
+			
+			<!--SECTION: Reconnaissance and Discovery tools-->
+			<Image name="T1057" condition="image">tasklist.exe</Image> <!--Process Discovery-->
+			<Image name="T1082" condition="image">systeminfo.exe</Image> <!--System Information Discovery-->
+			<Image name="T1016" condition="image">ipconfig.exe</Image> <!--System Network Configuration Discovery-->
+			<Image name="T1016" condition="image">nslookup.exe</Image>
+			<Image name="T1049" condition="image">netstat.exe</Image> <!--System Network Connections Discovery-->
+			<Image name="T1018" condition="image">ping.exe</Image> <!--Remote System Discovery-->
+			<Image name="T1033" condition="image">whoami.exe</Image> <!--System Owner/User Discovery-->
+			<Image name="T1007" condition="image">sc.exe</Image> <!--System Service Discovery-->
+			<Image name="T1012" condition="image">reg.exe</Image> <!--Query Registry-->
+			<Image name="T1087.001" condition="image">net.exe</Image> <!--Account Discovery: Local Account-->
+			<Image name="T1087.001" condition="image">net1.exe</Image>
+			
+			<!--SECTION: Credential Access tools-->
+			<CommandLine name="T1003.001" condition="contains">sekurlsa</CommandLine> <!--OS Credential Dumping: LSASS Memory-->
+			<CommandLine name="T1003.002" condition="contains">SAM</CommandLine> <!--OS Credential Dumping: Security Account Manager-->
+			<CommandLine name="T1003.003" condition="contains">lsadump</CommandLine> <!--OS Credential Dumping: NTDS-->
+			<CommandLine name="T1552.001" condition="contains">password</CommandLine> <!--Unsecured Credentials: Credentials In Files-->
+			
+			<!--SECTION: Persistence mechanisms-->
+			<ParentImage name="T1053.005" condition="image">taskeng.exe</ParentImage> <!--Scheduled Task/Job: Scheduled Task-->
+			<ParentImage name="T1053.005" condition="image">schtasks.exe</ParentImage>
+			<CommandLine name="T1547.001" condition="contains">CurrentVersion\Run</CommandLine> <!--Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder-->
+			<CommandLine name="T1547.004" condition="contains">Winlogon</CommandLine> <!--Boot or Logon Autostart Execution: Winlogon Helper DLL-->
+		</ProcessCreate>
+	</RuleGroup>
+	
+	<!-- Exclude: Legitimate Windows system processes to reduce noise -->
+	<RuleGroup name="ProcessCreate_Exclude_System" groupRelation="or">
+		<ProcessCreate onmatch="exclude">
+			<!--SECTION: Windows System Processes-->
+			<CommandLine condition="begin with">"C:\Windows\system32\wermgr.exe" "-queuereporting_svc"</CommandLine>
+			<CommandLine condition="begin with">C:\Windows\system32\DllHost.exe /Processid</CommandLine>
+			<CommandLine condition="begin with">C:\Windows\system32\wbem\wmiprvse.exe -Embedding</CommandLine>
+			<CommandLine condition="is">C:\Windows\system32\SearchIndexer.exe /Embedding</CommandLine>
+			<Image condition="is">C:\Windows\System32\audiodg.exe</Image>
+			<Image condition="is">C:\Windows\System32\conhost.exe</Image>
+			<Image condition="is">C:\Windows\system32\sppsvc.exe</Image>
+			<Image condition="is">C:\Windows\System32\dwm.exe</Image>
+			<Image condition="is">C:\Windows\System32\csrss.exe</Image>
+			<Image condition="is">C:\Windows\System32\wininit.exe</Image>
+			<Image condition="is">C:\Windows\System32\services.exe</Image>
+			<Image condition="is">C:\Windows\System32\winlogon.exe</Image>
+			<Image condition="is">C:\Windows\System32\lsass.exe</Image>
+			<IntegrityLevel condition="is">AppContainer</IntegrityLevel>
+			
+			<!--SECTION: Windows svchost processes-->
+			<CommandLine condition="is">C:\Windows\system32\svchost.exe -k netsvcs</CommandLine>
+			<CommandLine condition="is">C:\Windows\system32\svchost.exe -k networkService</CommandLine>
+			<CommandLine condition="is">C:\Windows\system32\svchost.exe -k localSystemNetworkRestricted</CommandLine>
+			<CommandLine condition="is">C:\Windows\system32\svchost.exe -k localService</CommandLine>
+			<CommandLine condition="is">C:\Windows\system32\svchost.exe -k dcomlaunch</CommandLine>
+			
+			<!--SECTION: Common legitimate software-->
+			<Image condition="begin with">C:\Program Files\Windows Defender\</Image>
+			<Image condition="begin with">C:\Program Files\Microsoft\</Image>
+			<Image condition="begin with">C:\Program Files (x86)\Microsoft\</Image>
+			<ParentImage condition="is">C:\Windows\explorer.exe</ParentImage>
+		</ProcessCreate>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 2 : FILE CREATION TIME RETROACTIVELY CHANGED [FileCreateTime]-->
+	<RuleGroup name="" groupRelation="or">
+		<FileCreateTime onmatch="include">
+			<Image name="T1099" condition="begin with">C:\Users</Image>
+			<TargetFilename name="T1099" condition="end with">.exe</TargetFilename>
+		</FileCreateTime>
+	</RuleGroup>
+
+	<RuleGroup name="" groupRelation="or">
+		<FileCreateTime onmatch="exclude">
+			<Image condition="image">OneDrive.exe</Image>
+			<Image condition="contains">setup</Image>
+			<Image condition="contains">install</Image>
+			<Image condition="is">msiexec.exe</Image>
+			<Image condition="is">TrustedInstaller.exe</Image>
+		</FileCreateTime>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 3 : NETWORK CONNECTION INITIATED [NetworkConnect]-->
+	<!--DATA: UtcTime, ProcessGuid, ProcessId, Image, User, Protocol, Initiated, SourceIsIpv6, 
+	SourceIp, SourceHostname, SourcePort, SourcePortName, DestinationIsIpV6, DestinationIp, 
+	DestinationHostname, DestinationPort, DestinationPortName-->
+	<RuleGroup name="" groupRelation="or">
+		<NetworkConnect onmatch="include">
+			<!-- Suspicious execution locations -->
+			<Image name="Usermode" condition="begin with">C:\Users</Image>
+			<Image condition="begin with">C:\ProgramData</Image>
+			<Image condition="begin with">C:\Windows\Temp</Image>
+			<Image condition="begin with">C:\Temp</Image>
+			
+			<!-- Suspicious Windows tools -->
+			<Image condition="image">at.exe</Image>
+			<Image condition="image">certutil.exe</Image>
+			<Image condition="image">cmd.exe</Image>
+			<Image condition="image">cscript.exe</Image>
+			<Image condition="image">java.exe</Image>
+			<Image condition="image">mshta.exe</Image>
+			<Image condition="image">msiexec.exe</Image>
+			<Image condition="image">nslookup.exe</Image>
+			<Image condition="image">powershell.exe</Image>
+			<Image condition="image">regsvr32.exe</Image>
+			<Image condition="image">rundll32.exe</Image>
+			<Image condition="image">wmic.exe</Image>
+			<Image condition="image">wscript.exe</Image>
+			
+			<!-- Suspicious ports -->
+			<DestinationPort name="SSH" condition="is">22</DestinationPort>
+			<DestinationPort name="Telnet" condition="is">23</DestinationPort>
+			<DestinationPort name="RDP" condition="is">3389</DestinationPort>
+			<DestinationPort name="VNC" condition="is">5800</DestinationPort>
+			<DestinationPort name="VNC" condition="is">5900</DestinationPort>
+			<DestinationPort name="Proxy" condition="is">1080</DestinationPort>
+			<DestinationPort name="Proxy" condition="is">3128</DestinationPort>
+			<DestinationPort name="Proxy" condition="is">8080</DestinationPort>
+		</NetworkConnect>
+	</RuleGroup>
+
+	<RuleGroup name="" groupRelation="or">
+		<NetworkConnect onmatch="exclude">
+			<DestinationHostname condition="end with">.microsoft.com</DestinationHostname>
+			<DestinationHostname condition="end with">.windows.com</DestinationHostname>
+			<DestinationIp condition="is">127.0.0.1</DestinationIp>
+		</NetworkConnect>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 5 : PROCESS ENDED [ProcessTerminate]-->
+	<RuleGroup name="" groupRelation="or">
+		<ProcessTerminate onmatch="include">
+			<Image condition="begin with">C:\Users</Image>
+		</ProcessTerminate>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 6 : DRIVER LOADED INTO KERNEL [DriverLoad]-->
+	<RuleGroup name="" groupRelation="or">
+		<DriverLoad onmatch="exclude">
+			<Signature condition="contains">microsoft</Signature>
+			<Signature condition="contains">windows</Signature>
+			<Signature condition="begin with">Intel </Signature>
+		</DriverLoad>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 7 : DLL (IMAGE) LOADED BY PROCESS [ImageLoad]-->
+	<RuleGroup name="" groupRelation="or">
+		<ImageLoad onmatch="include">
+			<!--NOTE: Using "include" with no rules means nothing will be logged-->
+		</ImageLoad>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 8 : REMOTE THREAD CREATED [CreateRemoteThread]-->
+	<RuleGroup name="" groupRelation="or">
+		<CreateRemoteThread onmatch="exclude">
+			<SourceImage condition="is">C:\Windows\system32\wbem\WmiPrvSE.exe</SourceImage>
+			<SourceImage condition="is">C:\Windows\system32\svchost.exe</SourceImage>
+			<SourceImage condition="is">C:\Windows\system32\wininit.exe</SourceImage>
+			<SourceImage condition="is">C:\Windows\system32\csrss.exe</SourceImage>
+			<SourceImage condition="is">C:\Windows\system32\services.exe</SourceImage>
+		</CreateRemoteThread>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 9 : RAW DISK ACCESS [RawAccessRead]-->
+	<RuleGroup name="" groupRelation="or">
+		<RawAccessRead onmatch="include">
+			<!--NOTE: Using "include" with no rules means nothing will be logged-->
+		</RawAccessRead>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 10 : INTER-PROCESS ACCESS [ProcessAccess]-->
+	<RuleGroup name="" groupRelation="or">
+		<ProcessAccess onmatch="include">
+			<!--NOTE: Using "include" with no rules means nothing will be logged-->
+		</ProcessAccess>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 11 : FILE CREATED [FileCreate]-->
+	<RuleGroup name="" groupRelation="or">
+		<FileCreate onmatch="include">
+			<!-- Startup and persistence locations -->
+			<TargetFilename name="T1023" condition="contains">\Start Menu</TargetFilename>
+			<TargetFilename name="T1165" condition="contains">\Startup\</TargetFilename>
+			<TargetFilename condition="contains">\Downloads\</TargetFilename>
+			
+			<!-- Executable file extensions -->
+			<TargetFilename condition="end with">.bat</TargetFilename>
+			<TargetFilename condition="end with">.cmd</TargetFilename>
+			<TargetFilename condition="end with">.exe</TargetFilename>
+			<TargetFilename condition="end with">.dll</TargetFilename>
+			<TargetFilename condition="end with">.ps1</TargetFilename>
+			<TargetFilename condition="end with">.vbs</TargetFilename>
+			<TargetFilename condition="end with">.hta</TargetFilename>
+			<TargetFilename condition="end with">.scr</TargetFilename>
+			<TargetFilename condition="end with">.jar</TargetFilename>
+			
+			<!-- Office documents with macros -->
+			<TargetFilename condition="end with">.docm</TargetFilename>
+			<TargetFilename condition="end with">.xlsm</TargetFilename>
+			<TargetFilename condition="end with">.pptm</TargetFilename>
+			
+			<!-- System locations -->
+			<TargetFilename condition="begin with">C:\Windows\system32\Drivers</TargetFilename>
+			<TargetFilename condition="begin with">C:\Windows\system32\Tasks</TargetFilename>
+			<TargetFilename condition="begin with">C:\Windows\system32\WindowsPowerShell</TargetFilename>
+		</FileCreate>
+	</RuleGroup>
+
+	<RuleGroup name="" groupRelation="or">
+		<FileCreate onmatch="exclude">
+			<Image condition="is">C:\Windows\system32\smss.exe</Image>
+			<Image condition="is">C:\Windows\system32\CompatTelRunner.exe</Image>
+			<Image condition="is">C:\Windows\system32\mobsync.exe</Image>
+			<TargetFilename condition="begin with">C:\Windows\Installer\</TargetFilename>
+		</FileCreate>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 12 & 13 & 14 : REGISTRY MODIFICATION [RegistryEvent]-->
+	<RuleGroup name="" groupRelation="or">
+		<RegistryEvent onmatch="include">
+			<!-- Autorun and startup keys -->
+			<TargetObject name="T1060,RunKey" condition="contains">CurrentVersion\Run</TargetObject>
+			<TargetObject name="T1060,RunPolicy" condition="contains">Policies\Explorer\Run</TargetObject>
+			
+			<!-- Services -->
+			<TargetObject name="T1031,T1050" condition="end with">\ServiceDll</TargetObject>
+			<TargetObject name="T1031,T1050" condition="end with">\ImagePath</TargetObject>
+			
+			<!-- Security settings -->
+			<TargetObject name="T1089" condition="end with">\EnableFirewall</TargetObject>
+			<TargetObject name="T1089,Tamper-Defender" condition="end with">\DisableAntiSpyware</TargetObject>
+			<TargetObject name="T1089,Tamper-Defender" condition="end with">\DisableRealtimeMonitoring</TargetObject>
+			
+			<!-- COM hijacking -->
+			<TargetObject name="T1122" condition="end with">\InprocServer32\(Default)</TargetObject>
+			
+			<!-- Suspicious sources -->
+			<Image name="Suspicious" condition="end with">regedit.exe</Image>
+		</RegistryEvent>
+	</RuleGroup>
+
+	<RuleGroup name="" groupRelation="or">
+		<RegistryEvent onmatch="exclude">
+			<EventType condition="is">CreateKey</EventType>
+			<TargetObject condition="contains">\{CAFEEFAC-</TargetObject>
+			<TargetObject condition="begin with">HKLM\COMPONENTS</TargetObject>
+		</RegistryEvent>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 15 : ALTERNATE DATA STREAM CREATED [FileCreateStreamHash]-->
+	<RuleGroup name="" groupRelation="or">
+		<FileCreateStreamHash onmatch="include">
+			<TargetFilename condition="contains">Downloads</TargetFilename>
+			<TargetFilename condition="contains">Temp\7z</TargetFilename>
+			<TargetFilename condition="contains">Startup</TargetFilename>
+			<TargetFilename condition="end with">.bat</TargetFilename>
+			<TargetFilename condition="end with">.cmd</TargetFilename>
+			<TargetFilename condition="end with">.ps1</TargetFilename>
+			<TargetFilename condition="end with">.vbs</TargetFilename>
+			<TargetFilename condition="end with">.hta</TargetFilename>
+		</FileCreateStreamHash>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 17 & 18 : PIPE CREATED / PIPE CONNECTED [PipeEvent]-->
+	<RuleGroup name="" groupRelation="or">
+		<PipeEvent onmatch="include">
+			<!-- Remote command execution tools -->
+			<PipeName condition="contains any">paexec;remcom;csexec</PipeName>
+			<!-- Credential dumpers -->
+			<PipeName condition="contains any">\lsadump;\cachedump;\wceservicepipe</PipeName>
+			<!-- Cobalt Strike indicators -->
+			<PipeName condition="contains all">MSSE-;-server</PipeName>
+			<PipeName condition="begin with">\postex_</PipeName>
+			<PipeName condition="begin with">\msagent_</PipeName>
+		</PipeEvent>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 6: DRIVER LOADED INTO KERNEL [DriverLoad]-->
+	<RuleGroup name="DriverLoad_Include" groupRelation="or">
+		<DriverLoad onmatch="include">
+			<!--Include: Unsigned drivers (potential rootkits)-->
+			<Signed name="T1014" condition="is">false</Signed> <!--Rootkit-->
+		</DriverLoad>
+	</RuleGroup>
+	
+	<RuleGroup name="DriverLoad_Exclude" groupRelation="or">
+		<DriverLoad onmatch="exclude">
+			<!--Exclude: Microsoft signed drivers-->
+			<Signature condition="contains">Microsoft Windows</Signature>
+			<Signature condition="contains">Microsoft Corporation</Signature>
+			<!--Exclude: Common hardware vendors-->
+			<Signature condition="contains">Intel Corporation</Signature>
+			<Signature condition="contains">NVIDIA Corporation</Signature>
+			<Signature condition="contains">Advanced Micro Devices</Signature>
+			<Signature condition="contains">Realtek</Signature>
+		</DriverLoad>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 7: IMAGE/LIBRARY LOADED [ImageLoad]-->
+	<RuleGroup name="ImageLoad_Include" groupRelation="or">
+		<ImageLoad onmatch="include">
+			<!--Include: Potential DLL hijacking and injection-->
+			<ImageLoaded name="T1055.001" condition="end with">ntdll.dll</ImageLoaded> <!--Process Injection: Dynamic-link Library Injection-->
+			<ImageLoaded name="T1055.001" condition="end with">kernel32.dll</ImageLoaded>
+			<ImageLoaded name="T1055.001" condition="end with">kernelbase.dll</ImageLoaded>
+			<!--Include: Security product bypasses-->
+			<ImageLoaded name="T1562.001" condition="contains">amsi.dll</ImageLoaded> <!--Impair Defenses: Disable or Modify Tools-->
+			<ImageLoaded name="T1562.001" condition="contains">wldp.dll</ImageLoaded>
+		</ImageLoad>
+	</RuleGroup>
+	
+	<RuleGroup name="ImageLoad_Exclude" groupRelation="or">
+		<ImageLoad onmatch="exclude">
+			<!--Exclude: System processes-->
+			<Image condition="is">C:\Windows\System32\lsass.exe</Image>
+			<Image condition="is">C:\Windows\System32\csrss.exe</Image>
+			<Image condition="is">C:\Windows\System32\wininit.exe</Image>
+			<Image condition="is">C:\Windows\System32\services.exe</Image>
+			<!--Exclude: Common locations for legitimate DLLs-->
+			<ImageLoaded condition="begin with">C:\Windows\System32\</ImageLoaded>
+			<ImageLoaded condition="begin with">C:\Windows\SysWOW64\</ImageLoaded>
+			<ImageLoaded condition="begin with">C:\Program Files\</ImageLoaded>
+		</ImageLoad>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 8: CREATE REMOTE THREAD [CreateRemoteThread]-->
+	<RuleGroup name="CreateRemoteThread_Include" groupRelation="or">
+		<CreateRemoteThread onmatch="include">
+			<!--Include: Process injection techniques-->
+			<SourceImage name="T1055" condition="begin with">C:\Users\</SourceImage> <!--Process Injection-->
+			<SourceImage name="T1055" condition="begin with">C:\ProgramData\</SourceImage>
+			<SourceImage name="T1055" condition="begin with">C:\Windows\Temp\</SourceImage>
+			<!--Include: Credential dumping-->
+			<TargetImage name="T1003.001" condition="is">C:\Windows\System32\lsass.exe</TargetImage> <!--OS Credential Dumping: LSASS Memory-->
+		</CreateRemoteThread>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 9: RAW ACCESS READ [RawAccessRead]-->
+	<RuleGroup name="RawAccessRead_Include" groupRelation="or">
+		<RawAccessRead onmatch="include">
+			<!--Include: Raw disk access (potential data collection)-->
+			<Device name="T1005" condition="contains">PhysicalDrive</Device> <!--Data from Local System-->
+			<Device name="T1005" condition="contains">Harddisk</Device>
+			<!--Include: Memory access for credential dumping-->
+			<Image name="T1003.001" condition="image">powershell.exe</Image> <!--OS Credential Dumping: LSASS Memory-->
+			<Image name="T1003.001" condition="image">cmd.exe</Image>
+		</RawAccessRead>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 10: PROCESS ACCESS [ProcessAccess]-->
+	<RuleGroup name="ProcessAccess_Include" groupRelation="or">
+		<ProcessAccess onmatch="include">
+			<!--Include: LSASS access (credential dumping)-->
+			<TargetImage name="T1003.001" condition="is">C:\Windows\System32\lsass.exe</TargetImage> <!--OS Credential Dumping: LSASS Memory-->
+			<!--Include: Suspicious access rights-->
+			<GrantedAccess name="T1055" condition="is">0x1410</GrantedAccess> <!--Process Injection-->
+			<GrantedAccess name="T1055" condition="is">0x1010</GrantedAccess>
+			<GrantedAccess name="T1055" condition="is">0x1F3FFF</GrantedAccess>
+		</ProcessAccess>
+	</RuleGroup>
+	
+	<RuleGroup name="ProcessAccess_Exclude" groupRelation="or">
+		<ProcessAccess onmatch="exclude">
+			<!--Exclude: System processes-->
+			<SourceImage condition="is">C:\Windows\System32\csrss.exe</SourceImage>
+			<SourceImage condition="is">C:\Windows\System32\wininit.exe</SourceImage>
+			<SourceImage condition="is">C:\Windows\System32\services.exe</SourceImage>
+			<SourceImage condition="is">C:\Windows\System32\winlogon.exe</SourceImage>
+			<!--Exclude: Security products-->
+			<SourceImage condition="begin with">C:\Program Files\Windows Defender\</SourceImage>
+		</ProcessAccess>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 11: FILE CREATED [FileCreate]-->
+	<RuleGroup name="FileCreate_Include" groupRelation="or">
+		<FileCreate onmatch="include">
+			<!--Include: Suspicious file creation in system locations-->
+			<TargetFilename name="T1036.005" condition="begin with">C:\Windows\</TargetFilename> <!--Masquerading: Match Legitimate Name or Location-->
+			<TargetFilename name="T1036.005" condition="begin with">C:\ProgramData\</TargetFilename>
+			<!--Include: Executable files in user directories-->
+			<TargetFilename name="T1204.002" condition="begin with">C:\Users\</TargetFilename> <!--User Execution: Malicious File-->
+			<TargetFilename name="T1204.002" condition="end with">.exe</TargetFilename>
+			<TargetFilename name="T1204.002" condition="end with">.scr</TargetFilename>
+			<TargetFilename name="T1204.002" condition="end with">.bat</TargetFilename>
+			<TargetFilename name="T1204.002" condition="end with">.cmd</TargetFilename>
+			<TargetFilename name="T1204.002" condition="end with">.com</TargetFilename>
+			<TargetFilename name="T1204.002" condition="end with">.pif</TargetFilename>
+			<!--Include: Script files-->
+			<TargetFilename name="T1059.001" condition="end with">.ps1</TargetFilename> <!--Command and Scripting Interpreter: PowerShell-->
+			<TargetFilename name="T1059.005" condition="end with">.vbs</TargetFilename> <!--Command and Scripting Interpreter: Visual Basic-->
+			<TargetFilename name="T1059.007" condition="end with">.js</TargetFilename> <!--Command and Scripting Interpreter: JavaScript-->
+			<!--Include: Web shells and backdoors-->
+			<TargetFilename name="T1505.003" condition="end with">.asp</TargetFilename> <!--Server Software Component: Web Shell-->
+			<TargetFilename name="T1505.003" condition="end with">.aspx</TargetFilename>
+			<TargetFilename name="T1505.003" condition="end with">.jsp</TargetFilename>
+			<TargetFilename name="T1505.003" condition="end with">.php</TargetFilename>
+		</FileCreate>
+	</RuleGroup>
+	
+	<RuleGroup name="FileCreate_Exclude" groupRelation="or">
+		<FileCreate onmatch="exclude">
+			<!--Exclude: Temporary files-->
+			<TargetFilename condition="end with">.tmp</TargetFilename>
+			<TargetFilename condition="end with">~</TargetFilename>
+			<!--Exclude: Log files-->
+			<TargetFilename condition="end with">.log</TargetFilename>
+			<!--Exclude: System processes-->
+			<Image condition="is">C:\Windows\System32\services.exe</Image>
+			<Image condition="is">C:\Windows\System32\svchost.exe</Image>
+		</FileCreate>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 12 & 13 & 14: REGISTRY EVENTS [RegistryEvent]-->
+	<RuleGroup name="RegistryEvent_Include" groupRelation="or">
+		<RegistryEvent onmatch="include">
+			<!--Include: Autostart registry keys (persistence)-->
+			<TargetObject name="T1547.001" condition="contains">CurrentVersion\Run</TargetObject> <!--Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder-->
+			<TargetObject name="T1547.001" condition="contains">CurrentVersion\RunOnce</TargetObject>
+			<TargetObject name="T1547.001" condition="contains">CurrentVersion\RunServices</TargetObject>
+			<!--Include: Winlogon registry (persistence)-->
+			<TargetObject name="T1547.004" condition="contains">CurrentVersion\Winlogon</TargetObject> <!--Boot or Logon Autostart Execution: Winlogon Helper DLL-->
+			<!--Include: Image File Execution Options (persistence/evasion)-->
+			<TargetObject name="T1546.012" condition="contains">Image File Execution Options</TargetObject> <!--Event Triggered Execution: Image File Execution Options Injection-->
+			<!--Include: Security settings-->
+			<TargetObject name="T1562" condition="contains">Windows Defender</TargetObject> <!--Impair Defenses-->
+			<TargetObject name="T1562" condition="contains">DisableAntiSpyware</TargetObject>
+			<TargetObject name="T1562" condition="contains">DisableRealtimeMonitoring</TargetObject>
+			<!--Include: System policies-->
+			<TargetObject name="T1484" condition="contains">CurrentVersion\Policies</TargetObject> <!--Domain Policy Modification-->
+		</RegistryEvent>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 15: FILE STREAM CREATED [FileCreateStreamHash]-->
+	<RuleGroup name="FileCreateStreamHash_Include" groupRelation="or">
+		<FileCreateStreamHash onmatch="include">
+			<!--Include: Alternate Data Streams (ADS) - potential data hiding-->
+			<TargetFilename name="T1564.004" condition="contains">:</TargetFilename> <!--Hide Artifacts: NTFS File Attributes-->
+		</FileCreateStreamHash>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 19 & 20 & 21 : WMI EVENT MONITORING [WmiEvent]-->
+	<RuleGroup name="WmiEvent_Include" groupRelation="or">
+		<WmiEvent onmatch="include">
+			<!--Include: WMI persistence and execution-->
+			<Operation name="T1546.003" condition="is">Created</Operation> <!--Event Triggered Execution: Windows Management Instrumentation Event Subscription-->
+		</WmiEvent>
+	</RuleGroup>
+	
+	<RuleGroup name="WmiEvent_Exclude" groupRelation="or">
+		<WmiEvent onmatch="exclude">
+			<!--Exclude: Common system WMI operations-->
+			<Operation condition="is">Started</Operation>
+			<Operation condition="is">Connected</Operation>
+		</WmiEvent>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 23: FILE DELETED [FileDelete]-->
+	<RuleGroup name="FileDelete_Include" groupRelation="or">
+		<FileDelete onmatch="include">
+			<!--Include: Deletion of security logs and evidence-->
+			<TargetFilename name="T1070.001" condition="contains">Security.evtx</TargetFilename> <!--Indicator Removal on Host: Clear Windows Event Logs-->
+			<TargetFilename name="T1070.001" condition="contains">System.evtx</TargetFilename>
+			<TargetFilename name="T1070.001" condition="contains">Application.evtx</TargetFilename>
+			<!--Include: Prefetch file deletion (anti-forensics)-->
+			<TargetFilename name="T1070.004" condition="contains">\Prefetch\</TargetFilename> <!--Indicator Removal on Host: File Deletion-->
+			<TargetFilename name="T1070.004" condition="end with">.pf</TargetFilename>
+		</FileDelete>
+	</RuleGroup>
+
+	<!--SYSMON EVENT ID 22 : DNS QUERY [DnsQuery]-->
+	<RuleGroup name="" groupRelation="or">
+		<DnsQuery onmatch="exclude">
+			<!-- Microsoft domains -->
+			<QueryName condition="end with">.microsoft.com</QueryName>
+			<QueryName condition="end with">.windows.com</QueryName>
+			<QueryName condition="end with">.microsoftonline.com</QueryName>
+			<QueryName condition="end with">.office.com</QueryName>
+			
+			<!-- Common legitimate domains -->
+			<QueryName condition="end with">.google.com</QueryName>
+			<QueryName condition="end with">.googleapis.com</QueryName>
+			<QueryName condition="end with">.mozilla.org</QueryName>
+			<QueryName condition="end with">.adobe.com</QueryName>
+			
+			<!-- CDNs and legitimate services -->
+			<QueryName condition="end with">.akadns.net</QueryName>
+			<QueryName condition="end with">.akamai.net</QueryName>
+			
+			<!-- Certificate validation -->
+			<QueryName condition="end with">.digicert.com</QueryName>
+			<QueryName condition="end with">.verisign.com</QueryName>
+			<QueryName condition="end with">.globalsign.com</QueryName>
+			
+			<!-- Reverse DNS -->
+			<QueryName condition="end with">.arpa</QueryName>
+			<QueryName condition="is">localhost</QueryName>
+		</DnsQuery>
+	</RuleGroup>
+
+	</EventFiltering>
+</Sysmon>
