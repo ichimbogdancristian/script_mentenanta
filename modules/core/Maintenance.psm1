@@ -1139,7 +1139,14 @@ function Invoke-ExternalPackageCommand {
     $proc = [System.Diagnostics.Process]::new()
     $proc.StartInfo = $psi
     try {
-        $null = $proc.Start()
+        try {
+            $null = $proc.Start()
+        }
+        catch {
+            Write-Log -Level ERROR -Component CORE `
+                -Message "Failed to start process '$FilePath': $($_.Exception.Message)"
+            return -2147483648
+        }
 
         # Start draining both pipes before waiting - see deadlock note above.
         $outTask = $proc.StandardOutput.ReadToEndAsync()

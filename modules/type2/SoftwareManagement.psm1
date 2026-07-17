@@ -44,7 +44,15 @@ function Invoke-SoftwareManagement {
 
     if ($hasWinget) {
         Write-Log -Level INFO -Component SOFTWARE -Message 'Updating winget sources'
-        $null = Invoke-ExternalPackageCommand -FilePath 'winget' -ArgumentList @('source', 'update', '--disable-interactivity')
+        try {
+            $sourceUpdateCode = Invoke-ExternalPackageCommand -FilePath 'winget' -ArgumentList @('source', 'update', '--disable-interactivity')
+            if ($sourceUpdateCode -ne 0) {
+                Write-Log -Level WARN -Component SOFTWARE -Message "winget source update returned exit code $sourceUpdateCode (continuing anyway)"
+            }
+        }
+        catch {
+            Write-Log -Level WARN -Component SOFTWARE -Message "Exception updating winget sources: $_. Continuing with installation..."
+        }
     }
 
     # ─── PHASE 1: REMOVE ─────────────────────────────────────────────────────
