@@ -32,21 +32,40 @@ function Invoke-TelemetryAudit {
 
         $diff = [System.Collections.Generic.List[hashtable]]::new()
 
-        # 2. Services that should be disabled (shared audit-side comparison —
-        # see Compare-ServiceBaseline in modules/core/Maintenance.psm1)
-        Compare-ServiceBaseline -ServiceNames @($baseline.services.disable) -Action 'EnsureDisabled' | ForEach-Object {
-            $diff.Add($_)
-            Write-Log -Level DEBUG -Component TELEM-AUDIT -Message "Service active (should disable): $($_.Name)"
+        # 2. Services that should be disabled
+        foreach ($svcName in $baseline.services.disable) {
+            try {
+                $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
+                if ($svc -and $svc.StartType -ne 'Disabled') {
+                    $diff.Add(@{
+                            Type = 'service'; Name = $svcName; ServiceName = $svcName
+                            CurrentState = $svc.StartType.ToString(); DesiredState = 'Disabled'
+                        })
+                    Write-Log -Level DEBUG -Component TELEM-AUDIT -Message "Service active (should disable): $svcName"
+                }
+            }
+            catch { Write-Log -Level WARN -Component TELEM-AUDIT -Message "Service query failed '$svcName': $_" }
         }
 
         # 3. Registry keys (all sub-arrays: telemetry, advertising, cortana, privacy)
-        # (shared audit-side comparison — see Compare-RegistryBaseline)
         $regGroups = @('telemetry', 'advertising', 'cortana', 'privacy')
         foreach ($grp in $regGroups) {
             if (-not $baseline.registry.$grp) { continue }
-            Compare-RegistryBaseline -Entries @($baseline.registry.$grp) | ForEach-Object {
-                $diff.Add($_)
-                Write-Log -Level DEBUG -Component TELEM-AUDIT -Message "Registry mismatch: $($_.ValueName) = $($_.CurrentState) (want $($_.DesiredState))"
+            foreach ($entry in $baseline.registry.$grp) {
+                $current = Get-RegistryValue -Path $entry.path -Name $entry.name
+                if ($null -eq $current -or $current -ne $entry.desiredValue) {
+                    $diff.Add(@{
+                            Type         = 'registry'
+                            Name         = "$($entry.path)\$($entry.name)"
+                            Path         = $entry.path
+                            ValueName    = $entry.name
+                            DesiredValue = $entry.desiredValue
+                            ValueType    = if ($entry.type) { $entry.type } else { 'DWord' }
+                            CurrentState = $current
+                            DesiredState = $entry.desiredValue
+                        })
+                    Write-Log -Level DEBUG -Component TELEM-AUDIT -Message "Registry mismatch: $($entry.name) = $current (want $($entry.desiredValue))"
+                }
             }
         }
 

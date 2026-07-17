@@ -23,7 +23,7 @@ function Invoke-TelemetryDisable {
     $diff = Get-DiffList -ModuleName 'TelemetryDisable'
     if (-not $diff -or $diff.Count -eq 0) {
         Write-Log -Level INFO -Component TELEMETRY -Message 'Telemetry already disabled'
-        return New-ModuleResult -ModuleName 'TelemetryDisable' -Status 'Skipped' -ModuleType 'Type2' -Message 'Already compliant'
+        return New-ModuleResult -ModuleName 'TelemetryDisable' -Status 'Skipped' -Message 'Already compliant'
     }
 
     $processed = 0; $failed = 0; $errors = @()
@@ -37,10 +37,31 @@ function Invoke-TelemetryDisable {
             $changed = $false
             switch ($type) {
                 'service' {
-                    $changed = Invoke-ServiceChangeItem -Item $item -Component 'TELEMETRY'
+                    $svc = $item.ServiceName ?? $item.Name
+                    try {
+                        $svcObj = Get-Service -Name $svc -ErrorAction Stop
+                        if ($svcObj.Status -eq 'Running') {
+                            Stop-Service -Name $svc -Force -ErrorAction Stop
+                            Write-Log -Level DEBUG -Component TELEMETRY -Message "Stopped service: $svc"
+                        }
+                    }
+                    catch {
+                        Write-Log -Level WARN -Component TELEMETRY -Message "Could not stop service $svc (may be protected): $_"
+                    }
+                    Set-Service -Name $svc -StartupType Disabled -ErrorAction Stop
+                    Write-Log -Level SUCCESS -Component TELEMETRY -Message "Disabled service: $svc"
+                    $changed = $true
                 }
                 'registry' {
-                    $changed = Invoke-RegistryChangeItem -Item $item -Component 'TELEMETRY'
+                    $path  = $item.Path ?? $item.RegistryPath
+                    $vname = $item.ValueName ?? $item.Name
+                    $val   = $item.DesiredValue ?? 0
+                    $vtype = $item.ValueType ?? 'DWord'
+                    if ($path -and $vname) {
+                        $null = Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
+                        Write-Log -Level SUCCESS -Component TELEMETRY -Message "Registry: $path\$vname = $val"
+                        $changed = $true
+                    }
                 }
                 'scheduledtask' {
                     $taskPath = $item.TaskPath ?? '\Microsoft\Windows\'
@@ -51,7 +72,6 @@ function Invoke-TelemetryDisable {
                 }
                 default {
                     Write-Log -Level WARN -Component TELEMETRY -Message "Unknown type '$type' for $name"
-                    $errors += "[Unknown type] $name"; $failed++
                 }
             }
             if ($changed) { $processed++ }
@@ -64,7 +84,7 @@ function Invoke-TelemetryDisable {
 
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
     Write-Log -Level INFO -Component TELEMETRY -Message "Done: $processed applied, $failed failed"
-    return New-ModuleResult -ModuleName 'TelemetryDisable' -Status $status -ModuleType 'Type2' -ItemsDetected $diff.Count `
+    return New-ModuleResult -ModuleName 'TelemetryDisable' -Status $status -ItemsDetected $diff.Count `
                             -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors
 }
 

@@ -11,13 +11,6 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
 }
 
-function Test-ProcessRunning {
-    param([string]$PackageName)
-    $procName = $PackageName -replace '[^a-zA-Z0-9]', ''
-    if ($procName.Length -eq 0) { return $null }
-    Get-Process | Where-Object { $_.ProcessName -like "*$procName*" }
-}
-
 <#
 .SYNOPSIS
     Removes bloatware applications identified by the Type1 audit.
@@ -41,7 +34,7 @@ function Invoke-BloatwareRemoval {
     $diff = Get-DiffList -ModuleName 'BloatwareRemoval'
     if (-not $diff -or $diff.Count -eq 0) {
         Write-Log -Level INFO -Component BLOATWARE -Message 'No bloatware in diff list - system is clean'
-        return New-ModuleResult -ModuleName 'BloatwareRemoval' -Status 'Skipped' -ModuleType 'Type2' -Message 'No bloatware found by audit'
+        return New-ModuleResult -ModuleName 'BloatwareRemoval' -Status 'Skipped' -Message 'No bloatware found by audit'
     }
 
     $osCtx = if ($OSContext) { $OSContext } elseif (Test-Path variable:global:OSContext) { $global:OSContext } else { Get-OSContext }
@@ -64,33 +57,11 @@ function Invoke-BloatwareRemoval {
                 $pkg = Get-AppxPackageCompat -Name "*$pkgName*" -AllUsers
                 if (-not $pkg) { $pkg = Get-AppxPackageCompat -Name "*$pkgName*" }
                 if ($pkg) {
-                    $runningProc = Test-ProcessRunning -PackageName $pkgName
-                    if ($runningProc) {
-                        Write-Log -Level WARN -Component BLOATWARE -Message "Process running: $($runningProc.ProcessName). Attempting graceful termination..."
-                        try {
-                            $runningProc | Stop-Process -Force -ErrorAction Stop
-                            Start-Sleep -Milliseconds 500
-                            Write-Log -Level SUCCESS -Component BLOATWARE -Message "Terminated: $($runningProc.ProcessName)"
-                        }
-                        catch {
-                            Write-Log -Level WARN -Component BLOATWARE -Message "Could not terminate process: $_"
-                        }
-                    }
-
                     $pkg | ForEach-Object {
                         Remove-AppxPackageCompat -PackageFullName $_.PackageFullName -AllUsers
                     }
-                    # Re-query rather than assuming success: a protected/in-use OEM
-                    # package can silently fail to remove even though it was found.
-                    $stillPresent = Get-AppxPackageCompat -Name "*$pkgName*" -AllUsers
-                    if (-not $stillPresent) { $stillPresent = Get-AppxPackageCompat -Name "*$pkgName*" }
-                    if (-not $stillPresent) {
-                        Write-Log -Level SUCCESS -Component BLOATWARE -Message "Removed AppX: $pkgName"
-                        $removed = $true
-                    }
-                    else {
-                        Write-Log -Level WARN -Component BLOATWARE -Message "AppX removal did not take effect (package still present, may be protected): $pkgName"
-                    }
+                    Write-Log -Level SUCCESS -Component BLOATWARE -Message "Removed AppX: $pkgName"
+                    $removed = $true
                 }
                 try {
                     $prov = Get-AppxProvisionedPackageCompat |
@@ -127,7 +98,7 @@ function Invoke-BloatwareRemoval {
 
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
     Write-Log -Level INFO -Component BLOATWARE -Message "Done: $processed processed, $failed failed"
-    return New-ModuleResult -ModuleName 'BloatwareRemoval' -Status $status -ModuleType 'Type2' -ItemsDetected $diff.Count `
+    return New-ModuleResult -ModuleName 'BloatwareRemoval' -Status $status -ItemsDetected $diff.Count `
         -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors
 }
 

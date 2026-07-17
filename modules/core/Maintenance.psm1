@@ -271,6 +271,100 @@ function Get-TempPath {
 
 <#
 .SYNOPSIS
+    Produces a diff list by comparing Type1 scan results against a baseline.
+.DESCRIPTION
+    Strategies:
+      Present  - items IN baseline that ARE found in scan (bloatware to remove)
+      Missing  - items IN baseline that are NOT in scan (apps to install)
+      Changed  - items where scanned state differs from desired state in baseline
+.PARAMETER ScannedItems
+    Array of objects returned by Type1 audit.
+.PARAMETER BaselineItems
+    Array/object from config/lists JSON.
+.PARAMETER Strategy
+    'Present' | 'Missing' | 'Changed'
+.PARAMETER MatchProperty
+    Property name to match on (default: 'Name').
+.OUTPUTS
+    Array of diff items (subset of scanned or baseline items).
+#>
+function Compare-ListDiff {
+    [CmdletBinding()]
+    [OutputType([object[]])]
+    param(
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$ScannedItems,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$BaselineItems,
+        [Parameter(Mandatory)] [ValidateSet('Present', 'Missing', 'Changed')] [string]$Strategy,
+        [Parameter()] [string]$MatchProperty = 'Name'
+    )
+
+    if ($null -eq $ScannedItems -or $ScannedItems.Count -eq 0) { return @() }
+    if ($null -eq $BaselineItems -or $BaselineItems.Count -eq 0) { return @() }
+
+    switch ($Strategy) {
+        'Present' {
+            # Items from baseline list that ARE present in scanned results (e.g. bloatware found)
+            $scannedNames = $ScannedItems | ForEach-Object {
+                if ($_ -is [string]) { $_ } else { $_.$MatchProperty }
+            } | Where-Object { $_ } | ForEach-Object { $_.ToLowerInvariant() }
+
+            return $BaselineItems | Where-Object {
+                $bName = if ($_ -is [string]) { $_ } else { $_.$MatchProperty }
+                $bName -and $scannedNames -contains $bName.ToLowerInvariant()
+            }
+        }
+        'Missing' {
+            # Items from baseline that are NOT present in scanned results (e.g. apps to install)
+            $scannedNames = $ScannedItems | ForEach-Object {
+                if ($_ -is [string]) { $_ } else { $_.$MatchProperty }
+            } | Where-Object { $_ } | ForEach-Object { $_.ToLowerInvariant() }
+
+            return $BaselineItems | Where-Object {
+                $bName = if ($_ -is [string]) { $_ } else { $_.$MatchProperty }
+                $bName -and $scannedNames -notcontains $bName.ToLowerInvariant()
+            }
+        }
+        'Changed' {
+            # Items where scanned state does not match desired state
+            # Expects scanned items to have 'Name' and 'CurrentState'; baseline has 'name'/'desiredValue'
+            $diff = [System.Collections.Generic.List[object]]::new()
+            foreach ($baseItem in $BaselineItems) {
+                $bName = if ($baseItem -is [string]) { $baseItem } else { $baseItem.$MatchProperty }
+                if (-not $bName) { continue }
+                $found = $ScannedItems | Where-Object {
+                    ($_ -is [string] -and $_ -eq $bName) -or
+                    ($_.$MatchProperty -and $_.$MatchProperty.Equals($bName, [System.StringComparison]::OrdinalIgnoreCase))
+                } | Select-Object -First 1
+
+                if ($found -and $found.PSObject.Properties['CurrentState'] -and $baseItem.PSObject.Properties['desiredValue']) {
+                    if ($found.CurrentState -ne $baseItem.desiredValue) {
+                        $diff.Add(@{
+                                Name         = $bName
+                                CurrentState = $found.CurrentState
+                                DesiredState = $baseItem.desiredValue
+                                Item         = $baseItem
+                            })
+                    }
+                }
+                elseif (-not $found) {
+                    # Item is missing - assume it needs to be set to desired value
+                    if ($baseItem.PSObject.Properties['desiredValue']) {
+                        $diff.Add(@{
+                                Name         = $bName
+                                CurrentState = $null
+                                DesiredState = $baseItem.desiredValue
+                                Item         = $baseItem
+                            })
+                    }
+                }
+            }
+            return $diff.ToArray()
+        }
+    }
+}
+
+<#
+.SYNOPSIS
     Persists a diff list to temp_files/diff/[ModuleName]-diff.json.
 #>
 function Save-DiffList {
@@ -306,25 +400,16 @@ function Get-DiffList {
     )
 
     $path = Get-TempPath -Category 'diff' -FileName "$ModuleName-diff.json"
-    if (-not (Test-Path $path)) { return , @() }
+    if (-not (Test-Path $path)) { return @() }
     try {
         # -AsHashtable: keeps diff items as [hashtable] for uniform access.
         # Type1 modules save hashtable arrays via Save-DiffList;
         # Type2 modules consume them — both sides now use the same type.
         $items = Get-Content -Path $path -Raw | ConvertFrom-Json -Depth 10 -AsHashtable
-        if ($null -eq $items) { return , @() }
-        # The unary comma forces PowerShell to preserve array-shape on return.
-        # Without it, a diff list with EXACTLY ONE item collapses into the bare
-        # hashtable itself when the caller assigns the result to a variable —
-        # $diff.Count then silently returns the number of KEYS in that one
-        # hashtable (e.g. 9) instead of the number of diff items (1). The
-        # foreach-based consumption loops happen to still work by accident
-        # (foreach over a bare hashtable treats it as one iteration), but every
-        # item-count log line and report field would be wrong whenever a
-        # module has exactly one pending diff item.
-        return , @($items)
+        if ($null -eq $items) { return @() }
+        return @($items)
     }
-    catch { return , @() }
+    catch { return @() }
 }
 
 #endregion
@@ -552,9 +637,7 @@ function Get-InstalledApp {
     }
     catch { Write-Verbose "AppX enumeration skipped: $_" }
 
-    # Unary comma preserves array-shape on return even with exactly one app —
-    # see the comment in Get-DiffList for why this matters.
-    return , $apps.ToArray()
+    return $apps.ToArray()
 }
 
 <#
@@ -567,7 +650,7 @@ function Get-WingetUpgrade {
     [OutputType([object[]])]
     param()
 
-    if (-not (Test-CommandAvailable 'winget')) { return , @() }
+    if (-not (Test-CommandAvailable 'winget')) { return @() }
 
     try {
         $raw = & winget upgrade --include-unknown 2>&1 | Where-Object { $_ -is [string] }
@@ -591,13 +674,11 @@ function Get-WingetUpgrade {
                 $result.Add($wingetItem)
             }
         }
-        # Unary comma preserves array-shape on return even with exactly one
-        # upgrade — see the comment in Get-DiffList for why this matters.
-        return , $result.ToArray()
+        return $result.ToArray()
     }
     catch {
         Write-Log -Level WARN -Component CORE -Message "winget upgrade query failed: $_"
-        return , @()
+        return @()
     }
 }
 
@@ -651,17 +732,9 @@ function Get-RegistryValue {
 
 <#
 .SYNOPSIS
-    Sets or creates a registry value. Skips if value AND type already correct.
-.DESCRIPTION
-    Compares both the current value and its on-disk registry type against the
-    desired value/type before short-circuiting — a string "0" and a DWord 0
-    compare equal in PowerShell but are not the same on-disk representation,
-    so a type-only mismatch is still corrected. Write failures (access-denied,
-    GPO-locked keys) are caught explicitly rather than silently swallowed by
-    the default non-terminating ErrorActionPreference, so a failed write
-    returns $false instead of falsely reporting success.
+    Sets or creates a registry value. Skips if value already correct.
 .OUTPUTS
-    bool - $true if a change was made, $false if already correct or the write failed.
+    bool - $true if a change was made.
 #>
 function Set-RegistryValue {
     [CmdletBinding()]
@@ -674,224 +747,12 @@ function Set-RegistryValue {
     )
 
     $current = Get-RegistryValue -Path $Path -Name $Name
-    $currentType = $null
-    if (Test-Path $Path) {
-        try {
-            $item = Get-Item -Path $Path -ErrorAction Stop
-            $currentType = $item.GetValueKind($Name)
-        }
-        catch { $currentType = $null }
+    if ($current -eq $Value) { return $false }
+
+    if (-not (Test-Path $Path)) {
+        New-Item -Path $Path -Force | Out-Null
     }
-
-    $valueMatches = ($null -ne $current) -and ($current -eq $Value)
-    $typeMatches = ($null -ne $currentType) -and ($currentType.ToString() -eq $Type)
-    if ($valueMatches -and $typeMatches) { return $false }
-
-    try {
-        if (-not (Test-Path $Path)) {
-            New-Item -Path $Path -Force -ErrorAction Stop | Out-Null
-        }
-        Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force -ErrorAction Stop
-        return $true
-    }
-    catch {
-        Write-Log -Level ERROR -Component CORE -Message "Failed to set $Path\$Name = $Value ($Type): $_"
-        return $false
-    }
-}
-
-<#
-.SYNOPSIS
-    Compares baseline registry entries against live system state and returns diff items.
-.DESCRIPTION
-    Shared audit-side registry comparison, factored out of SecurityAudit.psm1 and
-    TelemetryAudit.psm1 (both previously hand-rolled the identical loop). Each
-    entry is a hashtable shaped { path, name, desiredValue, type, description, nonEmpty }.
-    When an entry sets nonEmpty = $true (e.g. a legal-notice banner that just needs
-    to be non-blank, not match a specific placeholder string), the comparison checks
-    for a non-whitespace current value instead of exact equality.
-.PARAMETER Entries
-    Array of baseline registry entries to check.
-.OUTPUTS
-    [hashtable[]] — diff items shaped { Type='registry'; Name; Description; Path;
-    ValueName; DesiredValue; ValueType; CurrentState; DesiredState }.
-#>
-function Compare-RegistryBaseline {
-    [CmdletBinding()]
-    [OutputType([hashtable[]])]
-    param(
-        [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$Entries
-    )
-
-    $diff = [System.Collections.Generic.List[hashtable]]::new()
-    foreach ($entry in $Entries) {
-        $current = Get-RegistryValue -Path $entry.path -Name $entry.name
-        $desired = $entry.desiredValue
-
-        $mismatch = if ($entry.nonEmpty) {
-            [string]::IsNullOrWhiteSpace("$current")
-        }
-        else {
-            ($null -eq $current) -or ("$current" -ne "$desired")
-        }
-
-        if ($mismatch) {
-            $diff.Add(@{
-                    Type         = 'registry'
-                    Name         = "$($entry.path)\$($entry.name)"
-                    Description  = $entry.description
-                    Path         = $entry.path
-                    ValueName    = $entry.name
-                    DesiredValue = $desired
-                    ValueType    = if ($entry.type) { $entry.type } else { 'DWord' }
-                    CurrentState = $current
-                    DesiredState = $desired
-                })
-        }
-    }
-    # Unary comma preserves array-shape on return even when $diff has exactly
-    # one element — see the comment in Get-DiffList for why this matters.
-    return , $diff.ToArray()
-}
-
-<#
-.SYNOPSIS
-    Applies a single registry-typed diff item (writes the registry value).
-.DESCRIPTION
-    Shared action-side registry writer, factored out of SecurityEnhancement.psm1,
-    TelemetryDisable.psm1, and SystemOptimization.psm1 (all three previously
-    hand-rolled the identical Path/ValueName/DesiredValue/ValueType extraction
-    and Set-RegistryValue call). Callers pass a -Component tag so log lines
-    still attribute back to the calling domain module.
-.PARAMETER Item
-    Diff item hashtable with Path/RegistryPath, ValueName/Name, DesiredValue, ValueType.
-.PARAMETER Component
-    Log component tag to attribute this write to (e.g. 'SECURITY', 'TELEMETRY', 'SYSOPT').
-.OUTPUTS
-    bool - $true if the value was changed, $false if already correct, malformed, or the write failed.
-#>
-function Invoke-RegistryChangeItem {
-    [CmdletBinding()]
-    [OutputType([bool])]
-    param(
-        [Parameter(Mandatory)] [hashtable]$Item,
-        [Parameter(Mandatory)] [string]$Component
-    )
-
-    $path = $Item.Path ?? $Item.RegistryPath
-    $vname = $Item.ValueName ?? $Item.Name
-    $val = $Item.DesiredValue
-    $vtype = $Item.ValueType ?? 'DWord'
-
-    if (-not $path -or -not $vname -or $null -eq $val) { return $false }
-
-    $changed = Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
-    if ($changed) {
-        Write-Log -Level SUCCESS -Component $Component -Message "Registry: $path\$vname = $val"
-    }
-    return $changed
-}
-
-<#
-.SYNOPSIS
-    Compares a list of service names against a desired running/disabled state.
-.DESCRIPTION
-    Shared audit-side service comparison, factored out of SecurityAudit.psm1,
-    TelemetryAudit.psm1, and SystemOptimizationAudit.psm1 (all three previously
-    hand-rolled the identical Get-Service + StartType/Status check).
-.PARAMETER ServiceNames
-    Array of Windows service names to check.
-.PARAMETER Action
-    'EnsureRunning' checks Status -ne 'Running'; 'EnsureDisabled' (default) checks
-    StartType -ne 'Disabled'.
-.OUTPUTS
-    [hashtable[]] — diff items shaped { Type='service'; Name; ServiceName; Action;
-    CurrentState; DesiredState }.
-#>
-function Compare-ServiceBaseline {
-    [CmdletBinding()]
-    [OutputType([hashtable[]])]
-    param(
-        [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$ServiceNames,
-        [Parameter()] [ValidateSet('EnsureRunning', 'EnsureDisabled')] [string]$Action = 'EnsureDisabled'
-    )
-
-    $diff = [System.Collections.Generic.List[hashtable]]::new()
-    foreach ($svcName in $ServiceNames) {
-        try {
-            $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
-            if (-not $svc) { continue }
-
-            if ($Action -eq 'EnsureRunning' -and $svc.Status -ne 'Running') {
-                $diff.Add(@{
-                        Type         = 'service'
-                        Name         = $svcName
-                        ServiceName  = $svcName
-                        Action       = 'EnsureRunning'
-                        CurrentState = $svc.Status.ToString()
-                        DesiredState = 'Running'
-                    })
-            }
-            elseif ($Action -eq 'EnsureDisabled' -and $svc.StartType -ne 'Disabled') {
-                $diff.Add(@{
-                        Type         = 'service'
-                        Name         = $svcName
-                        ServiceName  = $svcName
-                        Action       = 'EnsureDisabled'
-                        CurrentState = $svc.StartType.ToString()
-                        DesiredState = 'Disabled'
-                    })
-            }
-        }
-        catch { Write-Log -Level WARN -Component CORE -Message "Service query failed '$svcName': $_" }
-    }
-    # Unary comma preserves array-shape on return even when $diff has exactly
-    # one element — see the comment in Get-DiffList for why this matters.
-    return , $diff.ToArray()
-}
-
-<#
-.SYNOPSIS
-    Applies a single service-typed diff item (starts/stops and sets startup type).
-.DESCRIPTION
-    Shared action-side service toggler, factored out of SecurityEnhancement.psm1,
-    TelemetryDisable.psm1, and SystemOptimization.psm1. Supports both calling
-    conventions already in use: an Action field ('EnsureRunning'/'EnsureDisabled',
-    Security/Telemetry style) or a literal DesiredStartType/DesiredState value
-    (SystemOptimization style, defaults to 'Disabled' when absent).
-.PARAMETER Item
-    Diff item hashtable with ServiceName/Name and either Action or DesiredStartType/DesiredState.
-.PARAMETER Component
-    Log component tag to attribute this change to.
-.OUTPUTS
-    bool - $true if a change was applied, $false if the item was malformed.
-#>
-function Invoke-ServiceChangeItem {
-    [CmdletBinding()]
-    [OutputType([bool])]
-    param(
-        [Parameter(Mandatory)] [hashtable]$Item,
-        [Parameter(Mandatory)] [string]$Component
-    )
-
-    $svc = $Item.ServiceName ?? $Item.Name
-    if (-not $svc) { return $false }
-
-    if ($Item.Action -eq 'EnsureRunning') {
-        Set-Service -Name $svc -StartupType Automatic -ErrorAction Stop
-        Start-Service -Name $svc -ErrorAction Stop
-        Write-Log -Level SUCCESS -Component $Component -Message "Service started: $svc"
-        return $true
-    }
-
-    $targetType = $Item.DesiredStartType ?? $Item.DesiredState
-    if (-not $targetType -or $Item.Action -eq 'EnsureDisabled') { $targetType = 'Disabled' }
-
-    try { Stop-Service -Name $svc -Force -ErrorAction Stop }
-    catch { Write-Log -Level WARN -Component $Component -Message "Could not stop service $svc (may be protected): $_" }
-
-    Set-Service -Name $svc -StartupType $targetType -ErrorAction Stop
-    Write-Log -Level SUCCESS -Component $Component -Message "Service '$svc' -> $targetType"
+    Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force
     return $true
 }
 
@@ -904,41 +765,28 @@ function Invoke-ServiceChangeItem {
     Runs an external executable (e.g. winget, choco) and returns its exit code.
 .DESCRIPTION
     Wraps System.Diagnostics.Process for silent, non-interactive external
-    command execution.  Reads stdout/stderr asynchronously via output/error
-    event handlers rather than sequential ReadToEnd() calls — reading stdout
-    to completion before touching stderr is a classic .NET deadlock: if the
-    child fills the stderr OS pipe buffer while the parent is still blocked
-    on stdout, the child blocks trying to write and the whole process (and
-    the entire unattended maintenance run) hangs forever. A hard timeout
-    with kill-on-expiry is included since an unattended run has no one
-    watching to notice a hung external tool.
+    command execution.  Captures stdout/stderr so they don't pollute the
+    console and returns only the integer exit code.
     Used by Type2 modules (EssentialApps, AppUpgrade) that invoke package
     managers to install or upgrade software.
 .PARAMETER FilePath
     Full path or name of the executable (resolved by the OS PATH).
 .PARAMETER ArgumentList
-    Array of arguments passed to the executable. Each element is passed as a
-    single argument via ProcessStartInfo.ArgumentList (not a joined string),
-    so elements containing embedded spaces (paths, quoted pass-through flags)
-    are not mis-split by the child process's command-line parser.
-.PARAMETER TimeoutSeconds
-    Maximum time to wait for the process before killing it. Default 600s (10 min).
+    Array of arguments passed to the executable.
 .OUTPUTS
-    [int] — process exit code (0 typically means success). Returns -1 if the
-    process had to be killed after exceeding TimeoutSeconds.
+    [int] — process exit code (0 typically means success).
 #>
 function Invoke-ExternalPackageCommand {
     [CmdletBinding()]
     [OutputType([int])]
     param(
         [Parameter(Mandatory)] [string]$FilePath,
-        [Parameter(Mandatory)] [string[]]$ArgumentList,
-        [Parameter()] [int]$TimeoutSeconds = 600
+        [Parameter(Mandatory)] [string[]]$ArgumentList
     )
 
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = $FilePath
-    foreach ($a in $ArgumentList) { $psi.ArgumentList.Add($a) }
+    $psi.Arguments = $ArgumentList -join ' '
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
@@ -946,40 +794,11 @@ function Invoke-ExternalPackageCommand {
 
     $proc = [System.Diagnostics.Process]::new()
     $proc.StartInfo = $psi
-    $proc.EnableRaisingEvents = $true
-
-    $stdout = [System.Text.StringBuilder]::new()
-    $stderr = [System.Text.StringBuilder]::new()
-    $outEvent = Register-ObjectEvent -InputObject $proc -EventName OutputDataReceived -Action {
-        if ($null -ne $Event.SourceEventArgs.Data) { $Event.MessageData.Append($Event.SourceEventArgs.Data) | Out-Null }
-    } -MessageData $stdout
-    $errEvent = Register-ObjectEvent -InputObject $proc -EventName ErrorDataReceived -Action {
-        if ($null -ne $Event.SourceEventArgs.Data) { $Event.MessageData.Append($Event.SourceEventArgs.Data) | Out-Null }
-    } -MessageData $stderr
-
-    try {
-        $null = $proc.Start()
-        $proc.BeginOutputReadLine()
-        $proc.BeginErrorReadLine()
-
-        $exited = $proc.WaitForExit($TimeoutSeconds * 1000)
-        if (-not $exited) {
-            Write-Log -Level ERROR -Component CORE -Message "$FilePath timed out after ${TimeoutSeconds}s - killing process"
-            try { $proc.Kill($true) } catch { Write-Log -Level WARN -Component CORE -Message "Failed to kill timed-out process: $_" }
-            return -1
-        }
-
-        # WaitForExit(int) does not guarantee async output/error buffers are fully flushed;
-        # the parameterless overload after it blocks until stream handlers have completed.
-        $proc.WaitForExit()
-        return $proc.ExitCode
-    }
-    finally {
-        Unregister-Event -SourceIdentifier $outEvent.Name -ErrorAction SilentlyContinue
-        Unregister-Event -SourceIdentifier $errEvent.Name -ErrorAction SilentlyContinue
-        Remove-Job -Name $outEvent.Name -Force -ErrorAction SilentlyContinue
-        Remove-Job -Name $errEvent.Name -Force -ErrorAction SilentlyContinue
-    }
+    $null = $proc.Start()
+    $null = $proc.StandardOutput.ReadToEnd()
+    $null = $proc.StandardError.ReadToEnd()
+    $proc.WaitForExit()
+    return $proc.ExitCode
 }
 
 #endregion
@@ -993,6 +812,7 @@ Export-ModuleMember -Function @(
     'Get-MainConfig',
     'Get-BaselineList',
     'Get-TempPath',
+    'Compare-ListDiff',
     'Save-DiffList',
     'Get-DiffList',
     'New-ModuleResult',
@@ -1001,10 +821,6 @@ Export-ModuleMember -Function @(
     'Test-CommandAvailable',
     'Get-RegistryValue',
     'Set-RegistryValue',
-    'Compare-RegistryBaseline',
-    'Invoke-RegistryChangeItem',
-    'Compare-ServiceBaseline',
-    'Invoke-ServiceChangeItem',
     'Invoke-ExternalPackageCommand',
     'Invoke-AppxInWinPS',
     'Get-AppxPackageCompat',

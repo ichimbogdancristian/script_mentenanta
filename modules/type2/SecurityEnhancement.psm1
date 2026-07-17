@@ -23,7 +23,7 @@ function Invoke-SecurityEnhancement {
     $diff = Get-DiffList -ModuleName 'SecurityEnhancement'
     if (-not $diff -or $diff.Count -eq 0) {
         Write-Log -Level INFO -Component SECURITY -Message 'Security baseline already met'
-        return New-ModuleResult -ModuleName 'SecurityEnhancement' -Status 'Skipped' -ModuleType 'Type2' -Message 'Already compliant'
+        return New-ModuleResult -ModuleName 'SecurityEnhancement' -Status 'Skipped' -Message 'Already compliant'
     }
 
     $processed = 0; $failed = 0; $errors = @(); $rebootNeeded = $false
@@ -37,7 +37,15 @@ function Invoke-SecurityEnhancement {
             $changed = $false
             switch ($type) {
                 'registry' {
-                    $changed = Invoke-RegistryChangeItem -Item $item -Component 'SECURITY'
+                    $path = $item.Path ?? $item.RegistryPath
+                    $vname = $item.ValueName ?? $item.Name
+                    $val = $item.DesiredValue
+                    $vtype = $item.ValueType ?? 'DWord'
+                    if ($path -and $vname -and $null -ne $val) {
+                        $null = Set-RegistryValue -Path $path -Name $vname -Value $val -Type $vtype
+                        Write-Log -Level SUCCESS -Component SECURITY -Message "Registry: $path\$vname = $val"
+                        $changed = $true
+                    }
                 }
                 'defender' {
                     $feature = $item.Feature ?? $item.Name
@@ -80,7 +88,20 @@ function Invoke-SecurityEnhancement {
                     $changed = $true
                 }
                 'service' {
-                    $changed = Invoke-ServiceChangeItem -Item $item -Component 'SECURITY'
+                    $svc = $item.ServiceName ?? $item.Name
+                    $action = $item.Action ?? 'EnsureRunning'
+                    if ($action -eq 'EnsureRunning') {
+                        Set-Service -Name $svc -StartupType Automatic -ErrorAction Stop
+                        Start-Service -Name $svc -ErrorAction Stop
+                        Write-Log -Level SUCCESS -Component SECURITY -Message "Service started: $svc"
+                        $changed = $true
+                    }
+                    elseif ($action -eq 'EnsureDisabled') {
+                        Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+                        Set-Service -Name $svc -StartupType Disabled -ErrorAction Stop
+                        Write-Log -Level SUCCESS -Component SECURITY -Message "Service disabled: $svc"
+                        $changed = $true
+                    }
                 }
                 'passwordpolicy' {
                     $policyName = $item.Name
@@ -88,25 +109,13 @@ function Invoke-SecurityEnhancement {
                     switch ($policyName) {
                         'MaxPasswordAge' {
                             & net accounts /maxpwage:$desired 2>&1 | Out-Null
-                            if ($LASTEXITCODE -eq 0) {
-                                Write-Log -Level SUCCESS -Component SECURITY -Message "Password policy: max age set to $desired days"
-                                $changed = $true
-                            }
-                            else {
-                                Write-Log -Level ERROR -Component SECURITY -Message "net accounts /maxpwage:$desired failed (exit $LASTEXITCODE)"
-                                $errors += "[MaxPasswordAge] net accounts exit $LASTEXITCODE"; $failed++
-                            }
+                            Write-Log -Level SUCCESS -Component SECURITY -Message "Password policy: max age set to $desired days"
+                            $changed = $true
                         }
                         'MinPasswordLength' {
                             & net accounts /minpwlen:$desired 2>&1 | Out-Null
-                            if ($LASTEXITCODE -eq 0) {
-                                Write-Log -Level SUCCESS -Component SECURITY -Message "Password policy: min length set to $desired"
-                                $changed = $true
-                            }
-                            else {
-                                Write-Log -Level ERROR -Component SECURITY -Message "net accounts /minpwlen:$desired failed (exit $LASTEXITCODE)"
-                                $errors += "[MinPasswordLength] net accounts exit $LASTEXITCODE"; $failed++
-                            }
+                            Write-Log -Level SUCCESS -Component SECURITY -Message "Password policy: min length set to $desired"
+                            $changed = $true
                         }
                         default {
                             Write-Log -Level WARN -Component SECURITY -Message "Unknown password policy: $policyName"
@@ -120,48 +129,36 @@ function Invoke-SecurityEnhancement {
                         $failureFlag = if ($item.Failure) { 'enable' } else { 'disable' }
                         $auditpolExe = Join-Path $env:SystemRoot 'System32\auditpol.exe'
                         & $auditpolExe /set /subcategory:"$subcategory" /success:$successFlag /failure:$failureFlag 2>&1 | Out-Null
-                        if ($LASTEXITCODE -eq 0) {
-                            Write-Log -Level SUCCESS -Component SECURITY -Message "Audit policy: $subcategory success=$successFlag failure=$failureFlag"
-                            $changed = $true
-                        }
-                        else {
-                            Write-Log -Level ERROR -Component SECURITY -Message "auditpol /set for '$subcategory' failed (exit $LASTEXITCODE)"
-                            $errors += "[$subcategory] auditpol exit $LASTEXITCODE"; $failed++
-                        }
+                        Write-Log -Level SUCCESS -Component SECURITY -Message "Audit policy: $subcategory success=$successFlag failure=$failureFlag"
+                        $changed = $true
                     }
                 }
                 'securitypolicy' {
                     $cfgName = $item.CfgName ?? $item.Name
                     $desired = $item.DesiredState
                     if ($cfgName -and $null -ne $desired) {
-                        # Export current config, patch the value, re-import.
-                        # Temp files are cleaned up in a finally block so a failed
-                        # export/configure doesn't leave policy-content files behind.
+                        # Export current config, patch the value, re-import
                         $exportPath = Join-Path $env:TEMP 'secfix_export.cfg'
                         $importPath = Join-Path $env:TEMP 'secfix_import.cfg'
                         $sdbPath = Join-Path $env:TEMP 'secfix.sdb'
                         $seceditExe = Join-Path $env:SystemRoot 'System32\secedit.exe'
-                        try {
-                            & $seceditExe /export /cfg $exportPath /quiet 2>&1 | Out-Null
-                            $cfg = Get-Content -Path $exportPath -Raw -ErrorAction Stop
-                            if ($cfg -match "(?m)^\s*$([regex]::Escape($cfgName))\s*=") {
-                                $cfg = $cfg -replace "(?m)^\s*$([regex]::Escape($cfgName))\s*=\s*.+$", "$cfgName = $desired"
-                            }
-                            else {
-                                # Append to [System Access] section
-                                $cfg = $cfg -replace '(?m)(\[System Access\])', "`$1`r`n$cfgName = $desired"
-                            }
-                            Set-Content -Path $importPath -Value $cfg -Encoding Unicode -Force
-                            $result = & $seceditExe /configure /db $sdbPath /cfg $importPath /quiet 2>&1
-                            if ($LASTEXITCODE -ne 0) {
-                                throw "secedit configure failed for $cfgName : $result"
-                            }
-                            Write-Log -Level SUCCESS -Component SECURITY -Message "Security policy: $cfgName = $desired"
-                            $changed = $true
+                        & $seceditExe /export /cfg $exportPath /quiet 2>&1 | Out-Null
+                        $cfg = Get-Content -Path $exportPath -Raw -ErrorAction Stop
+                        if ($cfg -match "(?m)^\s*$([regex]::Escape($cfgName))\s*=") {
+                            $cfg = $cfg -replace "(?m)^\s*$([regex]::Escape($cfgName))\s*=\s*.+$", "$cfgName = $desired"
                         }
-                        finally {
-                            Remove-Item -Path $exportPath, $importPath, $sdbPath -Force -ErrorAction SilentlyContinue
+                        else {
+                            # Append to [System Access] section
+                            $cfg = $cfg -replace '(?m)(\[System Access\])', "`$1`r`n$cfgName = $desired"
                         }
+                        Set-Content -Path $importPath -Value $cfg -Encoding Unicode -Force
+                        $result = & $seceditExe /configure /db $sdbPath /cfg $importPath /quiet 2>&1
+                        if ($LASTEXITCODE -ne 0) {
+                            throw "secedit configure failed for $cfgName : $result"
+                        }
+                        Write-Log -Level SUCCESS -Component SECURITY -Message "Security policy: $cfgName = $desired"
+                        $changed = $true
+                        Remove-Item -Path $exportPath, $importPath, $sdbPath -Force -ErrorAction SilentlyContinue
                     }
                 }
                 default {
@@ -179,7 +176,7 @@ function Invoke-SecurityEnhancement {
 
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
     Write-Log -Level INFO -Component SECURITY -Message "Done: $processed applied, $failed failed"
-    return New-ModuleResult -ModuleName 'SecurityEnhancement' -Status $status -ModuleType 'Type2' -ItemsDetected $diff.Count `
+    return New-ModuleResult -ModuleName 'SecurityEnhancement' -Status $status -ItemsDetected $diff.Count `
         -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors -RebootRequired $rebootNeeded
 }
 

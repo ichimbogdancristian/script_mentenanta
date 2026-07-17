@@ -66,16 +66,14 @@ function Invoke-WindowsUpdatesAudit {
                     -or ($config.categories.optional -and $isOptional)
 
                 if ($include) {
-                    $category = if ($isCritical) { 'Critical' } elseif ($isSecurity) { 'Security' } elseif ($isImportant) { 'Important' } else { 'Optional' }
                     $pendingUpdates.Add(@{
                             Title       = $title
                             Identity    = $update.Identity.UpdateID
                             Severity    = $severity
-                            Category    = $category
                             SizeMB      = [math]::Round($update.MaxDownloadSize / 1MB, 1)
                             IsMandatory = $update.IsMandatory
                         })
-                    Write-Log -Level DEBUG -Component WU-AUDIT -Message "Pending [$category]: $title"
+                    Write-Log -Level DEBUG -Component WU-AUDIT -Message "Pending: $title"
                 }
             }
         }
@@ -84,12 +82,7 @@ function Invoke-WindowsUpdatesAudit {
             Write-Log -Level ERROR -Component WU-AUDIT -Message "COM WU query failed — pending updates will not be detected: $_"
         }
 
-        $criticalCount = @($pendingUpdates | Where-Object { $_.Category -eq 'Critical' }).Count
-        $securityCount = @($pendingUpdates | Where-Object { $_.Category -eq 'Security' }).Count
-        $importantCount = @($pendingUpdates | Where-Object { $_.Category -eq 'Important' }).Count
-        $optionalCount = @($pendingUpdates | Where-Object { $_.Category -eq 'Optional' }).Count
-
-        Write-Log -Level INFO -Component WU-AUDIT -Message "Pending updates: $($pendingUpdates.Count) (Critical: $criticalCount, Security: $securityCount, Important: $importantCount, Optional: $optionalCount)"
+        Write-Log -Level INFO -Component WU-AUDIT -Message "Pending updates: $($pendingUpdates.Count)"
 
         # 3. Save diff
         Save-DiffList -ModuleName 'WindowsUpdates' -DiffList $pendingUpdates.ToArray()
