@@ -552,10 +552,8 @@ if ($env:PENDING_SCRIPT_UPDATE -and (Test-Path $env:PENDING_SCRIPT_UPDATE)) {
         $launcherDir = $env:ORIGINAL_SCRIPT_DIR
         if ($launcherDir -and (Test-Path $launcherDir)) {
             $destBat = Join-Path $launcherDir 'script.bat'
-            $backupBat = Join-Path $launcherDir 'script.bat.backup'
-            if (Test-Path $destBat) { Copy-Item -Path $destBat -Destination $backupBat -Force -ErrorAction SilentlyContinue }
             Copy-Item -Path $env:PENDING_SCRIPT_UPDATE -Destination $destBat -Force -ErrorAction Stop
-            Write-Log -Level SUCCESS -Component ORCH -Message "script.bat self-update applied: $destBat (backup: $backupBat)"
+            Write-Log -Level SUCCESS -Component ORCH -Message "script.bat self-update applied: $destBat"
         }
     }
     catch {
