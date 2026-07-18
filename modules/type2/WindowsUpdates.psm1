@@ -110,8 +110,11 @@ function Invoke-WindowsUpdate {
 
                 Write-Log -Level INFO -Component WINUPDATE -Message "Processing: $title"
 
-                # Pre-check: Is it already installed?
-                if ($kb -and (Test-UpdateInstalled -KBNumber $kb)) {
+                # Pre-check: Is it already installed? (Function is Test-UpdateAlreadyInstalled;
+                # the old misspelled call threw CommandNotFoundException on the FIRST update,
+                # which the outer catch turned into "PSWindowsUpdate module error - falling back
+                # to usoclient" every run — abandoning the controlled path and forcing a reboot.)
+                if ($kb -and (Test-UpdateAlreadyInstalled -KBNumber $kb)) {
                     Write-Log -Level INFO -Component WINUPDATE -Message "Already installed, skipping: $title"
                     $processed++
                     continue
@@ -177,8 +180,13 @@ function Invoke-WindowsUpdate {
             Write-Log -Level WARN -Component WINUPDATE -Message "usoclient StartInstall failed with exit code $LASTEXITCODE"
         }
         $processed = $diff.Count
-        $rebootRequired = $true
-        Write-Log -Level INFO -Component WINUPDATE -Message "usoclient triggered $processed update(s) — reboot expected"
+        # Do NOT force RebootRequired here. usoclient is an unverifiable async trigger; if a
+        # reboot is genuinely needed Windows sets its own authoritative marker, which the
+        # launcher detects at the next startup. Forcing $true from this fire-and-forget path
+        # made Stage 5 reboot on every run that fell back to usoclient — a needless reboot
+        # cycle. Reboot is now deferred to Windows' real signal.
+        $rebootRequired = $false
+        Write-Log -Level INFO -Component WINUPDATE -Message "usoclient triggered $processed update(s) — reboot deferred to Windows' own marker"
     }
 
     $extraData = @{ RebootRequired = $rebootRequired; UsedUsoclient = (-not $pswuAvailable) }

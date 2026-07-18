@@ -15,10 +15,23 @@ function Get-PendingUpdatesMultiSource {
     param([hashtable]$Config)
 
     $pendingUpdates = [System.Collections.Generic.List[hashtable]]::new()
-    $detectionMethod = $null
 
-    # Layer 1: COM (Windows Update API) - Primary method
-    Write-Log -Level DEBUG -Component WU-AUDIT -Message 'Attempting Layer 1: COM (Windows Update API)'
+    # The Windows Update COM API (Microsoft.Update.Session) is the ONE authoritative source
+    # for what is genuinely PENDING installation. Its result is returned as-is — including
+    # when that result is ZERO. A 0-result COM scan means "nothing to install", NOT "fall
+    # back to a weaker source".
+    #
+    # The old registry + event-log "fallback layers" were REMOVED because they were the
+    # cause of an endless reboot loop:
+    #   * Layer 2 reported CBS 'RebootPending' / 'SetupInProgress' — those are reboot flags,
+    #     not installable updates, yet they were enqueued as pending items.
+    #   * Layer 3 harvested System event ID 19 ("installation SUCCESSFUL") and enqueued the
+    #     already-installed KBs AS pending.
+    # On a fully-patched machine the COM scan correctly returns 0, the code fell through to
+    # Layer 3, "found" the KBs it had just installed, and WindowsUpdates (Type2) tried to
+    # reinstall them via usoclient — which triggered another reboot, and the cycle repeated
+    # forever. Trusting the COM result (even when empty) breaks that loop.
+    Write-Log -Level DEBUG -Component WU-AUDIT -Message 'Querying Windows Update COM API (authoritative)'
     try {
         $updateSession = New-Object -ComObject Microsoft.Update.Session -ErrorAction Stop
         $updateSearcher = $updateSession.CreateUpdateSearcher()
@@ -28,7 +41,7 @@ function Get-PendingUpdatesMultiSource {
             $title = $update.Title
 
             $excluded = $false
-            foreach ($pattern in $config.excludePatterns) {
+            foreach ($pattern in $Config.excludePatterns) {
                 if ($title -like $pattern) { $excluded = $true; break }
             }
             if ($excluded) { continue }
@@ -39,114 +52,30 @@ function Get-PendingUpdatesMultiSource {
             $isImportant = $severity -eq 'Important'
             $isOptional = -not $isSecurity -and -not $isCritical -and -not $isImportant
 
-            $include = ($config.categories.security -and $isSecurity) `
-                -or ($config.categories.critical -and $isCritical) `
-                -or ($config.categories.important -and $isImportant) `
-                -or ($config.categories.optional -and $isOptional)
+            $include = ($Config.categories.security -and $isSecurity) `
+                -or ($Config.categories.critical -and $isCritical) `
+                -or ($Config.categories.important -and $isImportant) `
+                -or ($Config.categories.optional -and $isOptional)
 
             if ($include) {
                 $pendingUpdates.Add(@{
-                    Title = $title
-                    Identity = $update.Identity.UpdateID
-                    Severity = $severity
-                    SizeMB = [math]::Round($update.MaxDownloadSize / 1MB, 1)
-                    IsMandatory = $update.IsMandatory
-                })
-            }
-        }
-
-        if ($pendingUpdates.Count -gt 0) {
-            $detectionMethod = 'COM (Windows Update API)'
-            Write-Log -Level DEBUG -Component WU-AUDIT -Message "✓ Layer 1 successful: Found $($pendingUpdates.Count) updates"
-            return @{ Updates = $pendingUpdates; Method = $detectionMethod }
-        }
-        else {
-            Write-Log -Level DEBUG -Component WU-AUDIT -Message "Layer 1 found no updates, trying Layer 2"
-        }
-    }
-    catch {
-        Write-Log -Level DEBUG -Component WU-AUDIT -Message "Layer 1 failed: $_. Trying Layer 2..."
-    }
-
-    # Layer 2: Registry Fallback - Check Windows Update registry for pending updates
-    Write-Log -Level DEBUG -Component WU-AUDIT -Message 'Attempting Layer 2: Registry (pending updates)'
-    try {
-        $updateKeys = Get-ChildItem -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending' -ErrorAction SilentlyContinue
-        if ($updateKeys) {
-            $pendingUpdates.Add(@{
-                Title = 'Component-based servicing updates'
-                Identity = 'CBS'
-                Severity = 'Unknown'
-                SizeMB = 0
-                IsMandatory = $false
-            })
-        }
-
-        # Also check Windows Update registry for pending updates
-        $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate'
-        $setupInProgress = Get-ItemProperty -Path $regPath -Name 'SetupInProgress' -ErrorAction SilentlyContinue
-        if ($setupInProgress -and $setupInProgress.SetupInProgress -eq 1) {
-            $pendingUpdates.Add(@{
-                Title = 'Windows Update setup in progress'
-                Identity = 'WindowsUpdate'
-                Severity = 'Unknown'
-                SizeMB = 0
-                IsMandatory = $false
-            })
-        }
-
-        if ($pendingUpdates.Count -gt 0) {
-            $detectionMethod = 'Registry (Windows Update pending)'
-            Write-Log -Level DEBUG -Component WU-AUDIT -Message "✓ Layer 2 successful: Found $($pendingUpdates.Count) pending updates via registry"
-            return @{ Updates = $pendingUpdates; Method = $detectionMethod }
-        }
-        else {
-            Write-Log -Level DEBUG -Component WU-AUDIT -Message "Layer 2 found no pending updates, trying Layer 3"
-        }
-    }
-    catch {
-        Write-Log -Level DEBUG -Component WU-AUDIT -Message "Layer 2 failed: $_. Trying Layer 3..."
-    }
-
-    # Layer 3: Event Log Fallback - Check System event log for update events
-    Write-Log -Level DEBUG -Component WU-AUDIT -Message 'Attempting Layer 3: Event Log (System events)'
-    try {
-        $events = Get-WinEvent -LogName System -FilterXPath "*[System[EventID=19]]" -MaxEvents 10 -ErrorAction Stop |
-            Sort-Object -Property TimeCreated -Descending
-
-        foreach ($evt in $events) {
-            $message = $evt.Message
-            if ($message -match 'KB\d+') {
-                $matchResults = [regex]::Matches($message, 'KB(\d+)')
-                foreach ($match in $matchResults) {
-                    $kbid = "KB$($match.Groups[1].Value)"
-                    $pendingUpdates.Add(@{
-                        Title       = $kbid
-                        Identity    = $kbid
-                        Severity    = 'Unknown'
-                        SizeMB      = 0
-                        IsMandatory = $false
+                        Title       = $title
+                        Identity    = $update.Identity.UpdateID
+                        Severity    = $severity
+                        SizeMB      = [math]::Round($update.MaxDownloadSize / 1MB, 1)
+                        IsMandatory = $update.IsMandatory
                     })
-                }
             }
         }
 
-        if ($pendingUpdates.Count -gt 0) {
-            $detectionMethod = 'Event Log (System events - Historical)'
-            Write-Log -Level DEBUG -Component WU-AUDIT -Message "✓ Layer 3 successful: Found $($pendingUpdates.Count) from event log"
-            return @{ Updates = $pendingUpdates; Method = $detectionMethod }
-        }
-        else {
-            Write-Log -Level DEBUG -Component WU-AUDIT -Message "Layer 3 found no events"
-        }
+        Write-Log -Level DEBUG -Component WU-AUDIT -Message "COM query authoritative: $($pendingUpdates.Count) pending update(s)"
+        return @{ Updates = $pendingUpdates; Method = 'COM (Windows Update API)' }
     }
     catch {
-        Write-Log -Level WARN -Component WU-AUDIT -Message "Layer 3 failed: $_"
+        # Genuine COM failure (rare) — report it as such rather than inventing updates.
+        Write-Log -Level WARN -Component WU-AUDIT -Message "Windows Update COM query failed: $_"
+        return @{ Updates = $pendingUpdates; Method = 'None (COM query failed)' }
     }
-
-    # All layers failed
-    Write-Log -Level WARN -Component WU-AUDIT -Message 'All update detection methods failed'
-    return @{ Updates = [System.Collections.Generic.List[hashtable]]::new(); Method = 'None (All methods failed)' }
 }
 
 function Invoke-WindowsUpdatesAudit {
@@ -192,19 +121,14 @@ function Invoke-WindowsUpdatesAudit {
             DetectionMethod = $detectionMethod
         } | ConvertTo-Json -Depth 8 | Set-Content -Path $auditPath -Encoding UTF8 -Force
 
-        if ($detectionMethod -eq 'None (All methods failed)') {
-            Write-Log -Level ERROR -Component WU-AUDIT -Message 'All update detection methods failed'
+        if ($detectionMethod -ne 'COM (Windows Update API)') {
+            # Only outcome other than COM success is a genuine COM failure. Report it as
+            # Failed with an EMPTY diff (already saved above) so Stage 3 does not act on
+            # guesses — never invent updates to "install".
+            Write-Log -Level ERROR -Component WU-AUDIT -Message 'Windows Update COM query failed - cannot determine pending updates'
             return New-ModuleResult -ModuleName 'WindowsUpdatesAudit' -Status 'Failed' `
-                -Message 'All update detection methods failed' `
-                -Errors @('COM, WMI, and Event Log queries all failed')
-        }
-
-        if ($detectionMethod -notlike 'COM*') {
-            Write-Log -Level WARN -Component WU-AUDIT -Message "Audit completed using fallback: $detectionMethod"
-            return New-ModuleResult -ModuleName 'WindowsUpdatesAudit' -Status 'Warning' `
-                -ItemsDetected $pendingUpdates.Count `
-                -Message "Primary detection failed, used fallback: $detectionMethod" `
-                -Errors @("COM detection failed, used: $detectionMethod")
+                -Message 'Windows Update COM query failed' `
+                -Errors @('COM (Microsoft.Update.Session) query failed')
         }
 
         Write-Log -Level SUCCESS -Component WU-AUDIT -Message "Windows Updates audit complete: $($pendingUpdates.Count) pending"
