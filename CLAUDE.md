@@ -183,8 +183,9 @@ pattern and register the pair in `$ModulePairs`.
 ## Comprehensive Audit & Remediation (v5.0+)
 
 A full system audit identified and fixed **10 critical/high-priority issues** across 6 modules
-and the orchestrator (commits fd75650 and prior). See [PROJECT_AUDIT_REPORT.md](PROJECT_AUDIT_REPORT.md)
-for complete findings. Key improvements:
+and the orchestrator (commits fd75650 and prior). See [archive/PROJECT_AUDIT_REPORT.md](archive/PROJECT_AUDIT_REPORT.md)
+for complete findings, and [PROJECT_EVALUATION.md](PROJECT_EVALUATION.md) for the newer 2026-07-18
+full-project evaluation (which supersedes several claims below — critical bugs remain open). Key improvements:
 
 **Critical Bug Fixes:**
 - `SystemConfigurationAudit`: Startup program audit was exiting early (changed `return` → `continue`), causing data loss after first unsafe entry
