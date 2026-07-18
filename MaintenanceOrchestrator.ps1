@@ -94,7 +94,7 @@ catch {
     Write-Host "[FATAL] Failed to import core module: $_" -ForegroundColor Red
     try {
         "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [FATAL] [ORCH] Core import failed: $_" |
-            Add-Content -Path $LogPath -Encoding UTF8
+        Add-Content -Path $LogPath -Encoding UTF8
     }
     catch {
         Write-Host "[WARN] Could not write to log file: $_" -ForegroundColor Yellow
@@ -118,529 +118,639 @@ Add-LogRaw ('=' * 70)
 #    are always closed cleanly (finally). ──────────────────────────────────────────
 try {
 
-#region ─── OS & CONFIG ───────────────────────────────────────────────────────
+    #region ─── OS & CONFIG ───────────────────────────────────────────────────────
 
-$global:OSContext = Get-OSContext
-$Config = Get-MainConfig
+    $global:OSContext = Get-OSContext
+    $Config = Get-MainConfig
 
-# Apply configured log levels (falls back to the logger's INFO/DEBUG defaults).
-if ($Config.logging) {
-    Set-LogLevel -Console $Config.logging.consoleLevel -File $Config.logging.fileLevel
-}
-
-Write-Log -Level SUCCESS -Component ORCH -Message "OS: $($global:OSContext.DisplayText)"
-
-#endregion
-
-#region ─── MODULE PAIR REGISTRY ──────────────────────────────────────────────
-# Each entry maps a Type1 audit module to its Type2 action counterpart.
-# DiffKey must match the -ModuleName used in Save-DiffList / Get-DiffList.
-
-$ModulePairs = @(
-    @{
-        Num        = 1
-        Label      = 'Software Management (Remove/Install/Upgrade)'
-        DiffKey    = 'SoftwareManagement'
-        Type1File  = 'modules\type1\SoftwareManagementAudit.psm1'
-        Type1Func  = 'Invoke-SoftwareManagementAudit'
-        Type2File  = 'modules\type2\SoftwareManagement.psm1'
-        Type2Func  = 'Invoke-SoftwareManagement'
-        ConfigSkip = 'skipSoftwareManagement'
-    },
-    @{
-        Num        = 2
-        Label      = 'System Configuration (Security/Privacy/Optimization)'
-        DiffKey    = 'SystemConfiguration'
-        Type1File  = 'modules\type1\SystemConfigurationAudit.psm1'
-        Type1Func  = 'Invoke-SystemConfigurationAudit'
-        Type2File  = 'modules\type2\SystemConfiguration.psm1'
-        Type2Func  = 'Invoke-SystemConfiguration'
-        ConfigSkip = 'skipSystemConfiguration'
-    },
-    @{
-        Num        = 3
-        Label      = 'Disk Cleanup (Temp/Browser/Updates)'
-        DiffKey    = 'DiskCleanup'
-        Type1File  = 'modules\type1\DiskCleanupAudit.psm1'
-        Type1Func  = 'Invoke-DiskCleanupAudit'
-        Type2File  = 'modules\type2\DiskCleanup.psm1'
-        Type2Func  = 'Invoke-DiskCleanup'
-        ConfigSkip = 'skipDiskCleanup'
-    },
-    @{
-        Num        = 4
-        Label      = 'Windows Updates'
-        DiffKey    = 'WindowsUpdates'
-        Type1File  = 'modules\type1\WindowsUpdatesAudit.psm1'
-        Type1Func  = 'Invoke-WindowsUpdatesAudit'
-        Type2File  = 'modules\type2\WindowsUpdates.psm1'
-        Type2Func  = 'Invoke-WindowsUpdate'
-        ConfigSkip = 'skipWindowsUpdates'
-    },
-    @{
-        Num        = 5
-        Label      = 'System Inventory (report only)'
-        DiffKey    = 'SystemInventory'
-        Type1File  = 'modules\type1\SystemInventory.psm1'
-        Type1Func  = 'Invoke-SystemInventory'
-        Type2File  = ''   # No Type2 pair
-        Type2Func  = ''
-        ConfigSkip = ''
-    },
-    @{
-        Num        = 6
-        Label      = 'System Health (Events, Defender, Exclusions - report only)'
-        DiffKey    = 'SystemHealth'
-        Type1File  = 'modules\type1\SystemHealthAudit.psm1'
-        Type1Func  = 'Invoke-SystemHealthAudit'
-        Type2File  = ''   # No Type2 pair
-        Type2Func  = ''
-        ConfigSkip = ''
-    },
-    @{
-        Num        = 7
-        Label      = 'Restore Point Management (Create/Consolidate)'
-        DiffKey    = 'RestorePoint'
-        Type1File  = 'modules\type1\RestorePointAudit.psm1'
-        Type1Func  = 'Invoke-RestorePointAudit'
-        Type2File  = 'modules\type2\RestorePointManagement.psm1'
-        Type2Func  = 'Invoke-RestorePointManagement'
-        ConfigSkip = 'skipRestorePointManagement'
+    # Apply configured log levels (falls back to the logger's INFO/DEBUG defaults).
+    if ($Config.logging) {
+        Set-LogLevel -Console $Config.logging.consoleLevel -File $Config.logging.fileLevel
     }
-)
 
-#endregion
+    Write-Log -Level SUCCESS -Component ORCH -Message "OS: $($global:OSContext.DisplayText)"
 
-#region ─── HELPER: IMPORT & RUN MODULE ───────────────────────────────────────
+    #endregion
 
-function Invoke-ModuleFunction {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)] [string]$ModuleFile,
-        [Parameter(Mandatory)] [string]$FunctionName,
-        [Parameter()]          [hashtable]$FuncParams = @{}
+    #region ─── MODULE PAIR REGISTRY ──────────────────────────────────────────────
+    # Each entry maps a Type1 audit module to its Type2 action counterpart.
+    # DiffKey must match the -ModuleName used in Save-DiffList / Get-DiffList.
+    #
+    # Array ORDER = Stage 1 audit/menu order (Num is unrelated to position - selection via
+    # -TaskNumbers/the menu matches on Num, not array index). Actionable pairs (1-4, 7) run
+    # first so the decisions that gate Stage 3 are made before any time is spent on the
+    # report-only audits (5, 6) - if the circuit breaker trips or a run is cut short, it's
+    # the report-only work that gets sacrificed, not the audits Stage 3 depends on.
+    # Stage 3's own execution order is independent of this array - see the explicit
+    # $Stage3Order sort applied to $actionNeeded in Stage 3, below.
+
+    $ModulePairs = @(
+        @{
+            Num        = 1
+            Label      = 'Software Management (Remove/Install/Upgrade)'
+            DiffKey    = 'SoftwareManagement'
+            Type1File  = 'modules\type1\SoftwareManagementAudit.psm1'
+            Type1Func  = 'Invoke-SoftwareManagementAudit'
+            Type2File  = 'modules\type2\SoftwareManagement.psm1'
+            Type2Func  = 'Invoke-SoftwareManagement'
+            ConfigSkip = 'skipSoftwareManagement'
+        },
+        @{
+            Num        = 2
+            Label      = 'System Configuration (Security/Privacy/Optimization)'
+            DiffKey    = 'SystemConfiguration'
+            Type1File  = 'modules\type1\SystemConfigurationAudit.psm1'
+            Type1Func  = 'Invoke-SystemConfigurationAudit'
+            Type2File  = 'modules\type2\SystemConfiguration.psm1'
+            Type2Func  = 'Invoke-SystemConfiguration'
+            ConfigSkip = 'skipSystemConfiguration'
+        },
+        @{
+            Num        = 3
+            Label      = 'Disk Cleanup (Temp/Browser/Updates)'
+            DiffKey    = 'DiskCleanup'
+            Type1File  = 'modules\type1\DiskCleanupAudit.psm1'
+            Type1Func  = 'Invoke-DiskCleanupAudit'
+            Type2File  = 'modules\type2\DiskCleanup.psm1'
+            Type2Func  = 'Invoke-DiskCleanup'
+            ConfigSkip = 'skipDiskCleanup'
+        },
+        @{
+            Num        = 4
+            Label      = 'Windows Updates'
+            DiffKey    = 'WindowsUpdates'
+            Type1File  = 'modules\type1\WindowsUpdatesAudit.psm1'
+            Type1Func  = 'Invoke-WindowsUpdatesAudit'
+            Type2File  = 'modules\type2\WindowsUpdates.psm1'
+            Type2Func  = 'Invoke-WindowsUpdate'
+            ConfigSkip = 'skipWindowsUpdates'
+        },
+        @{
+            Num        = 7
+            Label      = 'Restore Point Management (Create/Consolidate)'
+            DiffKey    = 'RestorePoint'
+            Type1File  = 'modules\type1\RestorePointAudit.psm1'
+            Type1Func  = 'Invoke-RestorePointAudit'
+            Type2File  = 'modules\type2\RestorePointManagement.psm1'
+            Type2Func  = 'Invoke-RestorePointManagement'
+            ConfigSkip = 'skipRestorePointManagement'
+        },
+        @{
+            Num        = 5
+            Label      = 'System Inventory (report only)'
+            DiffKey    = 'SystemInventory'
+            Type1File  = 'modules\type1\SystemInventory.psm1'
+            Type1Func  = 'Invoke-SystemInventory'
+            Type2File  = ''   # No Type2 pair
+            Type2Func  = ''
+            ConfigSkip = ''
+        },
+        @{
+            Num        = 6
+            Label      = 'System Health (Events, Defender, Exclusions - report only)'
+            DiffKey    = 'SystemHealth'
+            Type1File  = 'modules\type1\SystemHealthAudit.psm1'
+            Type1Func  = 'Invoke-SystemHealthAudit'
+            Type2File  = ''   # No Type2 pair
+            Type2Func  = ''
+            ConfigSkip = ''
+        }
     )
 
-    $fullPath = Join-Path $ProjectRoot $ModuleFile
-    if (-not (Test-Path $fullPath)) {
-        Write-Log -Level WARN -Component ORCH -Message "Module file not found: $ModuleFile - skipping"
-        return $null
-    }
+    #endregion
 
-    try {
-        Import-Module $fullPath -Force -Global -WarningAction SilentlyContinue
-    }
-    catch {
-        Write-Log -Level ERROR -Component ORCH -Message "Failed to import $ModuleFile : $_"
-        return $null
-    }
+    #region ─── HELPER: IMPORT & RUN MODULE ───────────────────────────────────────
 
-    $fn = Get-Command -Name $FunctionName -ErrorAction SilentlyContinue
-    if (-not $fn) {
-        Write-Log -Level ERROR -Component ORCH -Message "Function $FunctionName not found after importing $ModuleFile"
-        return $null
-    }
+    function Invoke-ModuleFunction {
+        [CmdletBinding()]
+        param(
+            [Parameter(Mandatory)] [string]$ModuleFile,
+            [Parameter(Mandatory)] [string]$FunctionName,
+            [Parameter()]          [hashtable]$FuncParams = @{}
+        )
 
-    try {
-        if ($FuncParams.Count -gt 0) {
-            return & $FunctionName @FuncParams
+        $fullPath = Join-Path $ProjectRoot $ModuleFile
+        if (-not (Test-Path $fullPath)) {
+            Write-Log -Level WARN -Component ORCH -Message "Module file not found: $ModuleFile - skipping"
+            return $null
         }
-        else {
-            return & $FunctionName
+
+        try {
+            Import-Module $fullPath -Force -Global -WarningAction SilentlyContinue
         }
-    }
-    catch {
-        Write-Log -Level ERROR -Component ORCH -Message "$FunctionName threw: $_"
-        return $null
-    }
-}
+        catch {
+            Write-Log -Level ERROR -Component ORCH -Message "Failed to import $ModuleFile : $_"
+            return $null
+        }
 
-#endregion
+        $fn = Get-Command -Name $FunctionName -ErrorAction SilentlyContinue
+        if (-not $fn) {
+            Write-Log -Level ERROR -Component ORCH -Message "Function $FunctionName not found after importing $ModuleFile"
+            return $null
+        }
 
-#region ─── STAGE 1: SYSTEM INVENTORY (Type1) ─────────────────────────────────
-
-function Show-Stage1Menu {
-    [CmdletBinding()]
-    param()
-
-    Clear-Host
-    Write-Host ""
-    Write-Host "  ┌─────────────────────────────────────────────────────────┐" -ForegroundColor DarkCyan
-    Write-Host "  │         STAGE 1 — SYSTEM INVENTORY                     │" -ForegroundColor White
-    Write-Host "  ├─────────────────────────────────────────────────────────┤" -ForegroundColor DarkCyan
-    Write-Host "  │  0  - Run ALL modules (default)                         │" -ForegroundColor Green
-    foreach ($pair in $ModulePairs) {
-        $line = "  │  $($pair.Num)  - $($pair.Label)"
-        Write-Host ($line.PadRight(60) + '│') -ForegroundColor Cyan
-    }
-    Write-Host "  ├─────────────────────────────────────────────────────────┤" -ForegroundColor DarkCyan
-    Write-Host "  │  Comma-separated for multiple: e.g. 1,3,5              │" -ForegroundColor DarkGray
-    Write-Host "  └─────────────────────────────────────────────────────────┘" -ForegroundColor DarkCyan
-    Write-Host ""
-}
-
-function Get-MenuSelection {
-    [CmdletBinding()]
-    param([int]$Countdown = 10)
-
-    $selected = $null
-    $deadline = (Get-Date).AddSeconds($Countdown)
-
-    while ((Get-Date) -lt $deadline) {
-        $remaining = [int]($deadline - (Get-Date)).TotalSeconds
-        Write-Host "`r  Auto-running option 0 in $remaining second(s)... [enter number(s) to select]  " `
-            -NoNewline -ForegroundColor Yellow
-
-        # Defensive: [Console]::KeyAvailable throws if stdin has no real console
-        # attached (e.g. launched in a context without one). Treat that the same
-        # as "no key pressed" rather than letting it crash the run.
-        $keyAvailable = $false
-        try { $keyAvailable = [Console]::KeyAvailable }
-        catch { $keyAvailable = $false }
-
-        if ($keyAvailable) {
-            # ReadKey/Read-Host can throw if stdin is redirected or the console is not
-            # truly interactive — treat that as "no selection" (fall through to run-all)
-            # rather than letting it crash Stage 1.
-            try {
-                $null = [Console]::ReadKey($true)   # consume the trigger key-press only
-                $key = Read-Host "`n  Your choice (comma-separated)"
-                # Parse comma-separated input: "1,3,5" → @(1, 3, 5)
-                $parsed = @($key -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
-                if ($parsed.Count -gt 0) { $selected = $parsed }
+        try {
+            if ($FuncParams.Count -gt 0) {
+                return & $FunctionName @FuncParams
             }
-            catch {
-                Write-Log -Level WARN -Component ORCH -Message "Menu input unavailable ($_) — defaulting to run-all"
+            else {
+                return & $FunctionName
             }
-            break
         }
-        Start-Sleep -Milliseconds 500
-    }
-
-    Write-Host ""
-    return $selected   # $null = timeout (run all); array of ints otherwise
-}
-
-$SessionResults = [System.Collections.Generic.List[hashtable]]::new()
-$selectedPairs = $null   # $null = all
-
-Write-Host ""
-Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 1 : SYSTEM INVENTORY  ━━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
-Write-Log -Level INFO -Component ORCH -Message "Stage 1 started"
-
-if ($TaskNumbers) {
-    # Non-interactive equivalent of the Stage 1 menu selection, for Task Scheduler /
-    # script.bat -TaskNumbers callers that want to run a specific subset unattended.
-    $parsed = @($TaskNumbers -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
-    if ($parsed.Count -gt 0 -and (0 -notin $parsed)) {
-        $selectedPairs = $ModulePairs | Where-Object { $_.Num -in $parsed }
-        if (-not $selectedPairs) {
-            Write-Log -Level WARN -Component ORCH -Message "TaskNumbers '$TaskNumbers' matched no modules - running all"
-            $selectedPairs = $null
-        }
-        else {
-            $names = ($selectedPairs | ForEach-Object { $_.Label }) -join ', '
-            Write-Log -Level INFO -Component ORCH -Message "TaskNumbers filter applied: $names"
+        catch {
+            Write-Log -Level ERROR -Component ORCH -Message "$FunctionName threw: $_"
+            return $null
         }
     }
-}
-elseif (-not $NonInteractive) {
-    Show-Stage1Menu
-    $choice = Get-MenuSelection -Countdown 10
 
-    if ($null -ne $choice -and @($choice) -notcontains 0) {
-        $selectedPairs = $ModulePairs | Where-Object { $_.Num -in $choice }
-        if (-not $selectedPairs) {
-            Write-Host "  [WARN] Invalid selection '$($choice -join ',')' - running all modules." -ForegroundColor Yellow
-            $selectedPairs = $null
-        }
-        else {
-            $names = ($selectedPairs | ForEach-Object { $_.Label }) -join ', '
-            Write-Host "  Selected: $names" -ForegroundColor Green
-        }
-    }
-}
+    #endregion
 
-$pairsToAudit = if ($null -eq $selectedPairs) { $ModulePairs } else { @($selectedPairs) }
+    #region ─── STAGE 1: SYSTEM INVENTORY (Type1) ─────────────────────────────────
 
-$consecutiveFailures = 0
-$maxConsecutiveFailures = 3   # Circuit-breaker: abort stage after N consecutive failures
+    function Show-Stage1Menu {
+        [CmdletBinding()]
+        param()
 
-foreach ($pair in $pairsToAudit) {
-    Write-Host ""
-    Write-Host "  ▶  $($pair.Label) [Type1]" -ForegroundColor Cyan
-    Write-Log -Level INFO -Component ORCH -Message "Running Type1: $($pair.Type1Func)"
-
-    $start = Get-Date
-    $result = Invoke-ModuleFunction -ModuleFile $pair.Type1File -FunctionName $pair.Type1Func
-
-    $duration = [int]((Get-Date) - $start).TotalSeconds
-
-    if ($null -eq $result) {
-        $r = New-ModuleResult -ModuleName $pair.Type1Func -Status 'Failed' -ModuleType 'Type1' -Message 'Module returned null'
-    }
-    elseif ($result -is [hashtable]) {
-        $r = $result
-        if (-not $r.ContainsKey('ModuleType')) { $r.ModuleType = 'Type1' }
-    }
-    else {
-        $r = New-ModuleResult -ModuleName $pair.Type1Func -Status 'Success' -ModuleType 'Type1' -Message "Completed in ${duration}s"
-    }
-
-    $SessionResults.Add($r)
-    Write-Log -Level INFO -Component ORCH -Message "$($pair.Type1Func) → $($r.Status) | Detected:$($r.ItemsDetected)"
-
-    # Circuit-breaker: if too many consecutive failures, likely a systemic issue
-    if ($r.Status -eq 'Failed') {
-        $consecutiveFailures++
-        if ($consecutiveFailures -ge $maxConsecutiveFailures) {
-            Write-Log -Level ERROR -Component ORCH -Message "CIRCUIT BREAKER: $consecutiveFailures consecutive failures — aborting Stage 1"
-            Write-Host "  [ERROR] $consecutiveFailures consecutive module failures. Possible systemic issue — aborting Stage 1." -ForegroundColor Red
-            break
-        }
-    }
-    else {
-        $consecutiveFailures = 0
-    }
-}
-
-Write-Log -Level SUCCESS -Component ORCH -Message "Stage 1 complete: $($pairsToAudit.Count) modules run"
-
-#endregion
-
-#region ─── STAGE 2: DIFF ANALYSIS ───────────────────────────────────────────
-
-Write-Host ""
-Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 2 : DIFF ANALYSIS  ━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
-Write-Log -Level INFO -Component ORCH -Message "Stage 2: analysing diffs"
-
-$actionNeeded = [System.Collections.Generic.List[hashtable]]::new()
-
-foreach ($pair in $pairsToAudit) {
-    if (-not $pair.Type2Func) { continue }   # inventory-only modules skip
-
-    try {
-        $configSkip = if ($pair.ConfigSkip -and $Config.modules.$($pair.ConfigSkip)) { $true } else { $false }
-        if ($configSkip) {
-            Write-Log -Level INFO -Component ORCH -Message "Skipped (config): $($pair.Type2Func)"
-            continue
-        }
-
-        $diff = Get-DiffList -ModuleName $pair.DiffKey
-        if ($diff -and $diff.Count -gt 0) {
-            Write-Host "  ✔  $($pair.Label): $($diff.Count) item(s) queued for action" -ForegroundColor Green
-            Write-Log -Level INFO -Component ORCH -Message "$($pair.DiffKey): $($diff.Count) diff items - Type2 will run"
-            $actionNeeded.Add($pair)
-        }
-        else {
-            Write-Host "  ─  $($pair.Label): no changes needed — SKIPPED" -ForegroundColor DarkGray
-            Write-Log -Level INFO -Component ORCH -Message "$($pair.DiffKey): 0 diff items - Type2 SKIPPED"
-
-            $SessionResults.Add((New-ModuleResult -ModuleName $pair.Type2Func `
-                        -Status 'Skipped' -ModuleType 'Type2' `
-                        -Message 'No diff items — system already in desired state'))
-        }
-    }
-    catch {
-        # One malformed diff/config entry must not abort Stage 2 for the other pairs.
-        Write-Log -Level ERROR -Component ORCH -Message "Stage 2 error for $($pair.DiffKey): $_"
-    }
-}
-
-Write-Log -Level SUCCESS -Component ORCH -Message "Stage 2 complete: $($actionNeeded.Count) Type2 module(s) will execute"
-
-#endregion
-
-#region ─── STAGE 3: MAINTENANCE (Type2) ──────────────────────────────────────
-
-Write-Host ""
-Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 3 : MAINTENANCE  ━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
-Write-Log -Level INFO -Component ORCH -Message "Stage 3 started: $($actionNeeded.Count) module(s)"
-
-if ($actionNeeded.Count -eq 0) {
-    Write-Host "  ✔  System is already in the desired state. No changes required." -ForegroundColor Green
-    Write-Log -Level SUCCESS -Component ORCH -Message "No Type2 actions required"
-}
-else {
-    foreach ($pair in $actionNeeded) {
+        Clear-Host
         Write-Host ""
-        Write-Host "  ▶  $($pair.Label) [Type2]" -ForegroundColor Yellow
-        Write-Log -Level INFO -Component ORCH -Message "Running Type2: $($pair.Type2Func)"
+        Write-Host "  ┌─────────────────────────────────────────────────────────┐" -ForegroundColor DarkCyan
+        Write-Host "  │         STAGE 1 — SYSTEM INVENTORY                     │" -ForegroundColor White
+        Write-Host "  ├─────────────────────────────────────────────────────────┤" -ForegroundColor DarkCyan
+        Write-Host "  │  0  - Run ALL modules (default)                         │" -ForegroundColor Green
+        foreach ($pair in $ModulePairs) {
+            $line = "  │  $($pair.Num)  - $($pair.Label)"
+            Write-Host ($line.PadRight(60) + '│') -ForegroundColor Cyan
+        }
+        Write-Host "  ├─────────────────────────────────────────────────────────┤" -ForegroundColor DarkCyan
+        Write-Host "  │  Comma-separated for multiple: e.g. 1,3,5              │" -ForegroundColor DarkGray
+        Write-Host "  └─────────────────────────────────────────────────────────┘" -ForegroundColor DarkCyan
+        Write-Host ""
+    }
+
+    function Get-MenuSelection {
+        [CmdletBinding()]
+        param([int]$Countdown = 10)
+
+        $selected = $null
+        $deadline = (Get-Date).AddSeconds($Countdown)
+
+        while ((Get-Date) -lt $deadline) {
+            $remaining = [int]($deadline - (Get-Date)).TotalSeconds
+            Write-Host "`r  Auto-running option 0 in $remaining second(s)... [enter number(s) to select]  " `
+                -NoNewline -ForegroundColor Yellow
+
+            # Defensive: [Console]::KeyAvailable throws if stdin has no real console
+            # attached (e.g. launched in a context without one). Treat that the same
+            # as "no key pressed" rather than letting it crash the run.
+            $keyAvailable = $false
+            try { $keyAvailable = [Console]::KeyAvailable }
+            catch { $keyAvailable = $false }
+
+            if ($keyAvailable) {
+                # ReadKey/Read-Host can throw if stdin is redirected or the console is not
+                # truly interactive — treat that as "no selection" (fall through to run-all)
+                # rather than letting it crash Stage 1.
+                try {
+                    $null = [Console]::ReadKey($true)   # consume the trigger key-press only
+                    $key = Read-Host "`n  Your choice (comma-separated)"
+                    # Parse comma-separated input: "1,3,5" → @(1, 3, 5)
+                    $parsed = @($key -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
+                    if ($parsed.Count -gt 0) { $selected = $parsed }
+                }
+                catch {
+                    Write-Log -Level WARN -Component ORCH -Message "Menu input unavailable ($_) — defaulting to run-all"
+                }
+                break
+            }
+            Start-Sleep -Milliseconds 500
+        }
+
+        Write-Host ""
+        return $selected   # $null = timeout (run all); array of ints otherwise
+    }
+
+    $SessionResults = [System.Collections.Generic.List[hashtable]]::new()
+    $selectedPairs = $null   # $null = all
+
+    Write-Host ""
+    Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 1 : SYSTEM INVENTORY  ━━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
+    Write-Log -Level INFO -Component ORCH -Message "Stage 1 started"
+
+    if ($TaskNumbers) {
+        # Non-interactive equivalent of the Stage 1 menu selection, for Task Scheduler /
+        # script.bat -TaskNumbers callers that want to run a specific subset unattended.
+        $parsed = @($TaskNumbers -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
+        if ($parsed.Count -gt 0 -and (0 -notin $parsed)) {
+            $selectedPairs = $ModulePairs | Where-Object { $_.Num -in $parsed }
+            if (-not $selectedPairs) {
+                Write-Log -Level WARN -Component ORCH -Message "TaskNumbers '$TaskNumbers' matched no modules - running all"
+                $selectedPairs = $null
+            }
+            else {
+                $names = ($selectedPairs | ForEach-Object { $_.Label }) -join ', '
+                Write-Log -Level INFO -Component ORCH -Message "TaskNumbers filter applied: $names"
+            }
+        }
+    }
+    elseif (-not $NonInteractive) {
+        Show-Stage1Menu
+        $choice = Get-MenuSelection -Countdown 10
+
+        if ($null -ne $choice -and @($choice) -notcontains 0) {
+            $selectedPairs = $ModulePairs | Where-Object { $_.Num -in $choice }
+            if (-not $selectedPairs) {
+                Write-Host "  [WARN] Invalid selection '$($choice -join ',')' - running all modules." -ForegroundColor Yellow
+                $selectedPairs = $null
+            }
+            else {
+                $names = ($selectedPairs | ForEach-Object { $_.Label }) -join ', '
+                Write-Host "  Selected: $names" -ForegroundColor Green
+            }
+        }
+    }
+
+    $pairsToAudit = if ($null -eq $selectedPairs) { $ModulePairs } else { @($selectedPairs) }
+
+    $consecutiveFailures = 0
+    $maxConsecutiveFailures = 3   # Circuit-breaker: abort stage after N consecutive failures
+
+    foreach ($pair in $pairsToAudit) {
+        Write-Host ""
+        Write-Host "  ▶  $($pair.Label) [Type1]" -ForegroundColor Cyan
+        Write-Log -Level INFO -Component ORCH -Message "Running Type1: $($pair.Type1Func)"
 
         $start = Get-Date
-        $result = Invoke-ModuleFunction -ModuleFile $pair.Type2File `
-            -FunctionName $pair.Type2Func `
-            -FuncParams @{ OSContext = $global:OSContext }
+        $result = Invoke-ModuleFunction -ModuleFile $pair.Type1File -FunctionName $pair.Type1Func
 
         $duration = [int]((Get-Date) - $start).TotalSeconds
 
         if ($null -eq $result) {
-            $r = New-ModuleResult -ModuleName $pair.Type2Func -Status 'Failed' -ModuleType 'Type2' -Message 'Module returned null'
+            $r = New-ModuleResult -ModuleName $pair.Type1Func -Status 'Failed' -ModuleType 'Type1' -Message 'Module returned null'
         }
-        elseif ($result -is [hashtable] -and $result.ContainsKey('Status')) {
+        elseif ($result -is [hashtable]) {
             $r = $result
-            if (-not $r.ContainsKey('ModuleType')) { $r.ModuleType = 'Type2' }
+            if (-not $r.ContainsKey('ModuleType')) { $r.ModuleType = 'Type1' }
         }
         else {
-            $r = New-ModuleResult -ModuleName $pair.Type2Func -Status 'Success' -ModuleType 'Type2' -Message "Completed in ${duration}s"
+            $r = New-ModuleResult -ModuleName $pair.Type1Func -Status 'Success' -ModuleType 'Type1' -Message "Completed in ${duration}s"
         }
 
         $SessionResults.Add($r)
-        Write-Log -Level INFO -Component ORCH -Message "$($pair.Type2Func) → $($r.Status) | Processed:$($r.ItemsProcessed)"
-    }
-}
+        Write-Log -Level INFO -Component ORCH -Message "$($pair.Type1Func) → $($r.Status) | Detected:$($r.ItemsDetected)"
 
-Write-Log -Level SUCCESS -Component ORCH -Message "Stage 3 complete"
-
-#endregion
-
-#region ─── STAGE 4: REPORT GENERATION ───────────────────────────────────────
-
-Write-Host ""
-Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 4 : REPORT GENERATION  ━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
-Write-Log -Level INFO -Component ORCH -Message "Stage 4: generating HTML report"
-
-# maintenance.log is auto-flushed (FileShare.ReadWrite), so the report can embed it
-# live — no transcript stop/restart gymnastics, and no Stage-4 logging blind spot.
-$ReportGenPath = Join-Path $ProjectRoot 'modules\core\ReportGenerator.psm1'
-if (Test-Path $ReportGenPath) {
-    try { Import-Module $ReportGenPath -Force -ErrorAction Stop }
-    catch { Write-Log -Level ERROR -Component ORCH -Message "ReportGenerator import failed: $_" }
-}
-else {
-    Write-Log -Level ERROR -Component ORCH -Message "ReportGenerator module not found: $ReportGenPath"
-}
-
-$reportFile = $null
-$destReport = $null
-
-# (Re)generate the HTML report embedding the CURRENT maintenance.log and copy it to the
-# launcher folder. Called here in Stage 4 (so a report survives a later crash) and again
-# right before cleanup deletes the project folder — that second call captures the full log
-# (incl. Stage 5) into the copy that survives, since the on-disk maintenance.log is deleted.
-function Publish-MaintenanceReport {
-    [CmdletBinding()]
-    param()
-    try {
-        $rf = New-MaintenanceReport -SessionResults $SessionResults.ToArray() `
-            -OSContext      $global:OSContext `
-            -TranscriptPath $LogPath `
-            -ReportTitle    'Windows Maintenance Report'
-
-        $launcherDir = $env:ORIGINAL_SCRIPT_DIR
-        $copyTarget = if ($launcherDir -and (Test-Path $launcherDir)) { $launcherDir } else { $ProjectRoot }
-        $dest = Join-Path $copyTarget (Split-Path $rf -Leaf)
-        # Avoid leaving two copies in the launcher folder if the filename changed.
-        if ($script:destReport -and $script:destReport -ne $dest -and (Test-Path $script:destReport)) {
-            Remove-Item $script:destReport -Force -ErrorAction SilentlyContinue
+        # Circuit-breaker: if too many consecutive failures, likely a systemic issue
+        if ($r.Status -eq 'Failed') {
+            $consecutiveFailures++
+            if ($consecutiveFailures -ge $maxConsecutiveFailures) {
+                Write-Log -Level ERROR -Component ORCH -Message "CIRCUIT BREAKER: $consecutiveFailures consecutive failures — aborting Stage 1"
+                Write-Host "  [ERROR] $consecutiveFailures consecutive module failures. Possible systemic issue — aborting Stage 1." -ForegroundColor Red
+                break
+            }
         }
-        Copy-Item -Path $rf -Destination $dest -Force
-        $script:reportFile = $rf
-        $script:destReport = $dest
-        Write-Log -Level SUCCESS -Component ORCH -Message "Report published to: $dest"
-    }
-    catch {
-        Write-Log -Level ERROR -Component ORCH -Message "Report generation failed: $_"
-    }
-}
-
-Publish-MaintenanceReport
-
-# ── Deferred self-update ───────────────────────────────────────────────────────────
-# script.bat cannot overwrite itself while cmd.exe is streaming it from disk (doing so
-# makes execution resume at the same byte offset inside the new content and jump into
-# unrelated code). The launcher therefore hands the freshly-extracted copy to us via
-# $env:PENDING_SCRIPT_UPDATE, and we copy it into the launcher folder from this separate
-# process, after the launcher has exited.
-if ($env:PENDING_SCRIPT_UPDATE -and (Test-Path $env:PENDING_SCRIPT_UPDATE)) {
-    try {
-        $launcherDir = $env:ORIGINAL_SCRIPT_DIR
-        if ($launcherDir -and (Test-Path $launcherDir)) {
-            $destBat = Join-Path $launcherDir 'script.bat'
-            Copy-Item -Path $env:PENDING_SCRIPT_UPDATE -Destination $destBat -Force -ErrorAction Stop
-            Write-Log -Level SUCCESS -Component ORCH -Message "script.bat self-update applied: $destBat"
+        else {
+            $consecutiveFailures = 0
         }
     }
-    catch {
-        Write-Log -Level WARN -Component ORCH -Message "script.bat self-update failed: $_"
+
+    Write-Log -Level SUCCESS -Component ORCH -Message "Stage 1 complete: $($pairsToAudit.Count) modules run"
+
+    #endregion
+
+    #region ─── STAGE 2: DIFF ANALYSIS ───────────────────────────────────────────
+
+    Write-Host ""
+    Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 2 : DIFF ANALYSIS  ━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
+    Write-Log -Level INFO -Component ORCH -Message "Stage 2: analysing diffs"
+
+    $actionNeeded = [System.Collections.Generic.List[hashtable]]::new()
+
+    foreach ($pair in $pairsToAudit) {
+        if (-not $pair.Type2Func) { continue }   # inventory-only modules skip
+
+        try {
+            $configSkip = if ($pair.ConfigSkip -and $Config.modules.$($pair.ConfigSkip)) { $true } else { $false }
+            if ($configSkip) {
+                Write-Log -Level INFO -Component ORCH -Message "Skipped (config): $($pair.Type2Func)"
+                continue
+            }
+
+            $diff = Get-DiffList -ModuleName $pair.DiffKey
+            if ($diff -and $diff.Count -gt 0) {
+                Write-Host "  ✔  $($pair.Label): $($diff.Count) item(s) queued for action" -ForegroundColor Green
+                Write-Log -Level INFO -Component ORCH -Message "$($pair.DiffKey): $($diff.Count) diff items - Type2 will run"
+                $actionNeeded.Add($pair)
+            }
+            else {
+                Write-Host "  ─  $($pair.Label): no changes needed — SKIPPED" -ForegroundColor DarkGray
+                Write-Log -Level INFO -Component ORCH -Message "$($pair.DiffKey): 0 diff items - Type2 SKIPPED"
+
+                $SessionResults.Add((New-ModuleResult -ModuleName $pair.Type2Func `
+                            -Status 'Skipped' -ModuleType 'Type2' `
+                            -Message 'No diff items — system already in desired state'))
+            }
+        }
+        catch {
+            # One malformed diff/config entry must not abort Stage 2 for the other pairs.
+            Write-Log -Level ERROR -Component ORCH -Message "Stage 2 error for $($pair.DiffKey): $_"
+        }
     }
-}
 
-#endregion
+    Write-Log -Level SUCCESS -Component ORCH -Message "Stage 2 complete: $($actionNeeded.Count) Type2 module(s) will execute"
 
-#region ─── STAGE 5: COUNTDOWN + CLEANUP + REBOOT ─────────────────────────────
+    #endregion
 
-Write-Host ""
-Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 5 : CLEANUP & REBOOT  ━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
-Write-Host ""
+    #region ─── STAGE 3: MAINTENANCE (Type2) ──────────────────────────────────────
 
-# Removes the Windows Defender exclusions script.bat adds before dependency
-# installation (working dir + powershell.exe/pwsh.exe), so this run's
-# maintenance session doesn't leave a permanent, unscoped AV exclusion behind
-# on the machine after cleanup. Paired setup/teardown for the same paths/processes
-# script.bat's dependency-management phase excludes.
-function Remove-DefenderSessionExclusions {
-    [CmdletBinding()]
-    param([Parameter(Mandatory)] [string]$WorkingDir)
-    try {
-        Remove-MpPreference -ExclusionPath $WorkingDir -ErrorAction SilentlyContinue
-        Remove-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue
-        Remove-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue
-        Write-Log -Level INFO -Component ORCH -Message "Removed Defender exclusions for $WorkingDir"
-    }
-    catch {
-        Write-Log -Level WARN -Component ORCH -Message "Could not remove Defender exclusions: $_"
-    }
-}
+    # Execute in a deliberate order, independent of Stage 1/2 order: hardening first (incl.
+    # re-enabling Defender if it was found off), then software changes, then Windows Update,
+    # then restore-point consolidation, and DiskCleanup LAST so it sweeps up the temp/cache/
+    # component-store residue this run's own actions just produced (installer downloads,
+    # WU download cache, etc.) instead of running before them and being immediately re-dirtied.
+    $Stage3Order = @('SystemConfiguration', 'SoftwareManagement', 'WindowsUpdates', 'RestorePoint', 'DiskCleanup')
+    $actionNeeded = @($actionNeeded | Sort-Object { $i = $Stage3Order.IndexOf($_.DiffKey); if ($i -lt 0) { 999 } else { $i } })
 
-$reportDisplay = if ($reportFile) { Split-Path $reportFile -Leaf } else { 'N/A' }
+    Write-Host ""
+    Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 3 : MAINTENANCE  ━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
+    Write-Log -Level INFO -Component ORCH -Message "Stage 3 started: $($actionNeeded.Count) module(s)"
 
-$rebootSeconds = [int]($Config.execution.shutdown.countdownSeconds ?? 120)
-$doReboot = [bool]($Config.execution.shutdown.rebootOnTimeout ?? $true)
-$doCleanup = [bool]($Config.execution.shutdown.cleanupOnTimeout ?? $true)
-$rebootOnlyWhenRequired = [bool]($Config.execution.shutdown.rebootOnlyWhenRequired ??
-    $Config.execution.shutdown.rebootOnlyForWindowsUpdates ?? $false)
-$aborted = $false
-
-# If reboot is conditional, check ALL module results for a RebootRequired flag
-if ($doReboot -and $rebootOnlyWhenRequired) {
-    $needsReboot = $SessionResults | Where-Object {
-        $_.RebootRequired -eq $true -or $_.ExtraData.RebootRequired -eq $true
-    }
-    if (-not $needsReboot) {
-        Write-Host "  [INFO] Reboot skipped — no module flagged a reboot requirement." -ForegroundColor Cyan
-        Write-Log -Level INFO -Component ORCH -Message "Stage 5: reboot skipped — no module flagged a reboot requirement."
-        $doReboot = $false
+    if ($actionNeeded.Count -eq 0) {
+        Write-Host "  ✔  System is already in the desired state. No changes required." -ForegroundColor Green
+        Write-Log -Level SUCCESS -Component ORCH -Message "No Type2 actions required"
     }
     else {
-        $rebootModules = ($needsReboot | ForEach-Object { $_.ModuleName }) -join ', '
-        Write-Host "  [INFO] Reboot required by: $rebootModules" -ForegroundColor Yellow
-        Write-Log -Level WARN -Component ORCH -Message "Stage 5: reboot required by: $rebootModules"
-    }
-}
+        foreach ($pair in $actionNeeded) {
+            Write-Host ""
+            Write-Host "  ▶  $($pair.Label) [Type2]" -ForegroundColor Yellow
+            Write-Log -Level INFO -Component ORCH -Message "Running Type2: $($pair.Type2Func)"
 
-# ── When no reboot is needed, skip the countdown entirely ─────────────────
-if (-not $doReboot) {
+            $start = Get-Date
+            $result = Invoke-ModuleFunction -ModuleFile $pair.Type2File `
+                -FunctionName $pair.Type2Func `
+                -FuncParams @{ OSContext = $global:OSContext }
+
+            $duration = [int]((Get-Date) - $start).TotalSeconds
+
+            if ($null -eq $result) {
+                $r = New-ModuleResult -ModuleName $pair.Type2Func -Status 'Failed' -ModuleType 'Type2' -Message 'Module returned null'
+            }
+            elseif ($result -is [hashtable] -and $result.ContainsKey('Status')) {
+                $r = $result
+                if (-not $r.ContainsKey('ModuleType')) { $r.ModuleType = 'Type2' }
+            }
+            else {
+                $r = New-ModuleResult -ModuleName $pair.Type2Func -Status 'Success' -ModuleType 'Type2' -Message "Completed in ${duration}s"
+            }
+
+            $SessionResults.Add($r)
+            Write-Log -Level INFO -Component ORCH -Message "$($pair.Type2Func) → $($r.Status) | Processed:$($r.ItemsProcessed)"
+        }
+    }
+
+    Write-Log -Level SUCCESS -Component ORCH -Message "Stage 3 complete"
+
+    #endregion
+
+    #region ─── STAGE 4: REPORT GENERATION ───────────────────────────────────────
+
     Write-Host ""
+    Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 4 : REPORT GENERATION  ━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
+    Write-Log -Level INFO -Component ORCH -Message "Stage 4: generating HTML report"
+
+    # maintenance.log is auto-flushed (FileShare.ReadWrite), so the report can embed it
+    # live — no transcript stop/restart gymnastics, and no Stage-4 logging blind spot.
+    $ReportGenPath = Join-Path $ProjectRoot 'modules\core\ReportGenerator.psm1'
+    if (Test-Path $ReportGenPath) {
+        try { Import-Module $ReportGenPath -Force -ErrorAction Stop }
+        catch { Write-Log -Level ERROR -Component ORCH -Message "ReportGenerator import failed: $_" }
+    }
+    else {
+        Write-Log -Level ERROR -Component ORCH -Message "ReportGenerator module not found: $ReportGenPath"
+    }
+
+    $reportFile = $null
+    $destReport = $null
+
+    # (Re)generate the HTML report embedding the CURRENT maintenance.log and copy it to the
+    # launcher folder. Called here in Stage 4 (so a report survives a later crash) and again
+    # right before cleanup deletes the project folder — that second call captures the full log
+    # (incl. Stage 5) into the copy that survives, since the on-disk maintenance.log is deleted.
+    function Publish-MaintenanceReport {
+        [CmdletBinding()]
+        param()
+        try {
+            $rf = New-MaintenanceReport -SessionResults $SessionResults.ToArray() `
+                -OSContext      $global:OSContext `
+                -TranscriptPath $LogPath `
+                -ReportTitle    'Windows Maintenance Report'
+
+            $launcherDir = $env:ORIGINAL_SCRIPT_DIR
+            $copyTarget = if ($launcherDir -and (Test-Path $launcherDir)) { $launcherDir } else { $ProjectRoot }
+            $dest = Join-Path $copyTarget (Split-Path $rf -Leaf)
+            # Avoid leaving two copies in the launcher folder if the filename changed.
+            if ($script:destReport -and $script:destReport -ne $dest -and (Test-Path $script:destReport)) {
+                Remove-Item $script:destReport -Force -ErrorAction SilentlyContinue
+            }
+            Copy-Item -Path $rf -Destination $dest -Force
+            $script:reportFile = $rf
+            $script:destReport = $dest
+            Write-Log -Level SUCCESS -Component ORCH -Message "Report published to: $dest"
+        }
+        catch {
+            Write-Log -Level ERROR -Component ORCH -Message "Report generation failed: $_"
+        }
+    }
+
+    Publish-MaintenanceReport
+
+    # ── Deferred self-update ───────────────────────────────────────────────────────────
+    # script.bat cannot overwrite itself while cmd.exe is streaming it from disk (doing so
+    # makes execution resume at the same byte offset inside the new content and jump into
+    # unrelated code). The launcher therefore hands the freshly-extracted copy to us via
+    # $env:PENDING_SCRIPT_UPDATE, and we copy it into the launcher folder from this separate
+    # process, after the launcher has exited.
+    if ($env:PENDING_SCRIPT_UPDATE -and (Test-Path $env:PENDING_SCRIPT_UPDATE)) {
+        try {
+            $launcherDir = $env:ORIGINAL_SCRIPT_DIR
+            if ($launcherDir -and (Test-Path $launcherDir)) {
+                $destBat = Join-Path $launcherDir 'script.bat'
+                Copy-Item -Path $env:PENDING_SCRIPT_UPDATE -Destination $destBat -Force -ErrorAction Stop
+                Write-Log -Level SUCCESS -Component ORCH -Message "script.bat self-update applied: $destBat"
+            }
+        }
+        catch {
+            Write-Log -Level WARN -Component ORCH -Message "script.bat self-update failed: $_"
+        }
+    }
+
+    #endregion
+
+    #region ─── STAGE 5: COUNTDOWN + CLEANUP + REBOOT ─────────────────────────────
+
+    Write-Host ""
+    Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 5 : CLEANUP & REBOOT  ━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
+    Write-Host ""
+
+    # Removes the Windows Defender exclusions script.bat adds before dependency
+    # installation (working dir + powershell.exe/pwsh.exe), so this run's
+    # maintenance session doesn't leave a permanent, unscoped AV exclusion behind
+    # on the machine after cleanup. Paired setup/teardown for the same paths/processes
+    # script.bat's dependency-management phase excludes.
+    function Remove-DefenderSessionExclusions {
+        [CmdletBinding()]
+        param([Parameter(Mandatory)] [string]$WorkingDir)
+        try {
+            Remove-MpPreference -ExclusionPath $WorkingDir -ErrorAction SilentlyContinue
+            Remove-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue
+            Remove-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue
+            Write-Log -Level INFO -Component ORCH -Message "Removed Defender exclusions for $WorkingDir"
+        }
+        catch {
+            Write-Log -Level WARN -Component ORCH -Message "Could not remove Defender exclusions: $_"
+        }
+    }
+
+    # Remove the exclusions FIRST, unconditionally - Stage 3/4 work (the only reason the
+    # exclusions exist) is already finished by this point. Doing this before the countdown
+    # below - rather than nested inside each cleanup branch - means an ABORTED reboot no
+    # longer leaves the machine's PowerShell permanently unscanned by Defender: previously
+    # this only ran on the two cleanup paths, so pressing a key to keep files also silently
+    # kept the AV exclusion forever.
+    Write-Log -Level INFO -Component ORCH -Message "Stage 5: removing session Defender exclusions"
+    Remove-DefenderSessionExclusions -WorkingDir $ProjectRoot
+
+    $reportDisplay = if ($reportFile) { Split-Path $reportFile -Leaf } else { 'N/A' }
+
+    $rebootSeconds = [int]($Config.execution.shutdown.countdownSeconds ?? 120)
+    $doReboot = [bool]($Config.execution.shutdown.rebootOnTimeout ?? $true)
+    $doCleanup = [bool]($Config.execution.shutdown.cleanupOnTimeout ?? $true)
+    $rebootOnlyWhenRequired = [bool]($Config.execution.shutdown.rebootOnlyWhenRequired ??
+        $Config.execution.shutdown.rebootOnlyForWindowsUpdates ?? $false)
+    $aborted = $false
+
+    # If reboot is conditional, check ALL module results for a RebootRequired flag
+    if ($doReboot -and $rebootOnlyWhenRequired) {
+        $needsReboot = $SessionResults | Where-Object {
+            $_.RebootRequired -eq $true -or $_.ExtraData.RebootRequired -eq $true
+        }
+        if (-not $needsReboot) {
+            Write-Host "  [INFO] Reboot skipped — no module flagged a reboot requirement." -ForegroundColor Cyan
+            Write-Log -Level INFO -Component ORCH -Message "Stage 5: reboot skipped — no module flagged a reboot requirement."
+            $doReboot = $false
+        }
+        else {
+            $rebootModules = ($needsReboot | ForEach-Object { $_.ModuleName }) -join ', '
+            Write-Host "  [INFO] Reboot required by: $rebootModules" -ForegroundColor Yellow
+            Write-Log -Level WARN -Component ORCH -Message "Stage 5: reboot required by: $rebootModules"
+        }
+    }
+
+    # ── When no reboot is needed, skip the countdown entirely ─────────────────
+    if (-not $doReboot) {
+        Write-Host ""
+        Write-Host "  ┌───────────────────────────────────────────────────────────┐" -ForegroundColor DarkCyan
+        Write-Host "  │                 MAINTENANCE COMPLETE                      │" -ForegroundColor White
+        Write-Host "  │                                                           │" -ForegroundColor DarkCyan
+        Write-Host "  │  HTML report:  $($reportDisplay.PadRight(43))│" -ForegroundColor Cyan
+        Write-Host "  │                                                           │" -ForegroundColor DarkCyan
+        Write-Host "  │  No reboot required.                                     │" -ForegroundColor Green
+        Write-Host "  └───────────────────────────────────────────────────────────┘" -ForegroundColor DarkCyan
+        Write-Host ""
+
+        if ($doCleanup) {
+            Write-Log -Level INFO -Component ORCH -Message "No reboot required; cleaning up. Refreshing report so the full log is embedded before deletion."
+            # Regenerate so the surviving report copy embeds the complete maintenance.log
+            # (the on-disk log is deleted with the folder below).
+            Publish-MaintenanceReport
+            Write-Host "  Removing project folder..." -ForegroundColor DarkGray
+            try {
+                Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
+                Close-LogFile   # release the maintenance.log handle so the folder can be deleted
+                # Windows won't remove a directory that is a live process's current working
+                # directory - move out of $ProjectRoot first so the delete below can't fail
+                # on that account.
+                Set-Location -Path ([System.IO.Path]::GetTempPath()) -ErrorAction SilentlyContinue
+                Remove-Item -Path $ProjectRoot -Recurse -Force -ErrorAction Stop
+                Write-Host "  ✔  Project folder removed." -ForegroundColor Green
+            }
+            catch {
+                Write-Host "  [WARN] Could not fully remove project folder: $_" -ForegroundColor Yellow
+            }
+        }
+        exit 0
+    }
+
+    # ── Reboot IS needed — show countdown with abort option ───────────────────
     Write-Host "  ┌───────────────────────────────────────────────────────────┐" -ForegroundColor DarkCyan
     Write-Host "  │                 MAINTENANCE COMPLETE                      │" -ForegroundColor White
     Write-Host "  │                                                           │" -ForegroundColor DarkCyan
     Write-Host "  │  HTML report:  $($reportDisplay.PadRight(43))│" -ForegroundColor Cyan
     Write-Host "  │                                                           │" -ForegroundColor DarkCyan
-    Write-Host "  │  No reboot required.                                     │" -ForegroundColor Green
+    Write-Host "  │  System will reboot AND project files will be removed.   │" -ForegroundColor Yellow
+    Write-Host "  │  Press ANY KEY to abort reboot and keep all files.       │" -ForegroundColor Yellow
     Write-Host "  └───────────────────────────────────────────────────────────┘" -ForegroundColor DarkCyan
     Write-Host ""
 
+    $deadline = (Get-Date).AddSeconds($rebootSeconds)
+
+    while (-not $aborted -and (Get-Date) -lt $deadline) {
+        $remaining = [int]($deadline - (Get-Date)).TotalSeconds
+        Write-Host "`r  Rebooting in $remaining second(s)...  " -NoNewline -ForegroundColor Red
+
+        # In -NonInteractive mode (e.g. Task Scheduler with no attached console),
+        # never poll the console — [Console]::KeyAvailable throws
+        # InvalidOperationException when stdin is redirected or no console exists,
+        # which would otherwise crash the run at the very last stage. Interactive
+        # mode still defensively catches the same exception rather than trusting
+        # a console is genuinely available.
+        $keyAvailable = $false
+        if (-not $NonInteractive) {
+            try { $keyAvailable = [Console]::KeyAvailable }
+            catch { $keyAvailable = $false }
+        }
+
+        if ($keyAvailable) {
+            $null = [Console]::ReadKey($true)
+            $aborted = $true
+        }
+        else {
+            Start-Sleep -Milliseconds 1000
+        }
+    }
+
+    Write-Host ""
+
+    if ($aborted) {
+        Write-Host ""
+        Write-Host "  ✔  Reboot ABORTED by user." -ForegroundColor Green
+        Write-Host "     Project files kept at: $ProjectRoot" -ForegroundColor Cyan
+        if ($reportFile) { Write-Host "     Report saved at:   $reportFile" -ForegroundColor Cyan }
+        Write-Host ""
+        # Files are kept, so maintenance.log survives on disk; no republish needed.
+        # Defender exclusions were already removed above (before the countdown), so
+        # aborting here does not leave them behind either.
+        Write-Log -Level INFO -Component ORCH -Message "Stage 5: reboot aborted by user — project files (and maintenance.log) kept."
+        exit 0
+    }
+
+    # ── Cleanup entire project folder then Reboot ────────────────────────────────
+
+    Write-Host ""
+    Write-Host "  Countdown complete. Proceeding with cleanup and reboot..." -ForegroundColor Yellow
+    Write-Log -Level INFO -Component ORCH -Message "Countdown elapsed; proceeding with cleanup and reboot."
+
     if ($doCleanup) {
-        Write-Log -Level INFO -Component ORCH -Message "No reboot required; cleaning up. Refreshing report so the full log is embedded before deletion."
+        Write-Log -Level INFO -Component ORCH -Message "Cleaning up. Refreshing report so the full log is embedded before deletion."
         # Regenerate so the surviving report copy embeds the complete maintenance.log
-        # (the on-disk log is deleted with the folder below).
+        # (the on-disk log is deleted with the folder below, before the reboot).
         Publish-MaintenanceReport
-        Write-Host "  Removing project folder..." -ForegroundColor DarkGray
-        Remove-DefenderSessionExclusions -WorkingDir $ProjectRoot
+        Write-Host "  Removing project folder: $ProjectRoot ..." -ForegroundColor DarkGray
         try {
             Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
             Close-LogFile   # release the maintenance.log handle so the folder can be deleted
+            # Windows won't remove a directory that is a live process's current working
+            # directory - move out of $ProjectRoot first so the delete below can't fail
+            # on that account.
+            Set-Location -Path ([System.IO.Path]::GetTempPath()) -ErrorAction SilentlyContinue
             Remove-Item -Path $ProjectRoot -Recurse -Force -ErrorAction Stop
             Write-Host "  ✔  Project folder removed." -ForegroundColor Green
         }
@@ -648,96 +758,19 @@ if (-not $doReboot) {
             Write-Host "  [WARN] Could not fully remove project folder: $_" -ForegroundColor Yellow
         }
     }
-    exit 0
-}
 
-# ── Reboot IS needed — show countdown with abort option ───────────────────
-Write-Host "  ┌───────────────────────────────────────────────────────────┐" -ForegroundColor DarkCyan
-Write-Host "  │                 MAINTENANCE COMPLETE                      │" -ForegroundColor White
-Write-Host "  │                                                           │" -ForegroundColor DarkCyan
-Write-Host "  │  HTML report:  $($reportDisplay.PadRight(43))│" -ForegroundColor Cyan
-Write-Host "  │                                                           │" -ForegroundColor DarkCyan
-Write-Host "  │  System will reboot AND project files will be removed.   │" -ForegroundColor Yellow
-Write-Host "  │  Press ANY KEY to abort reboot and keep all files.       │" -ForegroundColor Yellow
-Write-Host "  └───────────────────────────────────────────────────────────┘" -ForegroundColor DarkCyan
-Write-Host ""
-
-$deadline = (Get-Date).AddSeconds($rebootSeconds)
-
-while (-not $aborted -and (Get-Date) -lt $deadline) {
-    $remaining = [int]($deadline - (Get-Date)).TotalSeconds
-    Write-Host "`r  Rebooting in $remaining second(s)...  " -NoNewline -ForegroundColor Red
-
-    # In -NonInteractive mode (e.g. Task Scheduler with no attached console),
-    # never poll the console — [Console]::KeyAvailable throws
-    # InvalidOperationException when stdin is redirected or no console exists,
-    # which would otherwise crash the run at the very last stage. Interactive
-    # mode still defensively catches the same exception rather than trusting
-    # a console is genuinely available.
-    $keyAvailable = $false
-    if (-not $NonInteractive) {
-        try { $keyAvailable = [Console]::KeyAvailable }
-        catch { $keyAvailable = $false }
-    }
-
-    if ($keyAvailable) {
-        $null = [Console]::ReadKey($true)
-        $aborted = $true
-    }
-    else {
-        Start-Sleep -Milliseconds 1000
-    }
-}
-
-Write-Host ""
-
-if ($aborted) {
-    Write-Host ""
-    Write-Host "  ✔  Reboot ABORTED by user." -ForegroundColor Green
-    Write-Host "     Project files kept at: $ProjectRoot" -ForegroundColor Cyan
-    if ($reportFile) { Write-Host "     Report saved at:   $reportFile" -ForegroundColor Cyan }
-    Write-Host ""
-    # Files are kept, so maintenance.log survives on disk; no republish needed.
-    Write-Log -Level INFO -Component ORCH -Message "Stage 5: reboot aborted by user — project files (and maintenance.log) kept."
-    exit 0
-}
-
-# ── Cleanup entire project folder then Reboot ────────────────────────────────
-
-Write-Host ""
-Write-Host "  Countdown complete. Proceeding with cleanup and reboot..." -ForegroundColor Yellow
-Write-Log -Level INFO -Component ORCH -Message "Countdown elapsed; proceeding with cleanup and reboot."
-
-if ($doCleanup) {
-    Write-Log -Level INFO -Component ORCH -Message "Cleaning up. Refreshing report so the full log is embedded before deletion."
-    # Regenerate so the surviving report copy embeds the complete maintenance.log
-    # (the on-disk log is deleted with the folder below, before the reboot).
-    Publish-MaintenanceReport
-    Write-Host "  Removing project folder: $ProjectRoot ..." -ForegroundColor DarkGray
-    Remove-DefenderSessionExclusions -WorkingDir $ProjectRoot
+    Write-Host "  Initiating system reboot..." -ForegroundColor Yellow
     try {
-        Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
-        Close-LogFile   # release the maintenance.log handle so the folder can be deleted
-        Remove-Item -Path $ProjectRoot -Recurse -Force -ErrorAction Stop
-        Write-Host "  ✔  Project folder removed." -ForegroundColor Green
+        Restart-Computer -Force
     }
     catch {
-        Write-Host "  [WARN] Could not fully remove project folder: $_" -ForegroundColor Yellow
+        Write-Host "  [ERROR] Restart-Computer failed: $_" -ForegroundColor Red
+        exit 1
     }
-}
 
-Write-Host "  Initiating system reboot..." -ForegroundColor Yellow
-try {
-    Restart-Computer -Force
-}
-catch {
-    Write-Host "  [ERROR] Restart-Computer failed: $_" -ForegroundColor Red
-    exit 1
-}
+    exit 0
 
-exit 0
-
-#endregion
+    #endregion
 
 }
 # ── Fatal-capture guard: any uncaught terminating error from the body lands here.

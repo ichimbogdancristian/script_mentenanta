@@ -166,9 +166,18 @@ REM  nothing; the orchestrator derives its own root from $PSScriptRoot.)
 SET "SCRIPT_LOG_FILE=%LOG_FILE%"
 
 REM Repository configuration for auto-updates
+REM Extraction target is a stable per-machine location, NOT next to script.bat:
+REM   - Keeps OneDrive/Desktop (or any synced folder) from seeing the working tree,
+REM     logs, or reports mid-run - no sync-lock fights when Stage 5 deletes it.
+REM   - Makes the Stage-5 delete target unambiguous and independent of where the
+REM     user double-clicked script.bat from.
+REM   - USB-stick / network launches still work unchanged: ORIGINAL_SCRIPT_DIR keeps
+REM     pointing at the launch folder, and the HTML report is still copied back there.
 SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/master.zip"
-SET "ZIP_FILE=%WORKING_DIR%update.zip"
+SET "EXTRACT_ROOT=%ProgramData%\WindowsMaintenance"
+SET "ZIP_FILE=%EXTRACT_ROOT%\update.zip"
 SET "EXTRACT_FOLDER=script_mentenanta-master"
+IF NOT EXIST "%EXTRACT_ROOT%" MKDIR "%EXTRACT_ROOT%" >nul 2>&1
 
 CALL :LOG_MESSAGE "Self-discovery environment initialized" "SUCCESS" "LAUNCHER"
 
@@ -230,17 +239,11 @@ SET "RESTART_SIGNALS_WU="
 
 REM FIX: Reboot guard functionality removed per user request
 
-REM Prefer Windows Update reboot status when PSWindowsUpdate is available
-powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; if (Get-Command Get-WURebootStatus -ErrorAction SilentlyContinue) { $status = Get-WURebootStatus -Silent -ErrorAction SilentlyContinue; if ($status -and $status.RebootRequired) { Write-Host 'WU_REBOOT_REQUIRED'; exit 1 } else { Write-Host 'WU_REBOOT_NOT_REQUIRED'; exit 0 } } else { Write-Host 'WU_REBOOT_CMD_MISSING'; exit 2 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 3 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 4 }" >nul 2>&1
-IF !ERRORLEVEL! EQU 1 (
-    SET "RESTART_NEEDED=YES"
-    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=PSWindowsUpdate-RebootRequired") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,PSWindowsUpdate-RebootRequired")
-    SET "RESTART_NEEDED_WU=YES"
-    IF NOT DEFINED RESTART_SIGNALS_WU (SET "RESTART_SIGNALS_WU=PSWindowsUpdate-RebootRequired") ELSE (SET "RESTART_SIGNALS_WU=!RESTART_SIGNALS_WU!,PSWindowsUpdate-RebootRequired")
-)
-IF !ERRORLEVEL! EQU 2 CALL :LOG_MESSAGE "PSWindowsUpdate Get-WURebootStatus not available. Continuing with registry reboot signals." "INFO" "LAUNCHER"
-IF !ERRORLEVEL! EQU 3 CALL :LOG_MESSAGE "PSWindowsUpdate not available. Continuing with registry reboot signals." "INFO" "LAUNCHER"
-IF !ERRORLEVEL! EQU 4 CALL :LOG_MESSAGE "PSWindowsUpdate reboot check failed. Continuing with registry reboot signals." "WARN" "LAUNCHER"
+REM PSWindowsUpdate-based probe removed: on the fresh machines this launcher targets,
+REM PSWindowsUpdate is not installed yet at this point (it is installed later, in
+REM Dependency Management), so the probe always fell through to "not available" and
+REM cost 2-15s doing nothing. The registry markers below are already the authoritative
+REM signals per this script's own design - detect from them directly.
 
 REM Windows Update-specific registry checks (authoritative markers only)
 REM -----------------------------------------------------------------------
@@ -400,9 +403,9 @@ REM ----------------------------------------------------------------------------
 :DOWNLOAD_REPOSITORY
 CALL :LOG_MESSAGE "Downloading latest repository from GitHub..." "INFO" "LAUNCHER"
 
-REM Clean up existing files
+REM Clean up existing files (in the stable extraction root, not the launch folder)
 IF EXIST "%ZIP_FILE%" DEL /Q "%ZIP_FILE%" >nul 2>&1
-IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" RMDIR /S /Q "%WORKING_DIR%%EXTRACT_FOLDER%" >nul 2>&1
+IF EXIST "%EXTRACT_ROOT%\%EXTRACT_FOLDER%" RMDIR /S /Q "%EXTRACT_ROOT%\%EXTRACT_FOLDER%" >nul 2>&1
 
 REM Download repository
 CALL :LOG_MESSAGE "Downloading from: %REPO_URL%" "DEBUG" "LAUNCHER"
@@ -424,7 +427,7 @@ CALL :LOG_MESSAGE "Repository downloaded successfully" "SUCCESS" "LAUNCHER"
 
 REM Extract repository
 CALL :LOG_MESSAGE "Extracting repository..." "INFO" "LAUNCHER"
-powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%WORKING_DIR%'); Write-Host 'EXTRACTION_SUCCESS' } catch { Write-Host 'EXTRACTION_FAILED'; Write-Error $_.Exception.Message; exit 1 }"
+powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%EXTRACT_ROOT%'); Write-Host 'EXTRACTION_SUCCESS' } catch { Write-Host 'EXTRACTION_FAILED'; Write-Error $_.Exception.Message; exit 1 }"
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository extraction failed" "ERROR" "LAUNCHER"
@@ -432,8 +435,8 @@ IF !ERRORLEVEL! NEQ 0 (
     EXIT /B 3
 )
 
-REM Verify extraction
-SET "EXTRACTED_PATH=%WORKING_DIR%%EXTRACT_FOLDER%"
+REM Verify extraction (now rooted under %EXTRACT_ROOT%, not next to script.bat)
+SET "EXTRACTED_PATH=%EXTRACT_ROOT%\%EXTRACT_FOLDER%"
 IF EXIST "%EXTRACTED_PATH%" (
     CALL :LOG_MESSAGE "Repository extracted to: %EXTRACTED_PATH%" "SUCCESS" "LAUNCHER"
     
@@ -742,14 +745,6 @@ CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
 REM -----------------------------------------------------------------------------
 REM PowerShell 7 Detection and Installation (Moved after winget setup)
 REM -----------------------------------------------------------------------------
-REM 5-second countdown before checking the PowerShell path
-CALL :LOG_MESSAGE "Preparing to check PowerShell 7 availability in 5 seconds..." "INFO" "LAUNCHER"
-FOR /L %%s IN (5,-1,1) DO (
-    <nul SET /P "=Checking PowerShell path in %%s second(s)...  "
-    TIMEOUT /T 1 >nul 2>&1
-)
-ECHO.
-
 CALL :LOG_MESSAGE "Checking PowerShell 7 availability..." "INFO" "LAUNCHER"
 
 REM One robust locator (see :FIND_PWSH) replaces the old PATH/known-path probes, which
@@ -929,64 +924,10 @@ REM ----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Setting up Windows Defender exclusions..." "INFO" "LAUNCHER"
 powershell -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }"
 
-REM Package Manager Dependencies
-CALL :LOG_MESSAGE "Verifying package managers..." "INFO" "LAUNCHER"
-
-REM Winget
-winget --version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    FOR /F "tokens=*" %%i IN ('winget --version 2^>nul') DO SET WINGET_VERSION=%%i
-    CALL :LOG_MESSAGE "Winget available: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
-) ELSE (
-    REM Check typical location for App Execution Aliases
-    IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
-        FOR /F "tokens=*" %%i IN ('"%LocalAppData%\Microsoft\WindowsApps\winget.exe" --version 2^>nul') DO SET WINGET_VERSION=%%i
-        IF DEFINED WINGET_VERSION (
-            CALL :LOG_MESSAGE "Winget available via WindowsApps path: !WINGET_VERSION!" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "Winget appears installed but not yet ready (App Execution Alias may require session refresh)" "INFO" "LAUNCHER"
-        )
-    ) ELSE (
-        CALL :LOG_MESSAGE "Winget not available - some features may be limited" "INFO" "LAUNCHER"
-    )
-)
-
-REM Chocolatey  
-choco --version >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    FOR /F "tokens=*" %%i IN ('choco --version 2^>nul') DO SET CHOCO_VERSION=%%i
-    CALL :LOG_MESSAGE "Chocolatey available: %CHOCO_VERSION%" "SUCCESS" "LAUNCHER"
-) ELSE (
-    CALL :LOG_MESSAGE "Chocolatey not available - will be installed if needed" "INFO" "LAUNCHER"
-)
-
-CALL :LOG_MESSAGE "Dependency verification completed" "SUCCESS" "LAUNCHER"
-
-REM -----------------------------------------------------------------------------
-REM Modular Task Scheduler Management
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Managing scheduled tasks..." "INFO" "LAUNCHER"
-
-SET "TASK_NAME=WindowsMaintenanceAutomation"
-SET "STARTUP_TASK_NAME=WindowsMaintenanceStartup"
-
-REM Report monthly task status only (creation handled earlier)
-schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Monthly scheduled task present: %TASK_NAME%" "SUCCESS" "LAUNCHER"
-    FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /R /C:"Task To Run" /C:"Next Run Time"') DO (
-        CALL :LOG_MESSAGE "Monthly task detail: %%i" "INFO" "LAUNCHER"
-    )
-) ELSE (
-    CALL :LOG_MESSAGE "Monthly scheduled task not found (was expected to exist)." "WARN" "LAUNCHER"
-)
-
-REM Clean up startup task if it still exists (e.g., after reboot resume)
-schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Cleaning up startup task: %STARTUP_TASK_NAME%" "INFO" "LAUNCHER"
-    schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
-)
+REM NOTE: winget/Chocolatey re-verification and the monthly/startup scheduled-task
+REM status pass used to be repeated here - both were exact duplicates of the checks
+REM already done in Dependency Management (winget) and at script start / :MAIN_SCRIPT
+REM (scheduled tasks). Removed; nothing downstream reads WINGET_VERSION/CHOCO_VERSION.
 
 REM -----------------------------------------------------------------------------
 REM PowerShell Executable Selection (before system operations)
@@ -1000,14 +941,21 @@ REM Single source of truth: :FIND_PWSH validates every candidate by running it, 
 REM it returns is a working PowerShell 7+. This replaces six brittle probes (default path /
 REM PATH / extra paths / where / registry / PATH scan) that could not see a Store-MSIX
 REM install and aborted the run with "PowerShell 7+ not found" while PS7 was installed.
-CALL :FIND_PWSH
+REM
+REM PWSH_PATH is REUSED here rather than re-probed: it was already resolved either by the
+REM initial availability check above, or (if PS7 had to be installed) by the post-install
+REM verification's own :FIND_PWSH call - both set PWSH_PATH in this same environment (CALL
+REM does not create a new variable scope). Re-running the full probe a third time here
+REM cost 3-8s for a result we already have. Only fall back to a fresh probe if PWSH_PATH is
+REM somehow still empty (e.g. a code path above that didn't resolve one).
 IF DEFINED PWSH_PATH (
     SET "PS_EXECUTABLE=!PWSH_PATH!"
     SET "AUTO_NONINTERACTIVE=YES"
-    CALL :LOG_MESSAGE "Using PowerShell 7+: !PWSH_PATH!" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "Using PowerShell 7+ (already resolved): !PWSH_PATH!" "SUCCESS" "LAUNCHER"
 ) ELSE (
-    REM Try refreshing PATH and retry once (handles stale WindowsApps alias on re-run)
-    CALL :LOG_MESSAGE "PowerShell 7+ not found on first attempt, refreshing PATH and retrying..." "WARN" "LAUNCHER"
+    REM PWSH_PATH still unresolved - refresh PATH and probe once more (handles a stale
+    REM WindowsApps alias immediately after install)
+    CALL :LOG_MESSAGE "PowerShell 7+ not resolved yet, refreshing PATH and retrying..." "WARN" "LAUNCHER"
     CALL :REFRESH_TOOL_PATHS
     CALL :FIND_PWSH
 
@@ -1126,6 +1074,30 @@ IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
     CALL :LOG_MESSAGE "System Protection check failed (!SR_CHECK!) - skipping restore point" "WARN" "LAUNCHER"
     GOTO :SKIP_RESTORE_POINT
 )
+
+REM Only create a new restore point if the most recent existing one is older than the
+REM threshold - Checkpoint-Computer is throttled by Windows to one per ~24h by default
+REM anyway, and there is no value in re-running the (slow, WinPS-compat-routed) creation
+REM flow when a recent enough snapshot already exists.
+SET "MIN_RESTORE_AGE_HOURS=96"
+SET "RP_AGE_CHECK=RP_NONE"
+FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $rps = @(Get-ComputerRestorePoint -ErrorAction Stop); if ($rps.Count -eq 0) { Write-Host 'RP_NONE' } else { $latest = $rps | Sort-Object -Property CreationTime -Descending | Select-Object -First 1; $ct = $latest.CreationTime; if ($ct -isnot [datetime]) { $ct = [System.Management.ManagementDateTimeConverter]::ToDateTime($ct) }; $ageH = [math]::Round(((Get-Date) - $ct).TotalHours, 1); Write-Host ('RP_AGE:' + $ageH) } } catch { Write-Host 'RP_CHECK_FAILED' }" 2^>nul`) DO SET "RP_AGE_CHECK=%%i"
+
+SET "SKIP_RP_CREATE=NO"
+IF "!RP_AGE_CHECK:~0,7!"=="RP_AGE:" (
+    SET "RP_AGE_HOURS=!RP_AGE_CHECK:~7!"
+    FOR /F "tokens=1 delims=." %%a IN ("!RP_AGE_HOURS!") DO SET "RP_AGE_HOURS_INT=%%a"
+    IF !RP_AGE_HOURS_INT! LSS !MIN_RESTORE_AGE_HOURS! (
+        CALL :LOG_MESSAGE "Most recent restore point is !RP_AGE_HOURS! hour(s) old (below !MIN_RESTORE_AGE_HOURS!h threshold) - skipping creation" "INFO" "LAUNCHER"
+        SET "SKIP_RP_CREATE=YES"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Most recent restore point is !RP_AGE_HOURS! hour(s) old (>= !MIN_RESTORE_AGE_HOURS!h threshold) - creating a new one" "INFO" "LAUNCHER"
+    )
+) ELSE (
+    CALL :LOG_MESSAGE "No prior restore point found or age check inconclusive (!RP_AGE_CHECK!) - creating one" "INFO" "LAUNCHER"
+)
+
+IF /I "!SKIP_RP_CREATE!"=="YES" GOTO :SKIP_RESTORE_POINT
 
 CALL :LOG_MESSAGE "Creating system restore point before execution..." "INFO" "LAUNCHER"
 

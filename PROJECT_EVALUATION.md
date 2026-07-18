@@ -183,3 +183,113 @@ Historical process documents and one-off dev artifacts — nothing in the runtim
 - `config/lists/bloatware/microsoft-store-bloatware.json` (referenced by no code path)
 
 Kept in place: `CLAUDE.md` (its `PROJECT_AUDIT_REPORT.md` link updated to the archive path), `PSScriptAnalyzerSettings.psd1`, all live configs including the legacy `bloatware-list.json` (still the coded fallback).
+
+---
+
+# G. FLOW ANALYSIS — what actually happens to the OS, in what order, and what should change
+
+**End goal (as stated by the project):** on a possibly-fresh Win10/11 machine, bootstrap itself, audit the system, apply only the changes the audit justifies, leave one HTML report behind, clean up after itself, and reboot only when genuinely required.
+
+## G.1 The run as it exists today (timeline with OS impact)
+
+| # | Step | Where | Typical cost | OS impact | Verdict |
+|---|---|---|---|---|---|
+| 1 | Log init + admin check (NET SESSION **and** a spawned powershell.exe) | script.bat 131-203 | ~2 s | none | Redundant double-check — NET SESSION alone suffices |
+| 2 | Pending-WU-reboot detection via **PSWindowsUpdate** then registry | 234-282 | 2-15 s | none | **Wrong order**: PSWindowsUpdate is installed at step 10 — on a fresh machine (the design target!) this check always fails and falls to registry anyway. The registry markers are the ones the script itself calls "authoritative". Drop the PSWindowsUpdate probe |
+| 3 | Possible ONLOGON task + **reboot #1** | 299-325 | reboot | scheduled task + restart | Correct and necessary |
+| 4 | Monthly scheduled task creation (`/RU SYSTEM`) | 341-371 | 1 s | permanent scheduled task | Needed, but the task runs `script.bat` **with no `-NonInteractive` arg** — a SYSTEM session then burns the 10 s menu countdown and the full 120 s Stage-5 countdown with nobody watching, and winget is unreliable under SYSTEM |
+| 5 | **Repo download + extraction — every run, unconditionally** | 400-491 | 10-40 s + network | writes whole repo next to script.bat | Biggest fixed cost of every run; no version check (see G.3-1). Extraction target is the *launch folder* — on this machine that is **OneDrive Desktop**, so OneDrive immediately starts syncing the extracted tree, logs, and reports, and later fights the Stage-5 delete with sync locks (see G.3-2) |
+| 6 | Structure validation (~25 IF EXIST probes + log lines) | 496-585 | <1 s | none | Fine, verbose |
+| 7 | Winget verify/install (3 methods) | 596-740 | 0-60 s | may install App Installer | Needed on fresh machines |
+| 8 | **Hard-coded 5-second countdown** before checking PS7 | 747-751 | 5 s | none | **Pure waste** — sleeps for nothing |
+| 9 | `:FIND_PWSH` (spawns PS5.1, which test-**executes** every pwsh candidate) | 758 | 3-8 s | none | Necessary once |
+| 10 | PS7 install if missing; PSWindowsUpdate install | 764-924 | 0-3 min | installs software | Needed |
+| 11 | Defender exclusions: working dir **+ process-wide `powershell.exe` and `pwsh.exe`** | 929-930 | 1 s | **All PowerShell on the machine unscanned by AV** for the run — and **forever** if Stage-5 cleanup doesn't run (user aborts reboot: exclusions are NOT removed on that path) | Overbroad + leak on abort path (G.3-3) |
+| 12 | **Second** winget verification + **second** scheduled-task pass | 932-989 | 2-4 s | none | Duplicates of steps 4/7 — delete |
+| 13 | `:FIND_PWSH` **again** for PS_EXECUTABLE (and a 3rd time in the retry branch) | 1003-1012 | 3-8 s | none | Cache the step-9 result |
+| 14 | System Protection: vssadmin sizing, Enable-ComputerRestore, **restore point #1** | 1052-1164 | 30-120 s | VSS storage resize + restore point | Runs via slow WinPS-compat remoting; **created even when the run will change nothing** (see G.2-1) |
+| 15 | Launch orchestrator (`-NoExit`, `Set-Location` into extracted dir); launcher exits | 1203-1242 | — | — | `-NoExit` + CWD-in-project cause the Stage-5 delete failure (B4) |
+| 16 | **Stage 1** — 7 audits, sequential | orchestrator | see G.2-2 | read-only | The two multi-minute offenders: per-app `winget list --id` (~minutes) and DISM `/AnalyzeComponentStore` (minutes, no timeout) |
+| 17 | **Stage 2** — diff gate | | <1 s | none | Sound; needs stale-diff purge (B5) |
+| 18 | **Stage 3** — Type2 in `$ModulePairs` order: Software → SysConfig → DiskCleanup → WindowsUpdates → RestorePoint | | minutes-hours | the actual changes | **Order is wrong** — see G.2-3 |
+| 19 | **Stage 4** — report + deferred script.bat self-update | | seconds | overwrites launcher | Correct placement (launcher has exited) |
+| 20 | **Stage 5** — 120 s countdown → remove exclusions → delete folder → **reboot #2** | | 2+ min | reboot, folder delete | Countdown runs even in `-NonInteractive` (nobody can press a key); delete fails on CWD (B4) and will also fight OneDrive |
+
+## G.2 Ordering faults (things that execute in the wrong sequence)
+
+**G.2-1. The safety restore point is disconnected from the changes it protects.**
+Today: the *launcher* creates a restore point on **every** run — before it even knows whether anything will change — and the RestorePoint *module* queues a **second** `create` that runs **last** in Stage 3, i.e. *after* all system modifications are already applied (and is usually swallowed by Windows' 24 h restore-point throttle anyway). Both placements are wrong.
+**Target:** create exactly **one** restore point, in the orchestrator, at the *entry of Stage 3, only when `$actionNeeded.Count -gt 0`*. Remove creation from the launcher and from the RestorePoint pair (keep the pair for consolidation only). A no-change run then touches VSS not at all — currently the "audit says nothing to do" run still costs a restore point, VSS resize, and two reboo… countdowns.
+
+**G.2-2. Stage 1 audit order should be "diff-producers first, report-only last".**
+Current menu order runs report-only modules (5 Inventory, 6 Health) *before* the RestorePoint audit (7). Reorder to 1-4, 7 (actionable) then 5, 6 (report-only): if the circuit-breaker trips or the user is watching, the decisions that gate Stage 3 are already made, and the report-only work is the part that gets sacrificed.
+
+**G.2-3. Stage 3 order works against itself.**
+Current: Software → SystemConfig → **DiskCleanup → WindowsUpdates** → RestorePoint.
+- DiskCleanup (incl. DISM `/StartComponentCleanup`, up to 30 min) runs **before** WindowsUpdates installs updates — which immediately re-dirties the component store, temp folders, and the WU download cache. The clean-up is partially undone minutes later.
+- SoftwareManagement's winget installs/upgrades also litter `%TEMP%` and installer caches *after* their sizes were audited.
+**Target order:** *(restore point)* → **SystemConfiguration** (hardening first, incl. Defender back on) → **SoftwareManagement** → **WindowsUpdates** → **RestorePoint consolidation** → **DiskCleanup last** (sweeps up everything the run itself produced). This is a 5-line change — reorder `$ModulePairs` / iterate `$actionNeeded` in an explicit order — and makes the machine end its run genuinely clean.
+
+**G.2-4. The reboot decision executes before the information it needs is trustworthy.**
+`rebootOnlyWhenRequired` is a good gate, but it consumes `RebootRequired` flags that today are polluted upstream: WU audit phantom-pendings (A5) → usoclient fallback force-sets `RebootRequired` (A3/B10). Flow-wise the gate is in the right *place*; fixing A3/A5/B10 is what makes it *mean* something. Until then the practical behavior is "reboot almost every run", which defeats the config option.
+
+**G.2-5. Countdown logic runs where no human exists.**
+Stage-5's 120 s countdown (and Stage-1's 10 s menu) execute in `-NonInteractive`/scheduled runs where key-polling is deliberately disabled — 130 s of guaranteed dead time at 01:00 under SYSTEM. When `$NonInteractive`, skip both countdowns outright (log the decision instead). Also pass `-NonInteractive` in the monthly task's `/TR` so scheduled runs actually take that path.
+
+## G.3 Actions that aren't needed (or need to move) — beyond ordering
+
+1. **Unconditional repo re-download.** Store the downloaded zip's `ETag`/`Last-Modified` (or the commit SHA from the GitHub API) next to script.bat; skip download+extract when unchanged and the previous extraction still validates. Saves 10-40 s + bandwidth on every scheduled run, and removes the hard internet dependency for repeat runs.
+2. **Extraction into the launch folder.** Extract to `%ProgramData%\WindowsMaintenance\` (or `%LOCALAPPDATA%`) instead of next to script.bat. This (a) takes OneDrive/Desktop sync out of the loop — no sync churn, no locked-file fights during Stage-5 deletion, (b) keeps USB-stick launches working (`ORIGINAL_SCRIPT_DIR` already handles the report copy-back), (c) makes the Stage-5 delete target unambiguous.
+3. **Process-wide Defender exclusions.** Drop `powershell.exe`/`pwsh.exe` process exclusions entirely (the folder exclusion covers the actual need), and move exclusion removal into the orchestrator's `finally` block so *every* exit path — including "user aborted reboot" and crashes — restores AV coverage. Today an aborted run leaves all PowerShell on the machine permanently excluded from Defender.
+4. **The 5-second pre-PS7 countdown, the duplicate winget/task sections, the second and third `:FIND_PWSH`, the PSWindowsUpdate-based reboot probe, the powershell-spawning admin check** — ~20-30 s of pure overhead per run, all deletable with no behavior change.
+5. **Per-app `winget list --id` probes in the essential-apps audit** (Section D1) — the single biggest Stage-1 cost after DISM; one `winget list` parse replaces ~20 winget launches.
+6. **External-IP web call in SystemInventory** — network dependency + writes the machine's public IP into a report that gets copied around; make it opt-in via config.
+7. **DISM `/AnalyzeComponentStore` on every audit** — cache the answer (it changes only when updates/servicing occur) or at least gate it to runs where the WindowsUpdates diff is non-empty, and give it a timeout like its Stage-3 counterpart.
+8. **Sysmon installation inside "maintenance".** Installing a permanent kernel-level monitoring service (plus its event volume) is a policy decision, not a maintenance action — it's also the only Stage-3 action that *adds* a persistent workload to the OS. Keep it, but it deserves its own skip-flag surfaced in `main-config.json` documentation so an operator consciously opts in. *(It currently rides `skipSystemConfiguration`, all-or-nothing with security hardening.)*
+
+## G.4 Target flow (one page)
+
+```
+script.bat (elevated)
+  ├─ admin gate (NET SESSION only)
+  ├─ WU reboot markers (registry only) ──► reboot #1 + ONLOGON task if pending
+  ├─ ensure monthly task (with -NonInteractive in /TR)
+  ├─ download repo IF changed ──► extract to %ProgramData%\WindowsMaintenance
+  ├─ ensure winget ─ ensure PS7 (ONE FIND_PWSH, cached) ─ ensure PSWindowsUpdate
+  ├─ Defender FOLDER exclusion only
+  └─ START pwsh (no -NoExit) MaintenanceOrchestrator.ps1   [launcher exits]
+
+orchestrator
+  ├─ purge temp_files\diff\*                      (kills stale-diff hazard B5)
+  ├─ STAGE 1  audits: 1..4, 7 (diff-producing) → 5, 6 (report-only)
+  ├─ STAGE 2  diff gate (skip pairs whose audit Failed)
+  ├─ STAGE 3  only if work queued:
+  │     create ONE restore point                  (was: launcher + module #7)
+  │     SystemConfiguration → SoftwareManagement → WindowsUpdates
+  │     → RestorePoint consolidation → DiskCleanup (last, sweeps the run's own mess)
+  ├─ STAGE 4  report + deferred script.bat self-update
+  └─ STAGE 5  countdown ONLY if interactive; reboot only if RebootRequired;
+        finally { remove Defender exclusions; Set-Location out; delete folder }
+```
+
+**Net effect:** a no-change run drops from ~5-10 min (download, restore point, DISM analyze, winget probes, 130 s of countdowns) to ~1-2 min with zero writes to the OS; a full run ends with the cleanup actually cleaning the run's own residue; AV coverage is never left degraded; and the reboot gate only fires on real reboot conditions once A3/A5 are fixed.
+
+---
+
+# H. FLOW ADJUSTMENTS IMPLEMENTED (2026-07-18, same session)
+
+The following ordering/flow changes from Section G were implemented in `script.bat` and `MaintenanceOrchestrator.ps1`, per direct request. None of the Section A-F bugs were touched in this pass — those remain open.
+
+| # | Change | File | Detail |
+|---|---|---|---|
+| H1 | Dropped the PSWindowsUpdate-based pending-reboot probe | script.bat ~226-240 | Registry markers (`WU-AutoUpdate-RebootRequired`, `WU-Orchestrator-RebootRequired`, `WU-Orchestrator-PostRebootReporting`) are now the sole detection path, matching G row 2 — the probe always failed on a fresh machine anyway since PSWindowsUpdate isn't installed until Dependency Management, later in the same run. |
+| H2 | Removed the hard-coded 5-second pre-PS7-check countdown | script.bat ~745 | Pure sleep, no functional purpose (G row 8). |
+| H3 | Removed the duplicated winget/Chocolatey re-verification + duplicated scheduled-task status block | script.bat ~930-989 | Both were exact repeats of checks already performed earlier in the same run (G row 12 / C9). |
+| H4 | `:FIND_PWSH` result is now reused instead of re-probed a third time | script.bat ~991-1005 | `PS_EXECUTABLE` selection now trusts the `PWSH_PATH` already resolved by the initial check or the post-install verification, only re-probing (with a `REFRESH_TOOL_PATHS` retry) if it's genuinely still unset (G row 13). |
+| H5 | Restore point creation gated on the age of the most recent existing restore point | script.bat ~1069-1090 | Queries `Get-ComputerRestorePoint`, skips `Checkpoint-Computer` if the latest is < 96h old (configurable via `MIN_RESTORE_AGE_HOURS`); creates one if none exist, the query fails, or the latest is stale. Supersedes the earlier recommendation (G.2-1) to move creation into Stage 3 only — the user's chosen design keeps it in the launcher but makes it age-aware instead of unconditional. |
+| H6 | Repo extraction relocated from the launch folder to `%ProgramData%\WindowsMaintenance` | script.bat ~168-180, ~403-439 | `EXTRACT_ROOT` is now a stable per-machine path; `ZIP_FILE`/`EXTRACTED_PATH`/`WORKING_DIR` all derive from it. Takes OneDrive/Desktop sync out of the loop (no sync-lock fights on Stage-5 delete) while `ORIGINAL_SCRIPT_DIR` still points at the actual launch folder, so the report copy-back and USB-stick launches are unaffected (G item 2). |
+| H7 | Stage 1 audit/menu order changed to actionable-first | MaintenanceOrchestrator.ps1 `$ModulePairs` | Array order is now 1 (Software), 2 (SystemConfig), 3 (DiskCleanup), 4 (WindowsUpdates), 7 (RestorePoint), 5 (Inventory), 6 (Health) — `Num` values unchanged, so `-TaskNumbers`/menu selection is unaffected (G.2-2). |
+| H8 | Stage 3 execution order changed to SystemConfiguration → SoftwareManagement → WindowsUpdates → RestorePoint → DiskCleanup | MaintenanceOrchestrator.ps1, start of Stage 3 region | `$actionNeeded` is explicitly re-sorted by a `$Stage3Order` priority list right before the Stage 3 loop, independent of Stage 1/2 order — DiskCleanup now runs last so it sweeps up the temp/cache/component-store residue produced by the other Type2 actions instead of running before them (G.2-3). |
+| H9 | Stage 5 reordered to: remove Defender exclusions → countdown (abort point) → delete project folder → reboot | MaintenanceOrchestrator.ps1, Stage 5 region | `Remove-DefenderSessionExclusions` now runs once, unconditionally, immediately on Stage 5 entry — before the countdown — instead of being duplicated inside each of the two post-countdown cleanup branches. Side effect (not separately requested, but a direct consequence of the reorder): an **aborted** reboot no longer leaves the machine's PowerShell permanently excluded from Defender, since exclusion removal no longer depends on which branch executes after the countdown. Also added a `Set-Location` out of `$ProjectRoot` immediately before both `Remove-Item $ProjectRoot` calls, since Windows refuses to delete a directory that is a live process's current working directory (bug B4) — without it, "delete Repo folder" would not reliably happen as its own step. |
+
+**Not changed in this pass** (still open, tracked in Sections A-F): the A1/A2 bloatware-detection bugs, A3 WU-install misspelling, A5 phantom-pending-updates audit, A4 `default` crash, A6 restore-point-removal path bug, B2 per-user path duplication, B3 localized power-plan comparison, B6 Defender-incident overcounting, B9 registry rollback semantics, and the Section D performance items (per-app winget probes, DISM timeout, etc.). The reboot-gate now fires in the right *place* (H9) but still isn't fully *trustworthy* until A3/A5/B10 are fixed — WindowsUpdates can still force `RebootRequired=$true` via the usoclient fallback on a healthy machine.
