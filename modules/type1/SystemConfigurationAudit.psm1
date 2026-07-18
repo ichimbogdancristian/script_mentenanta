@@ -264,10 +264,10 @@ function Invoke-SystemConfigurationAudit {
                             $entryName = $_.Name
                             $isSafe = $false
                             foreach ($pattern in $safePatterns) { if ($entryName -like $pattern) { $isSafe = $true; break } }
-                            if (-not $isSafe) { return }
+                            if (-not $isSafe) { continue }
                             $isProtected = $false
                             foreach ($pattern in $neverDisable) { if ($entryName -like $pattern) { $isProtected = $true; break } }
-                            if ($isProtected) { return }
+                            if ($isProtected) { continue }
                             $diff.Add(@{ ConfigType = 'optimization'; Type = 'startup'; Name = $entryName; RegistryPath = $runPath; CurrentState = 'Enabled'; DesiredState = 'Disabled' })
                         }
                     }

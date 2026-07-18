@@ -11,7 +11,7 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
 }
 
-function Test-UpdateInstalled {
+function Test-UpdateAlreadyInstalled {
     param([string]$KBNumber)
 
     # Layer 1: Try Get-CimInstance Win32_QuickFixEngineering (installed updates)
@@ -44,8 +44,9 @@ function Test-UpdateInstalled {
 function Test-UpdateIsInstalled {
     param([string]$KBNumber)
 
-    Write-Log -Level DEBUG -Component WINUPDATE -Message "Verifying update installation... (waiting $($WaitTime.TotalSeconds)s)"
-    Start-Sleep -Seconds 5
+    $waitTime = 5
+    Write-Log -Level DEBUG -Component WINUPDATE -Message "Verifying update installation... (waiting ${waitTime}s)"
+    Start-Sleep -Seconds $waitTime
 
     # Try Layer 1: Quick Fix Engineering
     try {
