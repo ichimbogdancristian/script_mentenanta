@@ -150,7 +150,8 @@ function Get-BloatwareFromAllSources {
     if ((Test-CommandAvailable 'winget')) {
         Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning WinGet packages...'
         try {
-            $wingetList = & winget list --accept-source-agreements --disable-interactivity 2>&1 |
+            $wingetExe = Resolve-WingetPath
+            $wingetList = & $wingetExe list --accept-source-agreements --disable-interactivity 2>&1 |
                 Where-Object { $_ -is [string] }
 
             foreach ($pattern in $BloatwareConfig.patterns) {
@@ -301,7 +302,7 @@ function Invoke-SoftwareManagementAudit {
 
                 $wingetId = $app.winget
                 if ($hasWinget -and $wingetId) {
-                    $null = & winget list --id $wingetId --exact --accept-source-agreements --disable-interactivity 2>&1
+                    $null = & (Resolve-WingetPath) list --id $wingetId --exact --accept-source-agreements --disable-interactivity 2>&1
                     if ($LASTEXITCODE -eq 0) { continue }
                 }
 

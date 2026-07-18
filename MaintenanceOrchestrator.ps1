@@ -287,11 +287,32 @@ try {
         Write-Host ""
     }
 
+    function Clear-PendingConsoleInput {
+        # Drains any keystrokes already sitting in the console's input buffer before a
+        # timed "press a key to..." loop starts polling. Without this, a key pressed
+        # ages ago - an accidental Enter while scrolling, a stray keystroke during a
+        # long unattended Stage 1-4 run - stays buffered and is picked up on the very
+        # FIRST KeyAvailable check of the next countdown, causing an immediate, silent
+        # "abort"/"selection" nobody actually intended right now. Only keys pressed
+        # AFTER this point (i.e. during the countdown the user can actually see) should
+        # count.
+        [CmdletBinding()]
+        param()
+        try {
+            while ([Console]::KeyAvailable) { $null = [Console]::ReadKey($true) }
+        }
+        catch {
+            # No real console attached / input redirected - nothing to drain.
+            $null = $_
+        }
+    }
+
     function Get-MenuSelection {
         [CmdletBinding()]
         param([int]$Countdown = 10)
 
         $selected = $null
+        Clear-PendingConsoleInput
         $deadline = (Get-Date).AddSeconds($Countdown)
 
         while ((Get-Date) -lt $deadline) {
@@ -690,6 +711,12 @@ try {
     Write-Host "  └───────────────────────────────────────────────────────────┘" -ForegroundColor DarkCyan
     Write-Host ""
 
+    # Same stale-keystroke hazard as Get-MenuSelection above, and far more likely to bite
+    # here: Stage 5 starts after potentially hours of unattended Stage 1-4 work, during
+    # which any accidental keystroke into this console window (scrolling, a stray Enter)
+    # sits buffered and would otherwise be read as an immediate "abort" the instant this
+    # loop's first KeyAvailable check runs - before the user has even seen the countdown.
+    Clear-PendingConsoleInput
     $deadline = (Get-Date).AddSeconds($rebootSeconds)
 
     while (-not $aborted -and (Get-Date) -lt $deadline) {

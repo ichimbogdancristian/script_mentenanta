@@ -96,7 +96,8 @@ function Remove-BloatwareLayered {
     # Layer 4: WinGet removal (fallback)
     if (-not $removed -and $WingetId -and $HasWinget) {
         try {
-            $null = & winget uninstall --id $WingetId --silent --accept-source-agreements --disable-interactivity 2>&1
+            $wingetExe = Resolve-WingetPath
+            $null = & $wingetExe uninstall --id $WingetId --silent --accept-source-agreements --disable-interactivity 2>&1
             if ($LASTEXITCODE -eq 0) {
                 Write-Log -Level SUCCESS -Component SOFTWARE -Message "    ✓ Layer 4: WinGet uninstall succeeded"
                 $attempts += 'WinGet'
@@ -150,7 +151,7 @@ function Invoke-SoftwareManagement {
     if ($hasWinget) {
         Write-Log -Level INFO -Component SOFTWARE -Message 'Updating winget sources'
         try {
-            $sourceUpdateCode = Invoke-ExternalPackageCommand -FilePath 'winget' -ArgumentList @('source', 'update', '--disable-interactivity')
+            $sourceUpdateCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) -ArgumentList @('source', 'update', '--disable-interactivity')
             if ($sourceUpdateCode -ne 0) {
                 Write-Log -Level WARN -Component SOFTWARE -Message "winget source update returned exit code $sourceUpdateCode (continuing anyway)"
             }
@@ -206,7 +207,7 @@ function Invoke-SoftwareManagement {
                 $scopeArgs = if ($scope -eq 'user') { @('--scope', 'user') } else { @('--scope', 'machine') }
                 $wingetArgs = @('install', '--id', $wingetId, '--source', 'winget', '--silent',
                     '--disable-interactivity', '--accept-package-agreements', '--accept-source-agreements') + $scopeArgs
-                $exitCode = Invoke-ExternalPackageCommand -FilePath 'winget' -ArgumentList $wingetArgs
+                $exitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) -ArgumentList $wingetArgs
                 if ($exitCode -in 0, -1978335135, -1978335189) {
                     Write-Log -Level SUCCESS -Component SOFTWARE -Message "Installed (winget): $name"
                     $installed = $true
@@ -254,7 +255,7 @@ function Invoke-SoftwareManagement {
             if ($source -eq 'winget' -and $id -and $hasWinget) {
                 $wingetArgs = @('upgrade', '--id', $id, '--silent', '--accept-package-agreements',
                     '--accept-source-agreements', '--disable-interactivity')
-                $exitCode = Invoke-ExternalPackageCommand -FilePath 'winget' -ArgumentList $wingetArgs
+                $exitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) -ArgumentList $wingetArgs
                 if ($exitCode -in 0, -1978335189) {
                     Write-Log -Level SUCCESS -Component SOFTWARE -Message "Upgraded (winget): $name"
                     $upgraded = $true

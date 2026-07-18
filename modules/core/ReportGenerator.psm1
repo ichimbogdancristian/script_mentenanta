@@ -2,25 +2,388 @@
 
 <#
 .SYNOPSIS
-    Report Generator - Self-contained HTML maintenance report
+    Report Generator - Self-contained, full-width HTML maintenance report (v6).
 
 .DESCRIPTION
-    Generates a single-file HTML report from module results and the maintenance.log transcript.
-    All CSS is embedded inline. No external dependencies.
+    Generates a single-file HTML report from module results and the maintenance.log.
+    Everything (CSS + JS) is inlined - no external dependencies, opens straight from disk.
+
+    v6 redesign:
+      - PC "System Overview" surfaced at the TOP (identity, OS, CPU, memory, disk meters,
+        network) instead of buried mid-page.
+      - Full-viewport-width layout (no 1200px cap); grids reflow across wide monitors.
+      - maintenance.log is PARSED into structured entries (ts/level/component/message)
+        and rendered as an interactive console: per-level counts + distribution bar,
+        clickable level filters, component dropdown, and a live text search. Replaces the
+        old opaque <pre> dump.
+      - Light/dark theme toggle (persisted to localStorage), refined visual system.
 
     Output:
       temp_files/reports/MaintenanceReport_[timestamp].html
-      [script.bat folder]/MaintenanceReport_[timestamp].html  (copy)
+      [launcher folder]/MaintenanceReport_[timestamp].html  (copy)
 
 .NOTES
     Module Type: Core (Report Generation)
-    Version: 5.0.0
+    Version: 6.0.0
     Import: Import-Module ReportGenerator.psm1 -Force
 #>
 
 Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
 
-#region ─── ENTRY POINT ───────────────────────────────────────────────────────
+#region ─── SHARED HELPERS ─────────────────────────────────────────────────────
+
+<#
+.SYNOPSIS
+    HTML-escapes a string (ampersand first). $null -> ''.
+#>
+function ConvertTo-HtmlText {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter()] [AllowNull()] [object]$Text)
+    if ($null -eq $Text) { return '' }
+    return ([string]$Text) -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;' -replace '"', '&quot;'
+}
+
+<#
+.SYNOPSIS
+    Loads system-inventory.json (produced by the SystemInventory module) if present.
+.OUTPUTS
+    [pscustomobject] or $null.
+#>
+function Get-InventoryData {
+    [CmdletBinding()]
+    param()
+    $path = Get-TempPath -Category 'data' -FileName 'system-inventory.json' -ErrorAction SilentlyContinue
+    if (-not $path -or -not (Test-Path $path)) { return $null }
+    try { return (Get-Content -Path $path -Raw -Encoding UTF8 | ConvertFrom-Json) }
+    catch { return $null }
+}
+
+<#
+.SYNOPSIS
+    Human-readable uptime from a 'yyyy-MM-dd HH:mm:ss' last-boot string.
+#>
+function Format-Uptime {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter()] [string]$LastBoot)
+    if (-not $LastBoot) { return 'Unknown' }
+    try {
+        $boot = [datetime]::Parse($LastBoot)
+        $span = (Get-Date) - $boot
+        $parts = @()
+        if ($span.Days -gt 0) { $parts += "$($span.Days)d" }
+        $parts += "$($span.Hours)h"
+        $parts += "$($span.Minutes)m"
+        return ($parts -join ' ')
+    }
+    catch { return 'Unknown' }
+}
+
+#endregion
+
+#region ─── LOG PARSING ────────────────────────────────────────────────────────
+
+<#
+.SYNOPSIS
+    Parses maintenance.log into structured entries.
+.DESCRIPTION
+    Each line of the form "[ts] [LEVEL] [COMPONENT] message" becomes an object with
+    Ts / Level / Component / Message. Lines without that prefix (launcher banners,
+    separators, wrapped text) are emitted as Level='RAW' so nothing is lost.
+    Reads through a FileStream with FileShare.ReadWrite so it works even while the
+    core logger still holds the file open (live embedding during Stage 4).
+.OUTPUTS
+    [System.Collections.Generic.List[object]]
+#>
+function ConvertFrom-MaintenanceLog {
+    [CmdletBinding()]
+    [OutputType([System.Collections.Generic.List[object]])]
+    param([Parameter()] [string]$Path)
+
+    $entries = [System.Collections.Generic.List[object]]::new()
+    if (-not $Path -or -not (Test-Path $Path)) { return $entries }
+
+    $rx = [regex]'^\[(?<ts>[^\]]+)\]\s\[(?<lvl>[^\]]+)\]\s\[(?<cmp>[^\]]+)\]\s?(?<msg>.*)$'
+    $fs = $null; $sr = $null
+    try {
+        $fs = [System.IO.FileStream]::new($Path, [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        $sr = [System.IO.StreamReader]::new($fs, [System.Text.Encoding]::UTF8)
+        while ($null -ne ($line = $sr.ReadLine())) {
+            $m = $rx.Match($line)
+            if ($m.Success) {
+                $ts = $m.Groups['ts'].Value
+                # Short time portion (HH:mm:ss) for the compact console column.
+                $short = if ($ts -match '(\d{2}:\d{2}:\d{2})') { $Matches[1] } else { $ts }
+                $entries.Add([pscustomobject]@{
+                        Ts        = $ts
+                        ShortTs   = $short
+                        Level     = $m.Groups['lvl'].Value.ToUpper()
+                        Component = $m.Groups['cmp'].Value
+                        Message   = $m.Groups['msg'].Value
+                    })
+            }
+            elseif ($line.Trim()) {
+                $entries.Add([pscustomobject]@{
+                        Ts = ''; ShortTs = ''; Level = 'RAW'; Component = ''; Message = $line
+                    })
+            }
+        }
+    }
+    catch { Write-Log -Level DEBUG -Component REPORT -Message "Log parse failed: $_" }
+    finally {
+        if ($sr) { $sr.Dispose() }
+        if ($fs) { $fs.Dispose() }
+    }
+    return $entries
+}
+
+<#
+.SYNOPSIS
+    Builds the interactive, filterable log-console HTML section from parsed entries.
+#>
+function Build-LogConsole {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter(Mandatory)] [AllowEmptyCollection()] [System.Collections.Generic.List[object]]$Entries)
+
+    if ($Entries.Count -eq 0) {
+        return '<section class="card logs"><div class="card-hd"><span class="card-ttl">&#128220; Maintenance Log</span></div><div class="card-bd"><p class="muted">No log entries available.</p></div></section>'
+    }
+
+    # ── Order + counts ───────────────────────────────────────────────────────
+    $levelOrder = 'FATAL', 'ERROR', 'WARN', 'SUCCESS', 'INFO', 'DEBUG', 'RAW'
+    $counts = [ordered]@{}
+    foreach ($lv in $levelOrder) { $counts[$lv] = 0 }
+    $components = [System.Collections.Generic.SortedSet[string]]::new()
+    foreach ($e in $Entries) {
+        if (-not $counts.Contains($e.Level)) { $counts[$e.Level] = 0 }
+        $counts[$e.Level]++
+        if ($e.Component) { [void]$components.Add($e.Component) }
+    }
+    $total = $Entries.Count
+
+    # ── Distribution bar (stacked proportion of levels) ──────────────────────
+    # ${lv} is brace-delimited so the ':' in the title text isn't parsed as a scope ref.
+    $barSegs = foreach ($lv in $levelOrder) {
+        $c = $counts[$lv]
+        if ($c -le 0) { continue }
+        $pct = [math]::Round(($c / $total) * 100, 2)
+        "<span class='seg lvl-bg-$lv' style='width:$pct%' title='${lv}: $c'></span>"
+    }
+    $barHtml = ($barSegs -join '')
+
+    # ── Level filter chips (DEBUG + RAW start OFF to cut noise) ───────────────
+    $defaultOff = @('DEBUG', 'RAW')
+    $chipHtml = foreach ($lv in $levelOrder) {
+        $c = $counts[$lv]
+        if ($c -le 0) { continue }
+        $active = if ($lv -in $defaultOff) { '' } else { ' active' }
+        "<button type='button' class='lvl-chip lvl-$lv$active' data-level='$lv'><span class='dot'></span>$lv<span class='cnt'>$c</span></button>"
+    }
+    $chipHtml = ($chipHtml -join '')
+
+    # ── Component dropdown ───────────────────────────────────────────────────
+    $compOpts = "<option value='ALL'>All components</option>"
+    foreach ($cmp in $components) {
+        $ce = ConvertTo-HtmlText $cmp
+        $compOpts += "<option value='$ce'>$ce</option>"
+    }
+
+    # ── Rows ─────────────────────────────────────────────────────────────────
+    $rowSb = [System.Text.StringBuilder]::new()
+    foreach ($e in $Entries) {
+        $msgEnc = ConvertTo-HtmlText $e.Message
+        $cmpEnc = ConvertTo-HtmlText $e.Component
+        # data-text: lowercased haystack for the search box (component + message).
+        $hay = (ConvertTo-HtmlText (("$($e.Component) $($e.Message)").ToLowerInvariant()))
+        if ($e.Level -eq 'RAW') {
+            $isSep = $e.Message -match '^\s*[=\-]{3,}\s*$'
+            $cls = if ($isSep) { 'log-row raw sep' } else { 'log-row raw' }
+            [void]$rowSb.Append("<div class='$cls' data-level='RAW' data-comp='' data-text='$hay'><span class='lr-msg'>$msgEnc</span></div>")
+        }
+        else {
+            [void]$rowSb.Append("<div class='log-row' data-level='$($e.Level)' data-comp='$cmpEnc' data-text='$hay'><span class='lr-ts'>$($e.ShortTs)</span><span class='lr-lvl lvl-$($e.Level)'>$($e.Level)</span><span class='lr-cmp'>$cmpEnc</span><span class='lr-msg'>$msgEnc</span></div>")
+        }
+    }
+
+    return @"
+<section class="card logs">
+  <div class="card-hd">
+    <span class="card-ttl">&#128220; Maintenance Log</span>
+    <span class="card-sub"><b id="logShown">$total</b> of $total lines</span>
+  </div>
+  <div class="log-dist">$barHtml</div>
+  <div class="log-toolbar">
+    <div class="lvl-chips">$chipHtml</div>
+    <div class="log-controls">
+      <select id="logComp" class="log-select">$compOpts</select>
+      <input id="logSearch" class="log-search" type="search" placeholder="&#128269;  Filter log text..." autocomplete="off" />
+    </div>
+  </div>
+  <div class="log-body">
+    $($rowSb.ToString())
+  </div>
+</section>
+"@
+}
+
+#endregion
+
+#region ─── SYSTEM OVERVIEW (top of report) ────────────────────────────────────
+
+<#
+.SYNOPSIS
+    Builds the top-of-report PC overview: identity, OS, CPU, memory, disk meters,
+    network. Degrades gracefully to OSContext/env facts when inventory is absent.
+#>
+function Build-SystemOverview {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter()] [AllowNull()] $Inv,
+        [Parameter(Mandatory)] [hashtable]$OSContext,
+        [Parameter()] [string]$PSVer,
+        [Parameter()] [string]$RunAs
+    )
+
+    $hostname = ConvertTo-HtmlText $env:COMPUTERNAME
+
+    # ── Identity ─────────────────────────────────────────────────────────────
+    $userName = ConvertTo-HtmlText ($Inv.Session.UserName ?? $env:USERNAME)
+    $domain = ConvertTo-HtmlText ($Inv.Session.Domain ?? $env:USERDOMAIN)
+    $isAdmin = if ($null -ne $Inv.Session.IsAdmin) { [bool]$Inv.Session.IsAdmin } else { $true }
+    $adminPill = if ($isAdmin) { "<span class='pill ok'>Administrator</span>" } else { "<span class='pill warn'>Standard</span>" }
+
+    # ── OS ───────────────────────────────────────────────────────────────────
+    $osCaption = ConvertTo-HtmlText ($Inv.OS.Caption ?? $OSContext.Caption)
+    $osBuild = ConvertTo-HtmlText ($Inv.OS.BuildNumber ?? $OSContext.BuildNumber)
+    $osArch = ConvertTo-HtmlText ($Inv.OS.Architecture ?? '')
+    $osInstall = ConvertTo-HtmlText ($Inv.OS.InstallDate ?? '')
+    $uptime = ConvertTo-HtmlText (Format-Uptime -LastBoot ([string]$Inv.OS.LastBootUpTime))
+
+    # ── CPU / Memory ─────────────────────────────────────────────────────────
+    $cpuName = ConvertTo-HtmlText ($Inv.CPU.Name ?? 'Unknown CPU')
+    $cpuCores = ConvertTo-HtmlText ($Inv.CPU.Cores ?? '?')
+    $cpuLogical = ConvertTo-HtmlText ($Inv.CPU.LogicalProcs ?? '?')
+    $cpuClock = if ($Inv.CPU.MaxClockMHz) { "$([math]::Round($Inv.CPU.MaxClockMHz / 1000, 2)) GHz" } else { '' }
+    $memGB = ConvertTo-HtmlText ($Inv.Memory.TotalGB ?? '?')
+    $memModel = ConvertTo-HtmlText (@($Inv.Memory.Manufacturer, $Inv.Memory.Model | Where-Object { $_ }) -join ' ')
+
+    # ── Quick facts ──────────────────────────────────────────────────────────
+    $appCount = $Inv.Software.InstalledAppCount ?? $null
+    $rpCount = if ($Inv.RestorePoints) { @($Inv.RestorePoints).Count } else { $null }
+    $extIP = if ($Inv.ExternalIP.Address -and $Inv.ExternalIP.Address -ne 'Unable to determine') { ConvertTo-HtmlText $Inv.ExternalIP.Address } else { $null }
+
+    $factChips = [System.Collections.Generic.List[string]]::new()
+    $factChips.Add("<span class='fact'><span class='fk'>PowerShell</span><span class='fv'>$([System.Web.HttpUtility]::HtmlEncode($PSVer))</span></span>")
+    $factChips.Add("<span class='fact'><span class='fk'>Run as</span><span class='fv'>$([System.Web.HttpUtility]::HtmlEncode($RunAs))</span></span>")
+    if ($null -ne $appCount) { $factChips.Add("<span class='fact'><span class='fk'>Installed apps</span><span class='fv'>$appCount</span></span>") }
+    if ($null -ne $rpCount) { $factChips.Add("<span class='fact'><span class='fk'>Restore points</span><span class='fv'>$rpCount</span></span>") }
+    if ($extIP) { $factChips.Add("<span class='fact'><span class='fk'>External IP</span><span class='fv mono'>$extIP</span></span>") }
+    $factsHtml = ($factChips -join '')
+
+    # ── Disk meters ──────────────────────────────────────────────────────────
+    $diskHtml = ''
+    if ($Inv.Disks -and @($Inv.Disks).Count -gt 0) {
+        $meters = foreach ($d in $Inv.Disks) {
+            $drive = ConvertTo-HtmlText $d.Drive
+            $size = [double]($d.SizeGB ?? 0)
+            $free = [double]($d.FreeGB ?? 0)
+            $used = [math]::Round($size - $free, 1)
+            $pct = [double]($d.UsedPct ?? 0)
+            $cls = if ($pct -ge 90) { 'crit' } elseif ($pct -ge 70) { 'warn' } else { 'ok' }
+            @"
+<div class="disk">
+  <div class="disk-hd"><span class="disk-drive">&#128190; $drive</span><span class="disk-pct $cls">$pct%</span></div>
+  <div class="meter"><span class="meter-fill $cls" style="width:$pct%"></span></div>
+  <div class="disk-ft"><span>$used GB used</span><span>$free GB free of $size GB</span></div>
+</div>
+"@
+        }
+        $diskHtml = @"
+<div class="ov-card wide">
+  <div class="ov-card-ttl">&#128190; Storage</div>
+  <div class="disks">$($meters -join '')</div>
+</div>
+"@
+    }
+
+    # ── Network ──────────────────────────────────────────────────────────────
+    $netHtml = ''
+    if ($Inv.Network -and @($Inv.Network).Count -gt 0) {
+        $nics = foreach ($n in $Inv.Network) {
+            $desc = ConvertTo-HtmlText $n.Description
+            $ips = ($n.IPs | ForEach-Object { ConvertTo-HtmlText $_ }) -join ', '
+            $dns = ($n.DNSServers | ForEach-Object { ConvertTo-HtmlText $_ }) -join ', '
+            $mac = ConvertTo-HtmlText $n.MAC
+            @"
+<div class="nic">
+  <div class="nic-desc">$desc</div>
+  <div class="nic-kv"><span>IP</span><span class="mono">$(if($ips){$ips}else{'&mdash;'})</span></div>
+  <div class="nic-kv"><span>DNS</span><span class="mono">$(if($dns){$dns}else{'&mdash;'})</span></div>
+  <div class="nic-kv"><span>MAC</span><span class="mono">$(if($mac){$mac}else{'&mdash;'})</span></div>
+</div>
+"@
+        }
+        $netHtml = @"
+<div class="ov-card wide">
+  <div class="ov-card-ttl">&#127760; Network</div>
+  <div class="nics">$($nics -join '')</div>
+</div>
+"@
+    }
+
+    $cpuClockHtml = if ($cpuClock) { " &middot; $cpuClock" } else { '' }
+    $memModelHtml = if ($memModel) { "<div class='ov-sub'>$memModel</div>" } else { '' }
+    $osArchHtml = if ($osArch) { " &middot; $osArch" } else { '' }
+
+    return @"
+<section class="overview">
+  <div class="ov-grid">
+
+    <div class="ov-card identity">
+      <div class="ov-card-ttl">&#128421; Machine</div>
+      <div class="ov-host">$hostname</div>
+      <div class="ov-sub">$userName@$domain</div>
+      <div class="ov-pills">$adminPill</div>
+    </div>
+
+    <div class="ov-card">
+      <div class="ov-card-ttl">&#129513; Operating System</div>
+      <div class="ov-big">$osCaption</div>
+      <div class="ov-sub">Build $osBuild$osArchHtml</div>
+      <div class="ov-mini">
+        <span><span class="mk">Installed</span>$(if($osInstall){$osInstall}else{'&mdash;'})</span>
+        <span><span class="mk">Uptime</span>$uptime</span>
+      </div>
+    </div>
+
+    <div class="ov-card">
+      <div class="ov-card-ttl">&#9889; Processor</div>
+      <div class="ov-big small">$cpuName</div>
+      <div class="ov-sub">$cpuCores cores / $cpuLogical threads$cpuClockHtml</div>
+    </div>
+
+    <div class="ov-card">
+      <div class="ov-card-ttl">&#128190; Memory</div>
+      <div class="ov-big">$memGB <span class="unit">GB</span></div>
+      $memModelHtml
+    </div>
+
+    $diskHtml
+    $netHtml
+  </div>
+
+  <div class="facts">$factsHtml</div>
+</section>
+"@
+}
+
+#endregion
+
+#region ─── ENTRY POINT ────────────────────────────────────────────────────────
 
 <#
 .SYNOPSIS
@@ -30,7 +393,7 @@ Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
 .PARAMETER OSContext
     Hashtable from Get-OSContext.
 .PARAMETER TranscriptPath
-    Path to maintenance.log (Start-Transcript file).
+    Path to maintenance.log (parsed into the interactive console).
 .PARAMETER ReportTitle
     Optional report title override.
 .OUTPUTS
@@ -64,18 +427,11 @@ function New-MaintenanceReport {
 
 #endregion
 
-#region ─── HTML BUILDER ──────────────────────────────────────────────────────
+#region ─── HTML BUILDER ───────────────────────────────────────────────────────
 
 <#
 .SYNOPSIS
     Builds the full HTML string for the maintenance report.
-.PARAMETER SessionResults  Array of hashtables from New-ModuleResult.
-.PARAMETER OSContext       Hashtable from Get-OSContext.
-.PARAMETER TranscriptPath  Path to maintenance.log for inline transcript embedding.
-.PARAMETER Title           Report title string.
-.PARAMETER Timestamp       Session timestamp used in filenames.
-.OUTPUTS
-    [string] Complete HTML document as a single string.
 #>
 function Build-ReportHtml {
     [CmdletBinding()]
@@ -88,97 +444,84 @@ function Build-ReportHtml {
         [string]    $Timestamp
     )
 
+    # ── Run stats ────────────────────────────────────────────────────────────
     $totalModules = $SessionResults.Count
     $succeeded = @($SessionResults | Where-Object { $_.Status -eq 'Success' }).Count
+    $warned = @($SessionResults | Where-Object { $_.Status -eq 'Warning' }).Count
     $failed = @($SessionResults | Where-Object { $_.Status -eq 'Failed' }).Count
     $skipped = @($SessionResults | Where-Object { $_.Status -eq 'Skipped' }).Count
     $totalItems = ($SessionResults | ForEach-Object { [int]$_.ItemsProcessed } | Measure-Object -Sum).Sum
-    $overallStatus = if ($failed -gt 0) { 'danger' } elseif ($skipped -gt 0) { 'warning' } else { 'success' }
-    $overallLabel = if ($failed -gt 0) { 'Completed with Errors' } `
-        elseif ($skipped -gt 0) { 'Completed with Skips' } `
-        else { 'All tasks completed successfully' }
+    $reclaimed = ($SessionResults | ForEach-Object { [double]($_.ExtraData.ReclaimedMB ?? 0) } | Measure-Object -Sum).Sum
+    $reclaimed = [math]::Round($reclaimed, 1)
 
-    # NOTE: cards are built once, below, grouped into $type1Cards / $type2Cards. Do not add an
-    # ungrouped "build every card" pass here - it is never emitted and doubles the work (each
-    # Build-ModuleCard call re-reads the module's diff file).
+    $overallStatus = if ($failed -gt 0) { 'danger' } elseif ($warned -gt 0 -or $skipped -gt 0) { 'warning' } else { 'success' }
+    $overallLabel = if ($failed -gt 0) { 'Completed with errors' }
+    elseif ($warned -gt 0) { 'Completed with warnings' }
+    elseif ($skipped -gt 0) { 'Completed with skips' }
+    else { 'All tasks completed successfully' }
 
-    # Error aggregation across all modules
+    # ── Error aggregation ────────────────────────────────────────────────────
     $allErrors = [System.Collections.Generic.List[string]]::new()
     foreach ($r in $SessionResults) {
         if ($r.Errors -and @($r.Errors).Count -gt 0) {
-            foreach ($e in $r.Errors) {
-                $allErrors.Add("[" + $r.ModuleName + "] " + $e)
-            }
+            foreach ($e in $r.Errors) { $allErrors.Add("[$($r.ModuleName)] $e") }
         }
     }
-
     $errorSummaryHtml = ''
     if ($allErrors.Count -gt 0) {
-        $errItems = ($allErrors | ForEach-Object {
-                $escaped = $_ -replace '<', '&lt;' -replace '>', '&gt;'
-                "<div class='err-mod'><span class='err-msg'>$escaped</span></div>"
-            }) -join "`n"
+        $errItems = ($allErrors | ForEach-Object { "<div class='err-mod'>$(ConvertTo-HtmlText $_)</div>" }) -join "`n"
         $errorSummaryHtml = @"
-<div class="err-summary">
-  <h3>&#9888; $($allErrors.Count) Error(s) Across All Modules</h3>
-  $errItems
-</div>
+<section class="card err-summary">
+  <div class="card-hd"><span class="card-ttl">&#9888; $($allErrors.Count) error(s) across all modules</span></div>
+  <div class="card-bd">$errItems</div>
+</section>
 "@
     }
 
-    # Group module cards by Type1 (Audits) and Type2 (Actions)
+    # ── Module cards, grouped ────────────────────────────────────────────────
     $type1Results = @($SessionResults | Where-Object { $_.ModuleType -eq 'Type1' })
     $type2Results = @($SessionResults | Where-Object { $_.ModuleType -eq 'Type2' })
     $type1Cards = ($type1Results | ForEach-Object { Build-ModuleCard -Result $_ }) -join "`n"
     $type2Cards = ($type2Results | ForEach-Object { Build-ModuleCard -Result $_ }) -join "`n"
+    if (-not $type1Cards) { $type1Cards = "<p class='muted'>No audit modules ran.</p>" }
+    if (-not $type2Cards) { $type2Cards = "<p class='muted'>No maintenance actions were required.</p>" }
 
-    # Build System Inventory section (if SystemInventory ran)
+    # ── Inventory-driven sections (read the JSON once, share it) ──────────────
+    $inv = Get-InventoryData
+
+    $overviewHtml = Build-SystemOverview -Inv $inv -OSContext $OSContext `
+        -PSVer $PSVersionTable.PSVersion.ToString() `
+        -RunAs ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
+
     $systemInventoryHtml = ''
-    $inventoryResult = $SessionResults | Where-Object { $_.ModuleName -eq 'SystemInventory' }
-    if ($inventoryResult) {
-        $systemInventoryHtml = Build-SystemInventorySection -Result $inventoryResult
+    if ($SessionResults | Where-Object { $_.ModuleName -eq 'SystemInventory' }) {
+        $systemInventoryHtml = Build-SystemInventorySection -Inv $inv
     }
 
-    # Build Restore Point Management section (if RestorePointAudit ran)
     $restorePointHtml = ''
-    $restoreResult = $SessionResults | Where-Object { $_.ModuleName -eq 'RestorePointAudit' }
-    if ($restoreResult) {
-        $restorePointHtml = Build-RestorePointSection -Result $restoreResult
+    if ($SessionResults | Where-Object { $_.ModuleName -eq 'RestorePointAudit' }) {
+        $restorePointHtml = Build-RestorePointSection
     }
 
-    # Build System Health section (if SystemHealthAudit ran)
     $systemHealthHtml = ''
     $healthResult = $SessionResults | Where-Object { $_.ModuleName -eq 'SystemHealthAudit' }
-    if ($healthResult) {
-        $systemHealthHtml = Build-SystemHealthSection -Result $healthResult
-    }
+    if ($healthResult) { $systemHealthHtml = Build-SystemHealthSection -Result $healthResult }
 
-    # Reboot status
+    # ── Reboot banner ────────────────────────────────────────────────────────
     $rebootNeeded = [bool]($SessionResults | Where-Object { $_.RebootRequired -eq $true })
     $rebootBanner = if ($rebootNeeded) {
-        '<div class="banner danger">&#9888; One or more modules require a system reboot</div>'
+        '<div class="banner danger">&#9888; One or more modules require a system reboot to finish.</div>'
     }
     else { '' }
 
-    $rawTranscript = '(transcript not available)'
-    if ($TranscriptPath -and (Test-Path $TranscriptPath)) {
-        $rawContent = Get-Content -Path $TranscriptPath -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
-        if ($rawContent) {
-            try {
-                $rawTranscript = [System.Web.HttpUtility]::HtmlEncode($rawContent)
-            }
-            catch {
-                # Fallback if System.Web not available
-                $rawTranscript = $rawContent -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;'
-            }
-        }
-    }
+    # ── Parsed log console ───────────────────────────────────────────────────
+    $logEntries = ConvertFrom-MaintenanceLog -Path $TranscriptPath
+    $logConsoleHtml = Build-LogConsole -Entries $logEntries
 
+    # ── Header facts ─────────────────────────────────────────────────────────
     $genTime = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
-    $hostname = $env:COMPUTERNAME
-    $osText = $OSContext.DisplayText
-    $psVer = $PSVersionTable.PSVersion.ToString()
-    $runAs = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $hostname = ConvertTo-HtmlText $env:COMPUTERNAME
+    $osText = ConvertTo-HtmlText $OSContext.DisplayText
 
     return @"
 <!DOCTYPE html>
@@ -188,218 +531,79 @@ function Build-ReportHtml {
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>$Title</title>
 <style>
-:root{--bg:#0f1117;--surface:#1a1d27;--card:#22263a;--border:#2e3348;--text:#e2e6f0;--muted:#8892a4;--success:#22c55e;--warning:#f59e0b;--danger:#ef4444;--info:#3b82f6;--accent:#7c3aed}
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.6}
-.container{max-width:1200px;margin:0 auto;padding:24px}
-/* HEADER */
-.rpt-header{background:linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#1e1b4b 100%);border-radius:16px;padding:32px;margin-bottom:24px;border:1px solid var(--accent)}
-.rpt-header h1{font-size:26px;font-weight:700}
-.rpt-header .meta{color:var(--muted);font-size:13px;display:flex;gap:20px;flex-wrap:wrap;margin-top:10px}
-.os-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(124,58,237,.2);border:1px solid var(--accent);border-radius:20px;padding:5px 14px;font-size:13px;margin-top:10px}
-/* SUMMARY */
-.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:24px}
-.stat{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;text-align:center}
-.stat .val{font-size:34px;font-weight:700;line-height:1}
-.stat .lbl{color:var(--muted);font-size:11px;margin-top:5px;text-transform:uppercase;letter-spacing:.5px}
-.stat.s .val{color:var(--success)}.stat.w .val{color:var(--warning)}.stat.d .val{color:var(--danger)}.stat.i .val{color:var(--info)}
-/* BANNER */
-.banner{border-radius:10px;padding:12px 18px;margin-bottom:22px;font-weight:600;font-size:14px}
-.banner.success{background:rgba(34,197,94,.1);border:1px solid var(--success);color:var(--success)}
-.banner.warning{background:rgba(245,158,11,.1);border:1px solid var(--warning);color:var(--warning)}
-.banner.danger {background:rgba(239,68,68,.1) ;border:1px solid var(--danger) ;color:var(--danger)}
-/* SECTION TITLE */
-.sec{font-size:17px;font-weight:600;margin:24px 0 12px;padding-bottom:7px;border-bottom:2px solid var(--border)}
-/* INFO ROW */
-.info-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:22px}
-.inf{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 14px;font-size:12px}
-.inf .k{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
-.inf .v{font-weight:600;margin-top:2px}
-/* MODULE CARDS */
-.mod-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-bottom:22px}
-.mod{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden}
-.mod-hd{padding:12px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
-.mod-hd .nm{font-weight:600;font-size:14px}
-.mod-bd{padding:12px 16px}
-.mod-bd .r{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px}
-.mod-bd .r:last-child{border-bottom:none}
-.mod-bd .r .k{color:var(--muted)}
-.mod-type{font-size:10px;color:var(--muted);margin-left:6px;text-transform:uppercase;letter-spacing:.5px}
-.reboot-tag{display:inline-block;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:600;background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3);margin-left:6px}
-/* BADGES */
-.badge{display:inline-block;padding:2px 9px;border-radius:12px;font-size:11px;font-weight:600}
-.bs{background:rgba(34,197,94,.15);color:var(--success);border:1px solid rgba(34,197,94,.3)}
-.bw{background:rgba(245,158,11,.15);color:var(--warning);border:1px solid rgba(245,158,11,.3)}
-.bd{background:rgba(239,68,68,.15);color:var(--danger);border:1px solid rgba(239,68,68,.3)}
-.bm{background:rgba(136,146,164,.15);color:var(--muted);border:1px solid rgba(136,146,164,.3)}
-/* ERRORS */
-.errs{margin-top:6px;list-style:none}
-.errs li{font-size:11px;color:var(--danger);padding:2px 0 2px 12px;position:relative}
-.errs li::before{content:'✕';position:absolute;left:0}
-/* ERROR AGGREGATION */
-.err-summary{background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:14px 18px;margin-bottom:22px}
-.err-summary h3{font-size:14px;color:var(--danger);margin-bottom:8px}
-.err-summary .err-mod{font-size:12px;margin-bottom:6px}
-.err-summary .err-mod .mod-name{font-weight:600;color:var(--text)}
-.err-summary .err-mod .err-msg{color:var(--muted);font-size:11px;padding-left:12px}
-/* DETAIL ITEMS */
-.mod-details{margin-top:8px}
-.mod-details summary{font-size:12px;font-weight:600;padding:6px 10px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:6px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px}
-.mod-details summary::-webkit-details-marker{display:none}
-.mod-details summary::before{content:'▶';font-size:8px;transition:transform .2s}
-.mod-details[open] summary::before{transform:rotate(90deg)}
-.item-list{margin-top:6px;font-size:11px}
-.item-list .item{padding:4px 8px;border-left:2px solid var(--accent);margin-bottom:3px;background:rgba(124,58,237,.04);border-radius:0 4px 4px 0}
-.item-list .item .item-name{font-weight:600;color:var(--text)}
-.item-list .item .item-detail{color:var(--muted)}
-/* EXTRA DATA */
-.extra{margin-top:6px}
-.extra .ex-row{display:flex;justify-content:space-between;padding:3px 0;font-size:11px;border-bottom:1px solid rgba(46,51,72,.5)}
-.extra .ex-row .k{color:var(--muted)}
-.extra .ex-row .v{color:var(--info)}
-/* TRANSCRIPT */
-details summary{cursor:pointer;font-size:15px;font-weight:600;padding:10px 14px;background:var(--surface);border:1px solid var(--border);border-radius:8px;list-style:none;display:flex;align-items:center;gap:8px}
-details summary::-webkit-details-marker{display:none}
-details summary::before{content:'▶';font-size:10px;transition:transform .2s}
-details[open] summary::before{transform:rotate(90deg)}
-details[open] summary{border-radius:8px 8px 0 0;border-bottom:none}
-.tx{background:#0a0c14;border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px;padding:14px;overflow-x:auto;max-height:500px;overflow-y:auto}
-.tx pre{font-family:'Cascadia Code',Consolas,monospace;font-size:11px;color:#a0b0c8;white-space:pre-wrap;word-break:break-all}
-/* INVENTORY SECTION - NETWORK */
-.nic-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:22px}
-.nic-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;overflow:hidden}
-.nic-card.extip{background:linear-gradient(135deg,rgba(124,58,237,.1) 0%,rgba(59,130,246,.1) 100%);border:1px solid rgba(124,58,237,.3)}
-.nic-desc{font-weight:600;color:var(--text);margin-bottom:8px;font-size:12px}
-.nic-info{display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid rgba(46,51,72,.3)}
-.nic-info:last-child{border-bottom:none}
-.nic-label{color:var(--muted);font-weight:500}
-.nic-value{color:var(--text);font-family:monospace;word-break:break-all}
-/* INVENTORY SECTION - USERS */
-.user-container{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:22px}
-.user-header{display:grid;grid-template-columns:120px 1fr 140px;gap:12px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--border);font-weight:600;font-size:11px;color:var(--muted);text-transform:uppercase}
-.user-list{max-height:300px;overflow-y:auto}
-.user-row{display:grid;grid-template-columns:120px 1fr 140px;gap:12px;padding:8px 14px;border-bottom:1px solid rgba(46,51,72,.3);font-size:11px;align-items:center}
-.user-row:last-child{border-bottom:none}
-.user-name{font-weight:600;color:var(--text)}
-.user-info{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.user-logon{color:var(--muted);font-size:10px;white-space:nowrap}
-/* INVENTORY SECTION - RESTORE POINTS */
-.rp-container{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:22px}
-.rp-header{display:grid;grid-template-columns:1fr 120px 150px;gap:12px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--border);font-weight:600;font-size:11px;color:var(--muted);text-transform:uppercase}
-.rp-list{max-height:350px;overflow-y:auto}
-.rp-row{display:grid;grid-template-columns:1fr 120px 150px;gap:12px;padding:8px 14px;border-bottom:1px solid rgba(46,51,72,.3);font-size:11px;align-items:center}
-.rp-row:last-child{border-bottom:none}
-.rp-desc{color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rp-type{color:var(--info);font-size:10px;background:rgba(59,130,246,.1);padding:2px 6px;border-radius:3px;text-align:center}
-.rp-time{color:var(--muted);font-size:10px;white-space:nowrap}
-.rp-more{padding:8px 14px;color:var(--muted);font-size:10px;text-align:center;background:rgba(124,58,237,.04)}
-/* AUDIT SECTION - RESTORE POINT AUDIT */
-.audit-rp-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:22px}
-.audit-rp-stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center}
-.audit-rp-val{font-size:24px;font-weight:700;color:var(--accent);line-height:1}
-.audit-rp-lbl{color:var(--muted);font-size:10px;margin-top:4px;text-transform:uppercase;letter-spacing:.5px}
-.audit-rp-container{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:22px}
-.audit-rp-header{display:grid;grid-template-columns:50px 1fr 100px 140px;gap:12px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--border);font-weight:600;font-size:11px;color:var(--muted);text-transform:uppercase}
-.audit-rp-list{max-height:400px;overflow-y:auto}
-.audit-rp-row{display:grid;grid-template-columns:50px 1fr 100px 140px;gap:12px;padding:8px 14px;border-bottom:1px solid rgba(46,51,72,.3);font-size:11px;align-items:center}
-.audit-rp-row:last-child{border-bottom:none}
-.audit-rp-seq{color:var(--muted);font-weight:600;font-family:monospace}
-.audit-rp-desc{color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.audit-rp-type{color:var(--info);background:rgba(59,130,246,.1);padding:2px 6px;border-radius:3px;text-align:center;font-size:10px}
-.audit-rp-time{color:var(--muted);font-size:10px;white-space:nowrap}
-.audit-rp-more{padding:8px 14px;color:var(--muted);font-size:10px;text-align:center;background:rgba(124,58,237,.04)}
-/* SYSTEM HEALTH SECTION */
-.evt-container,.def-container{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:22px}
-.evt-header,.def-header{display:grid;grid-template-columns:70px 1fr 2fr 140px;gap:12px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--border);font-weight:600;font-size:11px;color:var(--muted);text-transform:uppercase}
-.evt-list,.def-list{max-height:400px;overflow-y:auto}
-.evt-row,.def-row{display:grid;grid-template-columns:70px 1fr 2fr 140px;gap:12px;padding:8px 14px;border-bottom:1px solid rgba(46,51,72,.3);font-size:11px;align-items:center}
-.evt-row:last-child,.def-row:last-child{border-bottom:none}
-.evt-level{font-weight:600;padding:2px 6px;border-radius:4px;text-align:center}
-.evt-level.evt-error{background:rgba(239,68,68,.15);color:var(--danger)}
-.evt-level.evt-critical{background:rgba(239,68,68,.25);color:#ff6b6b}
-.evt-src,.def-threat{font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.evt-msg,.def-path{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.evt-ts,.def-ts{color:var(--muted);font-size:10px;white-space:nowrap}
-.def-sev{font-weight:600;padding:2px 8px;border-radius:4px;text-align:center;font-size:10px}
-.def-sev.sev-high{background:rgba(239,68,68,.15);color:var(--danger)}
-.def-sev.sev-med{background:rgba(245,158,11,.15);color:var(--warning)}
-.def-sev.sev-low{background:rgba(34,197,94,.15);color:var(--success)}
-.evt-more,.def-more{padding:8px 14px;color:var(--muted);font-size:10px;text-align:center;background:rgba(124,58,237,.04)}
-.excl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-bottom:22px}
-.excl-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px;overflow:hidden}
-.excl-title{font-weight:600;color:var(--text);margin-bottom:8px;font-size:12px}
-.excl-list{max-height:300px;overflow-y:auto}
-.excl-item{padding:4px 6px;font-size:11px;color:var(--muted);border-left:2px solid var(--accent);padding-left:8px;margin-bottom:3px;background:rgba(124,58,237,.04);border-radius:0 4px 4px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.excl-more{padding:4px 6px;font-size:10px;color:var(--info);text-align:center}
-/* FOOTER */
-.footer{text-align:center;color:var(--muted);font-size:12px;padding:18px 0;border-top:1px solid var(--border);margin-top:22px}
+$(Get-ReportCss)
 </style>
 </head>
-<body>
-<div class="container">
+<body data-theme="dark">
+<div class="wrap">
 
-<div class="rpt-header">
-  <h1>$Title</h1>
-  <div class="meta">
-    <span>&#128421; $hostname</span>
-    <span>&#128336; $genTime</span>
-    <span>&#128196; Session $Timestamp</span>
-  </div>
-  <div class="os-badge">&#129695; $osText</div>
+  <header class="hero">
+    <div class="hero-l">
+      <div class="hero-eyebrow">Windows Maintenance Automation</div>
+      <h1 class="hero-title">$Title</h1>
+      <div class="hero-meta">
+        <span>&#128421; $hostname</span>
+        <span class="sep">&bull;</span>
+        <span>&#129695; $osText</span>
+        <span class="sep">&bull;</span>
+        <span>&#128336; $genTime</span>
+        <span class="sep">&bull;</span>
+        <span>Session $Timestamp</span>
+      </div>
+    </div>
+    <div class="hero-r">
+      <div class="status-pill $overallStatus">$overallLabel</div>
+      <button id="themeToggle" class="theme-btn" type="button">&#9788; Light</button>
+    </div>
+  </header>
+
+  $rebootBanner
+  $overviewHtml
+
+  <section class="stats">
+    <div class="stat"><div class="stat-v">$totalModules</div><div class="stat-l">Modules run</div></div>
+    <div class="stat s"><div class="stat-v">$succeeded</div><div class="stat-l">Succeeded</div></div>
+    <div class="stat w"><div class="stat-v">$warned</div><div class="stat-l">Warnings</div></div>
+    <div class="stat m"><div class="stat-v">$skipped</div><div class="stat-l">Skipped</div></div>
+    <div class="stat d"><div class="stat-v">$failed</div><div class="stat-l">Failed</div></div>
+    <div class="stat i"><div class="stat-v">$totalItems</div><div class="stat-l">Items changed</div></div>
+    <div class="stat a"><div class="stat-v">$reclaimed<span class="unit">MB</span></div><div class="stat-l">Disk reclaimed</div></div>
+  </section>
+
+  $errorSummaryHtml
+
+  <h2 class="sec">&#128269; Stage 1 &mdash; System Audit</h2>
+  <div class="mod-grid">$type1Cards</div>
+
+  $systemInventoryHtml
+  $restorePointHtml
+  $systemHealthHtml
+
+  <h2 class="sec">&#128295; Stage 3 &mdash; Maintenance Actions</h2>
+  <div class="mod-grid">$type2Cards</div>
+
+  $logConsoleHtml
+
+  <footer class="footer">
+    Windows Maintenance Automation v6 &bull; report generated $genTime &bull; $hostname
+  </footer>
 </div>
 
-<div class="banner $overallStatus">$overallLabel</div>
-$rebootBanner
-$errorSummaryHtml
-
-<div class="summary-grid">
-  <div class="stat">   <div class="val">$totalModules</div><div class="lbl">Modules Run</div></div>
-  <div class="stat s"> <div class="val">$succeeded</div>   <div class="lbl">Succeeded</div></div>
-  <div class="stat w"> <div class="val">$skipped</div>     <div class="lbl">Skipped</div></div>
-  <div class="stat d"> <div class="val">$failed</div>      <div class="lbl">Failed</div></div>
-  <div class="stat i"> <div class="val">$totalItems</div>  <div class="lbl">Items Changed</div></div>
-</div>
-
-<div class="info-row">
-  <div class="inf"><div class="k">Hostname</div><div class="v">$hostname</div></div>
-  <div class="inf"><div class="k">OS</div><div class="v">$osText</div></div>
-  <div class="inf"><div class="k">PowerShell</div><div class="v">$psVer</div></div>
-  <div class="inf"><div class="k">Run As</div><div class="v">$runAs</div></div>
-  <div class="inf"><div class="k">Generated</div><div class="v">$genTime</div></div>
-</div>
-
-<div class="sec">Stage 1 &mdash; System Audit Results</div>
-<div class="mod-grid">$type1Cards</div>
-
-$systemInventoryHtml
-
-$restorePointHtml
-
-$systemHealthHtml
-
-<div class="sec">Stage 3 &mdash; Maintenance Action Results</div>
-<div class="mod-grid">$type2Cards</div>
-
-<div class="sec">Maintenance Log (Full Transcript)</div>
-<details>
-  <summary>&#128196; maintenance.log - click to expand</summary>
-  <div class="tx"><pre>$rawTranscript</pre></div>
-</details>
-
-<div class="footer">Windows Maintenance Automation v5.0 &bull; $genTime &bull; $hostname</div>
-</div>
+<script>
+$(Get-ReportJs)
+</script>
 </body>
 </html>
 "@
 }
 
+#endregion
+
+#region ─── MODULE CARD ────────────────────────────────────────────────────────
+
 <#
 .SYNOPSIS
-    Builds an HTML card snippet for a single module result.
-.PARAMETER Result
-    Hashtable produced by New-ModuleResult.
-.OUTPUTS
-    [string] HTML fragment for the module card.
+    Builds an HTML card for a single module result.
 #>
 function Build-ModuleCard {
     [CmdletBinding()]
@@ -413,69 +617,47 @@ function Build-ModuleCard {
         'Warning' { 'bw' }
         default { 'bm' }
     }
-
     $typeLabel = if ($Result.ModuleType) { "<span class='mod-type'>$($Result.ModuleType)</span>" } else { '' }
-    $rebootTag = if ($Result.RebootRequired) { "<span class='reboot-tag'>Reboot Required</span>" } else { '' }
+    $rebootTag = if ($Result.RebootRequired) { "<span class='reboot-tag'>Reboot</span>" } else { '' }
 
     $errHtml = ''
     if ($Result.Errors -and @($Result.Errors).Count -gt 0) {
-        $items = ($Result.Errors | ForEach-Object {
-                try { "<li>$([System.Web.HttpUtility]::HtmlEncode($_))</li>" }
-                catch { "<li>$($_ -replace '<','&lt;' -replace '>','&gt;')</li>" }
-            }) -join ''
+        $items = ($Result.Errors | ForEach-Object { "<li>$(ConvertTo-HtmlText $_)</li>" }) -join ''
         $errHtml = "<ul class='errs'>$items</ul>"
     }
 
-    $msg = if ($Result.Message) {
-        try { [System.Web.HttpUtility]::HtmlEncode($Result.Message) }
-        catch { $Result.Message -replace '<', '&lt;' -replace '>', '&gt;' }
-    }
-    else { '' }
-    $msgRow = if ($msg) { "<div class='r'><span class='k'>Note</span><span>$msg</span></div>" } else { '' }
+    $msg = ConvertTo-HtmlText $Result.Message
+    $msgRow = if ($msg) { "<div class='r'><span class='k'>Note</span><span class='v'>$msg</span></div>" } else { '' }
 
-    # ExtraData rendering
     $extraHtml = ''
     if ($Result.ExtraData -and $Result.ExtraData.Count -gt 0) {
-        $exRows = ($Result.ExtraData.GetEnumerator() | ForEach-Object {
-                $ek = $_.Key -replace '<', '&lt;' -replace '>', '&gt;'
-                $ev = "$($_.Value)" -replace '<', '&lt;' -replace '>', '&gt;'
-                "<div class='ex-row'><span class='k'>$ek</span><span class='v'>$ev</span></div>"
+        $exRows = ($Result.ExtraData.GetEnumerator() | Where-Object { $_.Value -isnot [hashtable] } | ForEach-Object {
+                "<div class='ex-row'><span class='k'>$(ConvertTo-HtmlText $_.Key)</span><span class='v'>$(ConvertTo-HtmlText $_.Value)</span></div>"
             }) -join ''
-        $extraHtml = "<div class='extra'>$exRows</div>"
+        if ($exRows) { $extraHtml = "<div class='extra'>$exRows</div>" }
     }
 
-    # Detailed items from the diff list (what was audited/changed).
-    #
-    # A Type2 result's ModuleName already equals its DiffKey (e.g. 'SoftwareManagement'); a Type1
-    # result's is the audit function name ('SoftwareManagementAudit'). Stripping the 'Audit' suffix
-    # maps an audit back to the diff its pair shares. This replaces a hardcoded lookup table that
-    # still listed only pre-consolidation module names (BloatwareRemoval, EssentialApps,
-    # SecurityEnhancement, TelemetryDisable, SystemOptimization, AppUpgrade) and therefore silently
-    # dropped the detail section for every current audit card except WindowsUpdatesAudit.
+    # Detail items from the diff (Type2 ModuleName == DiffKey; Type1 strips 'Audit').
     $detailHtml = ''
-    $moduleName = $Result.ModuleName
     try {
+        $moduleName = $Result.ModuleName
         $diffData = Get-DiffList -ModuleName $moduleName
         if (-not $diffData -or $diffData.Count -eq 0) {
             $pairKey = $moduleName -replace 'Audit$', ''
-            if ($pairKey -ne $moduleName) {
-                $diffData = Get-DiffList -ModuleName $pairKey
-            }
+            if ($pairKey -ne $moduleName) { $diffData = Get-DiffList -ModuleName $pairKey }
         }
         if ($diffData -and $diffData.Count -gt 0) {
-            $maxItems = [Math]::Min($diffData.Count, 20)  # Cap at 20 items to keep report readable
+            $maxItems = [Math]::Min($diffData.Count, 25)
             $itemRows = ($diffData[0..($maxItems - 1)] | ForEach-Object {
-                    $itemName = ($_.Name ?? $_.name ?? 'Unknown') -replace '<', '&lt;' -replace '>', '&gt;'
-                    $itemType = ($_.Type ?? $_.type ?? '') -replace '<', '&lt;' -replace '>', '&gt;'
-                    $currentSt = ($_.CurrentState ?? '') -replace '<', '&lt;' -replace '>', '&gt;'
-                    $desiredSt = ($_.DesiredState ?? '') -replace '<', '&lt;' -replace '>', '&gt;'
-                    $desc = ($_.Description ?? '') -replace '<', '&lt;' -replace '>', '&gt;'
-                    $detailText = if ($desc) { $desc }
-                    elseif ($currentSt -and $desiredSt) { "$currentSt &#8594; $desiredSt" }
-                    else { $itemType }
-                    "<div class='item'><span class='item-name'>$itemName</span> <span class='item-detail'>$detailText</span></div>"
+                    $itemName = ConvertTo-HtmlText ($_.Name ?? $_.name ?? 'Item')
+                    $curSt = ConvertTo-HtmlText ($_.CurrentState ?? '')
+                    $desSt = ConvertTo-HtmlText ($_.DesiredState ?? '')
+                    $desc = ConvertTo-HtmlText ($_.Description ?? '')
+                    $itemType = ConvertTo-HtmlText ($_.Type ?? $_.type ?? '')
+                    $detailText = if ($desc) { $desc } elseif ($curSt -and $desSt) { "$curSt &#8594; $desSt" } else { $itemType }
+                    "<div class='item'><span class='item-name'>$itemName</span><span class='item-detail'>$detailText</span></div>"
                 }) -join ''
-            $moreText = if ($diffData.Count -gt 20) { " <span style='color:var(--muted);font-size:10px'>(+$($diffData.Count - 20) more)</span>" } else { '' }
+            $moreText = if ($diffData.Count -gt 25) { " <span class='more'>(+$($diffData.Count - 25) more)</span>" } else { '' }
             $detailHtml = @"
 <details class="mod-details">
   <summary>$($diffData.Count) item(s) detailed$moreText</summary>
@@ -484,19 +666,21 @@ function Build-ModuleCard {
 "@
         }
     }
-    catch {
-        # Diff data not available — that's fine, skip detail section
-    }
+    catch { $detailHtml = '' }
 
     return @"
 <div class="mod">
-  <div class="mod-hd"><span class="nm">$($Result.ModuleName)$typeLabel$rebootTag</span><span class="badge $badgeClass">$($Result.Status)</span></div>
+  <div class="mod-hd">
+    <span class="nm">$(ConvertTo-HtmlText $Result.ModuleName)$typeLabel$rebootTag</span>
+    <span class="badge $badgeClass">$($Result.Status)</span>
+  </div>
   <div class="mod-bd">
-    <div class="r"><span class="k">Timestamp</span><span>$($Result.Timestamp)</span></div>
-    <div class="r"><span class="k">Detected</span><span>$($Result.ItemsDetected)</span></div>
-    <div class="r"><span class="k">Processed</span><span>$($Result.ItemsProcessed)</span></div>
-    <div class="r"><span class="k">Skipped</span><span>$($Result.ItemsSkipped)</span></div>
-    <div class="r"><span class="k">Failed</span><span>$($Result.ItemsFailed)</span></div>
+    <div class="metrics">
+      <div class="metric"><span class="mv">$($Result.ItemsDetected)</span><span class="ml">Detected</span></div>
+      <div class="metric"><span class="mv">$($Result.ItemsProcessed)</span><span class="ml">Processed</span></div>
+      <div class="metric"><span class="mv">$($Result.ItemsSkipped)</span><span class="ml">Skipped</span></div>
+      <div class="metric"><span class="mv">$($Result.ItemsFailed)</span><span class="ml">Failed</span></div>
+    </div>
     $msgRow
     $extraHtml
     $errHtml
@@ -506,354 +690,502 @@ function Build-ModuleCard {
 "@
 }
 
+#endregion
+
+#region ─── INVENTORY / RESTORE / HEALTH SECTIONS ──────────────────────────────
+
 <#
 .SYNOPSIS
-    Builds the System Inventory section with network, users, and restore points.
-.PARAMETER Result
-    Hashtable from SystemInventory module result.
-.OUTPUTS
-    [string] HTML fragment for the system inventory section.
+    Local users + restore-point list (network + hardware now live in the top overview).
 #>
 function Build-SystemInventorySection {
     [CmdletBinding()]
     [OutputType([string])]
-    param([Parameter(Mandatory)] [hashtable]$Result)
+    param([Parameter()] [AllowNull()] $Inv)
 
-    $dataPath = Get-TempPath -Category 'data' -FileName 'system-inventory.json' -ErrorAction SilentlyContinue
-    if (-not $dataPath -or -not (Test-Path $dataPath)) {
-        return ''
-    }
-
-    try {
-        $invData = Get-Content -Path $dataPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    }
-    catch {
-        return ''
-    }
-
-    $networkHtml = ''
-    if ($invData.Network -and @($invData.Network).Count -gt 0) {
-        $nicRows = ($invData.Network | ForEach-Object {
-                $desc = $_.Description -replace '<', '&lt;' -replace '>', '&gt;'
-                $mac = $_.MAC -replace '<', '&lt;' -replace '>', '&gt;'
-                $ips = ($_.IPs | ForEach-Object { $_ -replace '<', '&lt;' -replace '>', '&gt;' }) -join ', '
-                $dns = ($_.DNSServers | ForEach-Object { $_ -replace '<', '&lt;' -replace '>', '&gt;' }) -join ', '
-                "<div class='nic-card'>
-                    <div class='nic-desc'>$desc</div>
-                    <div class='nic-info'><span class='nic-label'>MAC:</span> <span class='nic-value'>$mac</span></div>
-                    <div class='nic-info'><span class='nic-label'>IP(s):</span> <span class='nic-value'>$ips</span></div>
-                    <div class='nic-info'><span class='nic-label'>DNS:</span> <span class='nic-value'>$(if($dns) { $dns } else { 'Not configured' })</span></div>
-                </div>"
-            }) -join ''
-
-        $extIP = if ($invData.ExternalIP.Address -and $invData.ExternalIP.Address -ne 'Unable to determine') {
-            "<div class='nic-card extip'>
-                <div class='nic-desc'>🌐 External IP Address</div>
-                <div class='nic-info'><span class='nic-value' style='font-size:14px;font-weight:600'>$($invData.ExternalIP.Address)</span></div>
-            </div>"
-        } else { '' }
-
-        $networkHtml = @"
-<div class="sec">Network Configuration</div>
-<div class="nic-grid">
-    $nicRows
-    $extIP
-</div>
-"@
-    }
+    if (-not $Inv) { $Inv = Get-InventoryData }
+    if (-not $Inv) { return '' }
 
     $usersHtml = ''
-    if ($invData.LocalUsers -and @($invData.LocalUsers).Count -gt 0) {
-        $userRows = ($invData.LocalUsers | ForEach-Object {
-                $name = $_.Name -replace '<', '&lt;' -replace '>', '&gt;'
-                $fullName = if ($_.FullName) { $_.FullName -replace '<', '&lt;' -replace '>', '&gt;' } else { '(no display name)' }
-                $lastLogon = $_.LastLogon -replace '<', '&lt;' -replace '>', '&gt;'
-                "<div class='user-row'>
-                    <span class='user-name'>👤 $name</span>
-                    <span class='user-info'>$fullName</span>
-                    <span class='user-logon'>$lastLogon</span>
-                </div>"
+    if ($Inv.LocalUsers -and @($Inv.LocalUsers).Count -gt 0) {
+        $userRows = ($Inv.LocalUsers | ForEach-Object {
+                $name = ConvertTo-HtmlText $_.Name
+                $fullName = if ($_.FullName) { ConvertTo-HtmlText $_.FullName } else { '<span class="muted">(no display name)</span>' }
+                $lastLogon = ConvertTo-HtmlText $_.LastLogon
+                "<div class='trow'><span class='user-name'>&#128100; $name</span><span>$fullName</span><span class='muted'>$lastLogon</span></div>"
             }) -join ''
-
         $usersHtml = @"
-<div class="sec">Local Users (Custom)</div>
-<div class="user-container">
-    <div class="user-header">
-        <span class="user-name">User</span>
-        <span class="user-info">Full Name</span>
-        <span class="user-logon">Last Logon</span>
-    </div>
-    <div class="user-list">
-        $userRows
-    </div>
+<div class="card half">
+  <div class="card-hd"><span class="card-ttl">&#128101; Local Users</span><span class="card-sub">$(@($Inv.LocalUsers).Count)</span></div>
+  <div class="thead u3"><span>User</span><span>Full name</span><span>Last logon</span></div>
+  <div class="tbody u3">$userRows</div>
 </div>
 "@
     }
 
-    $restorePointsHtml = ''
-    if ($invData.RestorePoints -and @($invData.RestorePoints).Count -gt 0) {
-        $rpRows = ($invData.RestorePoints[0..([Math]::Min(15, $invData.RestorePoints.Count - 1))] | ForEach-Object {
-                $desc = $_.Description -replace '<', '&lt;' -replace '>', '&gt;'
-                $created = $_.CreationTime -replace '<', '&lt;' -replace '>', '&gt;'
-                $type = $_.RestorePointType -replace '<', '&lt;' -replace '>', '&gt;'
-                "<div class='rp-row'>
-                    <span class='rp-desc'>$desc</span>
-                    <span class='rp-type'>$type</span>
-                    <span class='rp-time'>$created</span>
-                </div>"
+    $rpHtml = ''
+    if ($Inv.RestorePoints -and @($Inv.RestorePoints).Count -gt 0) {
+        $max = [Math]::Min(15, @($Inv.RestorePoints).Count)
+        $rpRows = ($Inv.RestorePoints[0..($max - 1)] | ForEach-Object {
+                $desc = ConvertTo-HtmlText $_.Description
+                $created = ConvertTo-HtmlText $_.CreationTime
+                $type = ConvertTo-HtmlText $_.RestorePointType
+                "<div class='trow'><span>$desc</span><span class='tag'>$type</span><span class='muted'>$created</span></div>"
             }) -join ''
-
-        $rpMore = if ($invData.RestorePoints.Count -gt 15) { "<div class='rp-more'>+$($invData.RestorePoints.Count - 15) more restore points</div>" } else { '' }
-
-        $restorePointsHtml = @"
-<div class="sec">System Restore Points</div>
-<div class="rp-container">
-    <div class="rp-header">
-        <span class="rp-desc">Description</span>
-        <span class="rp-type">Type</span>
-        <span class="rp-time">Created</span>
-    </div>
-    <div class="rp-list">
-        $rpRows
-    </div>
-    $rpMore
+        $more = if (@($Inv.RestorePoints).Count -gt 15) { "<div class='tmore'>+$(@($Inv.RestorePoints).Count - 15) more</div>" } else { '' }
+        $rpHtml = @"
+<div class="card half">
+  <div class="card-hd"><span class="card-ttl">&#128257; Restore Points</span><span class="card-sub">$(@($Inv.RestorePoints).Count)</span></div>
+  <div class="thead u3"><span>Description</span><span>Type</span><span>Created</span></div>
+  <div class="tbody u3">$rpRows</div>
+  $more
 </div>
 "@
     }
 
+    if (-not $usersHtml -and -not $rpHtml) { return '' }
     return @"
-$networkHtml
-$usersHtml
-$restorePointsHtml
+<h2 class="sec">&#128193; System Details</h2>
+<div class="half-grid">
+  $usersHtml
+  $rpHtml
+</div>
 "@
 }
 
 <#
 .SYNOPSIS
-    Builds the Restore Point Management section.
-.PARAMETER Result
-    Hashtable from RestorePointAudit module result.
-.OUTPUTS
-    [string] HTML fragment for the restore point management section.
+    Restore-point audit detail (from restore-point-audit.json).
 #>
 function Build-RestorePointSection {
     [CmdletBinding()]
     [OutputType([string])]
-    param([Parameter(Mandatory)] [hashtable]$Result)
+    param()
 
     $dataPath = Get-TempPath -Category 'data' -FileName 'restore-point-audit.json' -ErrorAction SilentlyContinue
-    if (-not $dataPath -or -not (Test-Path $dataPath)) {
-        return ''
-    }
+    if (-not $dataPath -or -not (Test-Path $dataPath)) { return '' }
+    try { $rpData = Get-Content -Path $dataPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { return '' }
+    if (-not $rpData.RestorePointsList -or @($rpData.RestorePointsList).Count -eq 0) { return '' }
 
-    try {
-        $rpData = Get-Content -Path $dataPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    }
-    catch {
-        return ''
-    }
-
-    if (-not $rpData.RestorePointsList -or $rpData.RestorePointsList.Count -eq 0) {
-        return ''
-    }
-
-    $rpRows = ($rpData.RestorePointsList[0..([Math]::Min(20, $rpData.RestorePointsList.Count - 1))] | ForEach-Object {
-            $desc = $_.Description -replace '<', '&lt;' -replace '>', '&gt;'
-            $created = $_.CreationTime -replace '<', '&lt;' -replace '>', '&gt;'
-            $type = $_.RestorePointType -replace '<', '&lt;' -replace '>', '&gt;'
-            $seq = $_.SequenceNumber
-            "<div class='audit-rp-row'>
-                <span class='audit-rp-seq'>#$seq</span>
-                <span class='audit-rp-desc'>$desc</span>
-                <span class='audit-rp-type'>$type</span>
-                <span class='audit-rp-time'>$created</span>
-            </div>"
+    $max = [Math]::Min(20, @($rpData.RestorePointsList).Count)
+    $rpRows = ($rpData.RestorePointsList[0..($max - 1)] | ForEach-Object {
+            $desc = ConvertTo-HtmlText $_.Description
+            $created = ConvertTo-HtmlText $_.CreationTime
+            $type = ConvertTo-HtmlText $_.RestorePointType
+            $seq = ConvertTo-HtmlText $_.SequenceNumber
+            "<div class='trow u4'><span class='mono muted'>#$seq</span><span>$desc</span><span class='tag'>$type</span><span class='muted'>$created</span></div>"
         }) -join ''
-
-    $rpMore = if ($rpData.RestorePointsList.Count -gt 20) { "<div class='audit-rp-more'>+$($rpData.RestorePointsList.Count - 20) more restore points</div>" } else { '' }
-
-    $statusColor = if ($rpData.ToRemove -gt 0) { 'warning' } else { 'success' }
-    $statusText = "Current: $($rpData.CurrentCount) | Keep minimum: $($rpData.MinimumToKeep) | Allocation: $($rpData.AllocationGB)GB"
+    $more = if (@($rpData.RestorePointsList).Count -gt 20) { "<div class='tmore'>+$(@($rpData.RestorePointsList).Count - 20) more</div>" } else { '' }
 
     return @"
-<div class="sec">Restore Point Audit Details</div>
-<div class="audit-rp-summary">
-    <div class="audit-rp-stat">
-        <div class="audit-rp-val">$($rpData.CurrentCount)</div>
-        <div class="audit-rp-lbl">Current Points</div>
-    </div>
-    <div class="audit-rp-stat">
-        <div class="audit-rp-val">$($rpData.ToRemove)</div>
-        <div class="audit-rp-lbl">To Remove</div>
-    </div>
-    <div class="audit-rp-stat">
-        <div class="audit-rp-val">$($rpData.MinimumToKeep)</div>
-        <div class="audit-rp-lbl">Minimum to Keep</div>
-    </div>
-    <div class="audit-rp-stat">
-        <div class="audit-rp-val">$($rpData.AllocationGB)GB</div>
-        <div class="audit-rp-lbl">Allocation</div>
-    </div>
+<h2 class="sec">&#128257; Restore Point Audit</h2>
+<div class="mini-stats">
+  <div class="mini"><div class="mini-v">$($rpData.CurrentCount)</div><div class="mini-l">Current</div></div>
+  <div class="mini"><div class="mini-v">$($rpData.ToRemove)</div><div class="mini-l">To remove</div></div>
+  <div class="mini"><div class="mini-v">$($rpData.MinimumToKeep)</div><div class="mini-l">Keep min</div></div>
+  <div class="mini"><div class="mini-v">$($rpData.AllocationGB)<span class="unit">GB</span></div><div class="mini-l">Allocation</div></div>
 </div>
-<div class="audit-rp-container">
-    <div class="audit-rp-header">
-        <span class="audit-rp-seq">Seq</span>
-        <span class="audit-rp-desc">Description</span>
-        <span class="audit-rp-type">Type</span>
-        <span class="audit-rp-time">Created</span>
-    </div>
-    <div class="audit-rp-list">
-        $rpRows
-    </div>
-    $rpMore
+<div class="card">
+  <div class="thead u4"><span>Seq</span><span>Description</span><span>Type</span><span>Created</span></div>
+  <div class="tbody u4">$rpRows</div>
+  $more
 </div>
 "@
 }
 
 <#
 .SYNOPSIS
-    Builds the System Health section with Event Viewer events, Defender incidents, and exclusions.
-.PARAMETER Result
-    Hashtable from SystemHealthAudit module result.
-.OUTPUTS
-    [string] HTML fragment for the system health section.
+    System health: event log, Defender incidents, Defender exclusions.
 #>
 function Build-SystemHealthSection {
     [CmdletBinding()]
     [OutputType([string])]
     param([Parameter(Mandatory)] [hashtable]$Result)
 
-    if (-not $Result.ExtraData) {
-        return ''
-    }
-
+    if (-not $Result.ExtraData) { return '' }
     $dataPath = Get-TempPath -Category 'data' -FileName 'system-health-report.json' -ErrorAction SilentlyContinue
-    if (-not $dataPath -or -not (Test-Path $dataPath)) {
-        return ''
-    }
-
-    try {
-        $healthData = Get-Content -Path $dataPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    }
-    catch {
-        return ''
-    }
+    if (-not $dataPath -or -not (Test-Path $dataPath)) { return '' }
+    try { $healthData = Get-Content -Path $dataPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { return '' }
 
     $eventHtml = ''
     if ($healthData.EventViewerEvents -and @($healthData.EventViewerEvents).Count -gt 0) {
-        $eventRows = ($healthData.EventViewerEvents[0..([Math]::Min(20, $healthData.EventViewerEvents.Count - 1))] | ForEach-Object {
-                $level = $_.Level -replace '<', '&lt;' -replace '>', '&gt;'
-                $src = $_.Source -replace '<', '&lt;' -replace '>', '&gt;'
-                $msg = ($_.Message -replace '<', '&lt;' -replace '>', '&gt;')[0..100] -join ''
-                $ts = $_.Timestamp
-                "<div class='evt-row'><span class='evt-level evt-$($level.ToLower())'>$level</span><span class='evt-src'>$src</span><span class='evt-msg'>$msg...</span><span class='evt-ts'>$ts</span></div>"
+        $max = [Math]::Min(20, @($healthData.EventViewerEvents).Count)
+        $rows = ($healthData.EventViewerEvents[0..($max - 1)] | ForEach-Object {
+                $level = ConvertTo-HtmlText $_.Level
+                $src = ConvertTo-HtmlText $_.Source
+                $msg = ConvertTo-HtmlText ("$($_.Message)")
+                if ($msg.Length -gt 140) { $msg = $msg.Substring(0, 140) + '&hellip;' }
+                $ts = ConvertTo-HtmlText $_.Timestamp
+                $lc = $level.ToLower()
+                "<div class='trow u4'><span class='evt-level evt-$lc'>$level</span><span>$src</span><span class='muted'>$msg</span><span class='muted'>$ts</span></div>"
             }) -join ''
-        $moreEvents = if ($healthData.EventViewerEvents.Count -gt 20) { "<div class='evt-more'>+$($healthData.EventViewerEvents.Count - 20) more events</div>" } else { '' }
+        $more = if (@($healthData.EventViewerEvents).Count -gt 20) { "<div class='tmore'>+$(@($healthData.EventViewerEvents).Count - 20) more</div>" } else { '' }
         $eventHtml = @"
-<div class="sec">Event Viewer &mdash; Critical & Error Events (Last 30 Days)</div>
-<div class="evt-container">
-  <div class="evt-header">
-    <span class="evt-level">Level</span>
-    <span class="evt-src">Source</span>
-    <span class="evt-msg">Message</span>
-    <span class="evt-ts">Timestamp</span>
-  </div>
-  <div class="evt-list">
-    $eventRows
-  </div>
-  $moreEvents
+<div class="card">
+  <div class="card-hd"><span class="card-ttl">&#128220; Critical &amp; Error Events (30 days)</span><span class="card-sub">$(@($healthData.EventViewerEvents).Count)</span></div>
+  <div class="thead u4"><span>Level</span><span>Source</span><span>Message</span><span>Time</span></div>
+  <div class="tbody u4">$rows</div>
+  $more
 </div>
 "@
     }
 
-    $defenderHtml = ''
+    $defHtml = ''
     if ($healthData.DefenderIncidents -and @($healthData.DefenderIncidents).Count -gt 0) {
-        $incRows = ($healthData.DefenderIncidents[0..([Math]::Min(20, $healthData.DefenderIncidents.Count - 1))] | ForEach-Object {
-                $threat = $_.ThreatName -replace '<', '&lt;' -replace '>', '&gt;'
-                $sev = $_.Severity -replace '<', '&lt;' -replace '>', '&gt;'
-                $path = ($_.DetectionPath -replace '<', '&lt;' -replace '>', '&gt;')[0..60] -join ''
-                $ts = $_.Timestamp
-                $sevClass = if ($sev -eq 'High') { 'sev-high' } elseif ($sev -eq 'Medium') { 'sev-med' } else { 'sev-low' }
-                "<div class='def-row'><span class='def-threat'>$threat</span><span class='def-sev $sevClass'>$sev</span><span class='def-path'>$path...</span><span class='def-ts'>$ts</span></div>"
+        $max = [Math]::Min(20, @($healthData.DefenderIncidents).Count)
+        $rows = ($healthData.DefenderIncidents[0..($max - 1)] | ForEach-Object {
+                $threat = ConvertTo-HtmlText $_.ThreatName
+                $sev = ConvertTo-HtmlText $_.Severity
+                $path = ConvertTo-HtmlText $_.DetectionPath
+                $ts = ConvertTo-HtmlText $_.Timestamp
+                $sc = if ($sev -eq 'High') { 'sev-high' } elseif ($sev -eq 'Medium') { 'sev-med' } else { 'sev-low' }
+                "<div class='trow u4'><span>$threat</span><span class='sev $sc'>$sev</span><span class='muted'>$path</span><span class='muted'>$ts</span></div>"
             }) -join ''
-        $moreInc = if ($healthData.DefenderIncidents.Count -gt 20) { "<div class='def-more'>+$($healthData.DefenderIncidents.Count - 20) more incidents</div>" } else { '' }
-        $defenderHtml = @"
-<div class="sec">Windows Defender &mdash; Incidents (Last 30 Days)</div>
-<div class="def-container">
-  <div class="def-header">
-    <span class="def-threat">Threat Name</span>
-    <span class="def-sev">Severity</span>
-    <span class="def-path">Detection Path</span>
-    <span class="def-ts">Timestamp</span>
-  </div>
-  <div class="def-list">
-    $incRows
-  </div>
-  $moreInc
+        $defHtml = @"
+<div class="card">
+  <div class="card-hd"><span class="card-ttl">&#128737; Defender Incidents (30 days)</span><span class="card-sub">$(@($healthData.DefenderIncidents).Count)</span></div>
+  <div class="thead u4"><span>Threat</span><span>Severity</span><span>Path</span><span>Time</span></div>
+  <div class="tbody u4">$rows</div>
 </div>
 "@
     }
 
-    $exclusionsHtml = ''
+    $exHtml = ''
     if ($healthData.DefenderExclusions) {
-        $exclData = $healthData.DefenderExclusions
-        $folderRows = ($exclData.FolderExclusions[0..([Math]::Min(10, ($exclData.FolderExclusions.Count ?? 0) - 1))] | ForEach-Object {
-                $p = $_ -replace '<', '&lt;' -replace '>', '&gt;'
-                "<div class='excl-item'>📁 $p</div>"
-            }) -join ''
-        $extRows = ($exclData.ExtensionExclusions[0..([Math]::Min(10, ($exclData.ExtensionExclusions.Count ?? 0) - 1))] | ForEach-Object {
-                $e = $_ -replace '<', '&lt;' -replace '>', '&gt;'
-                "<div class='excl-item'>📄 $e</div>"
-            }) -join ''
-        $procRows = ($exclData.ProcessExclusions[0..([Math]::Min(10, ($exclData.ProcessExclusions.Count ?? 0) - 1))] | ForEach-Object {
-                $pr = $_ -replace '<', '&lt;' -replace '>', '&gt;'
-                "<div class='excl-item'>⚙️ $pr</div>"
-            }) -join ''
-
-        $folderMore = if ($exclData.FolderExclusions.Count -gt 10) { "<div class='excl-more'>+$($exclData.FolderExclusions.Count - 10) more</div>" } else { '' }
-        $extMore = if ($exclData.ExtensionExclusions.Count -gt 10) { "<div class='excl-more'>+$($exclData.ExtensionExclusions.Count - 10) more</div>" } else { '' }
-        $procMore = if ($exclData.ProcessExclusions.Count -gt 10) { "<div class='excl-more'>+$($exclData.ProcessExclusions.Count - 10) more</div>" } else { '' }
-
-        $exclusionsHtml = @"
-<div class="sec">Windows Defender &mdash; Exclusions</div>
+        $ex = $healthData.DefenderExclusions
+        $mk = {
+            param($items, $glyph)
+            if (-not $items -or @($items).Count -eq 0) { return '<div class="excl-item muted">none</div>' }
+            $m = [Math]::Min(12, @($items).Count)
+            $rows = ($items[0..($m - 1)] | ForEach-Object { "<div class='excl-item'>$glyph $(ConvertTo-HtmlText $_)</div>" }) -join ''
+            $more = if (@($items).Count -gt 12) { "<div class='excl-more'>+$(@($items).Count - 12) more</div>" } else { '' }
+            return "$rows$more"
+        }
+        $exHtml = @"
 <div class="excl-grid">
-  <div class="excl-card">
-    <div class="excl-title">Folder Exclusions ($($exclData.FolderExclusions.Count))</div>
-    <div class="excl-list">$folderRows</div>
-    $folderMore
-  </div>
-  <div class="excl-card">
-    <div class="excl-title">Extension Exclusions ($($exclData.ExtensionExclusions.Count))</div>
-    <div class="excl-list">$extRows</div>
-    $extMore
-  </div>
-  <div class="excl-card">
-    <div class="excl-title">Process Exclusions ($($exclData.ProcessExclusions.Count))</div>
-    <div class="excl-list">$procRows</div>
-    $procMore
-  </div>
+  <div class="card"><div class="card-hd"><span class="card-ttl">&#128193; Folder exclusions</span><span class="card-sub">$(@($ex.FolderExclusions).Count)</span></div><div class="card-bd">$(& $mk $ex.FolderExclusions '&#128193;')</div></div>
+  <div class="card"><div class="card-hd"><span class="card-ttl">&#128196; Extension exclusions</span><span class="card-sub">$(@($ex.ExtensionExclusions).Count)</span></div><div class="card-bd">$(& $mk $ex.ExtensionExclusions '&#128196;')</div></div>
+  <div class="card"><div class="card-hd"><span class="card-ttl">&#9881; Process exclusions</span><span class="card-sub">$(@($ex.ProcessExclusions).Count)</span></div><div class="card-bd">$(& $mk $ex.ProcessExclusions '&#9881;')</div></div>
 </div>
 "@
     }
 
+    if (-not $eventHtml -and -not $defHtml -and -not $exHtml) { return '' }
     return @"
+<h2 class="sec">&#127973; System Health</h2>
 $eventHtml
-$defenderHtml
-$exclusionsHtml
+$defHtml
+$exHtml
 "@
 }
 
 #endregion
 
-#region ─── EXPORTS ───────────────────────────────────────────────────────────
+#region ─── CSS / JS ───────────────────────────────────────────────────────────
+
+function Get-ReportCss {
+    return @'
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0e14;--bg2:#12151f;--card:#161a26;--card2:#1c2130;--border:#262c3d;
+  --text:#e6e9f2;--muted:#8b93a7;--faint:#5a6273;
+  --accent:#7c5cff;--accent2:#22d3ee;
+  --success:#34d399;--warn:#fbbf24;--danger:#f87171;--info:#60a5fa;--debug:#7a8291;--fatal:#fb7185;
+  --shadow:0 10px 30px rgba(0,0,0,.35);--radius:16px;
+}
+body[data-theme="light"]{
+  --bg:#eef1f7;--bg2:#ffffff;--card:#ffffff;--card2:#f3f6fb;--border:#e1e7f0;
+  --text:#141a26;--muted:#5b6472;--faint:#98a2b3;
+  --accent:#6d28d9;--accent2:#0891b2;
+  --success:#059669;--warn:#d97706;--danger:#dc2626;--info:#2563eb;--debug:#6b7280;--fatal:#e11d48;
+  --shadow:0 8px 24px rgba(30,40,80,.10);
+}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.55;transition:background .25s,color .25s}
+.wrap{width:100%;max-width:100%;padding:clamp(16px,2.6vw,40px);margin:0 auto}
+.mono{font-family:'Cascadia Code',Consolas,ui-monospace,monospace}
+.muted{color:var(--muted)}
+.unit{font-size:.5em;color:var(--muted);font-weight:600;margin-left:2px}
+
+/* HERO */
+.hero{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;
+  background:radial-gradient(1200px 300px at 0% 0%,rgba(124,92,255,.18),transparent 60%),
+             radial-gradient(1000px 300px at 100% 0%,rgba(34,211,238,.14),transparent 55%),var(--bg2);
+  border:1px solid var(--border);border-radius:var(--radius);padding:28px 30px;margin-bottom:22px;box-shadow:var(--shadow)}
+.hero-eyebrow{color:var(--accent2);font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase}
+.hero-title{font-size:clamp(22px,2.4vw,32px);font-weight:800;margin-top:4px;letter-spacing:-.4px}
+.hero-meta{display:flex;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin-top:10px;align-items:center}
+.hero-meta .sep{color:var(--faint)}
+.hero-r{display:flex;flex-direction:column;align-items:flex-end;gap:12px}
+.status-pill{padding:9px 18px;border-radius:999px;font-weight:700;font-size:13px;white-space:nowrap}
+.status-pill.success{background:rgba(52,211,153,.14);color:var(--success);border:1px solid rgba(52,211,153,.35)}
+.status-pill.warning{background:rgba(251,191,36,.14);color:var(--warn);border:1px solid rgba(251,191,36,.35)}
+.status-pill.danger{background:rgba(248,113,113,.14);color:var(--danger);border:1px solid rgba(248,113,113,.35)}
+.theme-btn{background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:999px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:.15s}
+.theme-btn:hover{border-color:var(--accent)}
+
+/* BANNER */
+.banner{border-radius:12px;padding:13px 18px;margin-bottom:20px;font-weight:600}
+.banner.danger{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.4);color:var(--danger)}
+
+/* OVERVIEW */
+.overview{margin-bottom:22px}
+.ov-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.ov-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;position:relative;overflow:hidden}
+.ov-card.wide{grid-column:1/-1}
+.ov-card.identity{background:linear-gradient(135deg,rgba(124,92,255,.16),rgba(34,211,238,.08)),var(--card);border-color:rgba(124,92,255,.35)}
+.ov-card-ttl{font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.ov-host{font-size:26px;font-weight:800;letter-spacing:-.4px}
+.ov-big{font-size:22px;font-weight:700;line-height:1.15}
+.ov-big.small{font-size:15px;font-weight:600}
+.ov-sub{color:var(--muted);font-size:13px;margin-top:4px}
+.ov-pills{margin-top:12px}
+.ov-mini{display:flex;gap:22px;margin-top:12px;flex-wrap:wrap}
+.ov-mini>span{display:flex;flex-direction:column;font-size:13px;font-weight:600}
+.ov-mini .mk{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--faint);font-weight:700;margin-bottom:1px}
+.pill{display:inline-block;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700}
+.pill.ok{background:rgba(52,211,153,.15);color:var(--success);border:1px solid rgba(52,211,153,.35)}
+.pill.warn{background:rgba(251,191,36,.15);color:var(--warn);border:1px solid rgba(251,191,36,.35)}
+
+/* disks */
+.disks{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.disk-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:13px}
+.disk-drive{font-weight:700}
+.disk-pct{font-weight:800}
+.disk-pct.ok{color:var(--success)}.disk-pct.warn{color:var(--warn)}.disk-pct.crit{color:var(--danger)}
+.meter{height:9px;border-radius:999px;background:var(--card2);overflow:hidden;border:1px solid var(--border)}
+.meter-fill{display:block;height:100%;border-radius:999px}
+.meter-fill.ok{background:linear-gradient(90deg,var(--success),#10b981)}
+.meter-fill.warn{background:linear-gradient(90deg,var(--warn),#f59e0b)}
+.meter-fill.crit{background:linear-gradient(90deg,var(--danger),#ef4444)}
+.disk-ft{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-top:5px}
+
+/* nics */
+.nics{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.nic{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.nic-desc{font-weight:700;font-size:13px;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nic-kv{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.03)}
+.nic-kv:last-child{border-bottom:none}
+.nic-kv>span:first-child{color:var(--faint);text-transform:uppercase;font-size:10px;letter-spacing:.5px;font-weight:700;padding-top:2px}
+.nic-kv>span:last-child{text-align:right;word-break:break-all}
+
+/* facts strip */
+.facts{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.fact{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 14px}
+.fact .fk{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);font-weight:700}
+.fact .fv{font-weight:700;font-size:13px;margin-top:1px}
+
+/* STATS */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:22px}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;text-align:center;position:relative;overflow:hidden}
+.stat::before{content:'';position:absolute;inset:0 0 auto 0;height:3px;background:var(--faint);opacity:.6}
+.stat.s::before{background:var(--success)}.stat.w::before{background:var(--warn)}.stat.m::before{background:var(--debug)}
+.stat.d::before{background:var(--danger)}.stat.i::before{background:var(--info)}.stat.a::before{background:var(--accent2)}
+.stat-v{font-size:32px;font-weight:800;line-height:1}
+.stat.s .stat-v{color:var(--success)}.stat.w .stat-v{color:var(--warn)}.stat.d .stat-v{color:var(--danger)}
+.stat.i .stat-v{color:var(--info)}.stat.a .stat-v{color:var(--accent2)}.stat.m .stat-v{color:var(--muted)}
+.stat-l{color:var(--muted);font-size:11px;margin-top:6px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+
+/* SECTION TITLE */
+.sec{font-size:17px;font-weight:800;margin:28px 0 14px;letter-spacing:-.2px;display:flex;align-items:center;gap:8px}
+
+/* CARDS */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px}
+.card-hd{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--border)}
+.card-ttl{font-weight:700;font-size:14px}
+.card-sub{color:var(--muted);font-size:12px;font-weight:600}
+.card-bd{padding:14px 18px}
+.half-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
+
+/* MODULE CARDS */
+.mod-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-bottom:6px}
+.mod{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:transform .12s,border-color .12s}
+.mod:hover{border-color:var(--accent);transform:translateY(-2px)}
+.mod-hd{padding:14px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);gap:8px}
+.mod-hd .nm{font-weight:700;font-size:14px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.mod-type{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700;background:var(--card2);padding:2px 6px;border-radius:5px}
+.reboot-tag{font-size:9px;font-weight:700;background:rgba(248,113,113,.15);color:var(--danger);border:1px solid rgba(248,113,113,.35);padding:2px 7px;border-radius:6px;text-transform:uppercase}
+.mod-bd{padding:14px 18px}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px}
+.metric{background:var(--card2);border-radius:10px;padding:9px 4px;text-align:center}
+.metric .mv{display:block;font-size:18px;font-weight:800}
+.metric .ml{display:block;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:2px;font-weight:600}
+.mod-bd .r{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--border);font-size:12px}
+.mod-bd .r .k{color:var(--muted)}
+.mod-bd .r .v{text-align:right}
+.badge{padding:4px 11px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
+.bs{background:rgba(52,211,153,.15);color:var(--success);border:1px solid rgba(52,211,153,.3)}
+.bw{background:rgba(251,191,36,.15);color:var(--warn);border:1px solid rgba(251,191,36,.3)}
+.bd{background:rgba(248,113,113,.15);color:var(--danger);border:1px solid rgba(248,113,113,.3)}
+.bm{background:rgba(139,147,167,.15);color:var(--muted);border:1px solid rgba(139,147,167,.3)}
+.errs{margin-top:8px;list-style:none}
+.errs li{font-size:11px;color:var(--danger);padding:3px 0 3px 14px;position:relative}
+.errs li::before{content:'\2715';position:absolute;left:0}
+.extra{margin-top:8px}
+.ex-row{display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:11px;border-top:1px dashed var(--border)}
+.ex-row .k{color:var(--muted)}.ex-row .v{color:var(--info);font-weight:600;text-align:right}
+.mod-details{margin-top:10px}
+.mod-details summary{font-size:12px;font-weight:600;padding:7px 11px;background:var(--card2);border:1px solid var(--border);border-radius:8px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px}
+.mod-details summary::-webkit-details-marker{display:none}
+.mod-details summary::before{content:'\25B6';font-size:8px;transition:transform .2s;color:var(--accent)}
+.mod-details[open] summary::before{transform:rotate(90deg)}
+.mod-details .more{color:var(--muted);font-size:10px}
+.item-list{margin-top:8px;display:flex;flex-direction:column;gap:4px;max-height:340px;overflow-y:auto}
+.item{display:flex;justify-content:space-between;gap:12px;padding:6px 10px;border-left:2px solid var(--accent);background:var(--card2);border-radius:0 8px 8px 0;font-size:11px}
+.item-name{font-weight:600}
+.item-detail{color:var(--muted);text-align:right;word-break:break-word}
+
+/* ERROR SUMMARY */
+.err-summary .card-bd{display:flex;flex-direction:column;gap:6px}
+.err-mod{font-size:12px;color:var(--muted);font-family:'Cascadia Code',Consolas,monospace;padding:5px 10px;background:var(--card2);border-radius:8px;border-left:2px solid var(--danger)}
+
+/* TABLES (rows) */
+.thead,.trow{display:grid;gap:12px;padding:9px 16px;align-items:center}
+.thead{background:var(--card2);font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;border-bottom:1px solid var(--border)}
+.trow{border-bottom:1px solid rgba(255,255,255,.03);font-size:12px}
+.trow:last-child{border-bottom:none}
+.u3,.thead.u3{grid-template-columns:1.2fr 1.6fr 1fr}
+.u4,.thead.u4{grid-template-columns:.5fr 1.6fr .7fr 1fr}
+.tbody{max-height:380px;overflow-y:auto}
+.tmore{padding:8px 16px;text-align:center;color:var(--muted);font-size:11px;background:var(--card2)}
+.user-name{font-weight:700}
+.tag{background:rgba(96,165,250,.14);color:var(--info);padding:2px 8px;border-radius:6px;font-size:10px;text-align:center;font-weight:600}
+.evt-level{font-weight:700;padding:2px 8px;border-radius:6px;text-align:center;font-size:10px}
+.evt-error{background:rgba(248,113,113,.15);color:var(--danger)}
+.evt-critical{background:rgba(248,113,113,.28);color:#ff8f8f}
+.sev{font-weight:700;padding:2px 8px;border-radius:6px;text-align:center;font-size:10px}
+.sev-high{background:rgba(248,113,113,.15);color:var(--danger)}
+.sev-med{background:rgba(251,191,36,.15);color:var(--warn)}
+.sev-low{background:rgba(52,211,153,.15);color:var(--success)}
+
+/* EXCLUSIONS */
+.excl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.excl-item{padding:5px 8px;font-size:11px;color:var(--muted);border-left:2px solid var(--accent);background:var(--card2);border-radius:0 6px 6px 0;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.excl-more{font-size:10px;color:var(--info);text-align:center;padding:4px}
+
+/* MINI STATS */
+.mini-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:14px}
+.mini{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center}
+.mini-v{font-size:24px;font-weight:800;color:var(--accent)}
+.mini-l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:4px;font-weight:600}
+
+/* LOG CONSOLE */
+.logs .log-dist{display:flex;height:6px;margin:0}
+.log-dist .seg{height:100%}
+.lvl-bg-FATAL{background:var(--fatal)}.lvl-bg-ERROR{background:var(--danger)}.lvl-bg-WARN{background:var(--warn)}
+.lvl-bg-SUCCESS{background:var(--success)}.lvl-bg-INFO{background:var(--info)}.lvl-bg-DEBUG{background:var(--debug)}.lvl-bg-RAW{background:var(--faint)}
+.log-toolbar{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid var(--border);align-items:center}
+.lvl-chips{display:flex;gap:7px;flex-wrap:wrap}
+.lvl-chip{display:inline-flex;align-items:center;gap:6px;background:var(--card2);border:1px solid var(--border);color:var(--muted);border-radius:999px;padding:5px 11px;font-size:11px;font-weight:700;cursor:pointer;opacity:.5;transition:.15s}
+.lvl-chip.active{opacity:1}
+.lvl-chip .dot{width:8px;height:8px;border-radius:50%;background:currentColor}
+.lvl-chip .cnt{background:rgba(0,0,0,.25);border-radius:999px;padding:0 6px;font-size:10px}
+body[data-theme="light"] .lvl-chip .cnt{background:rgba(0,0,0,.08)}
+.lvl-chip.lvl-FATAL{color:var(--fatal)}.lvl-chip.lvl-ERROR{color:var(--danger)}.lvl-chip.lvl-WARN{color:var(--warn)}
+.lvl-chip.lvl-SUCCESS{color:var(--success)}.lvl-chip.lvl-INFO{color:var(--info)}.lvl-chip.lvl-DEBUG{color:var(--debug)}.lvl-chip.lvl-RAW{color:var(--faint)}
+.lvl-chip.active.lvl-FATAL{background:rgba(251,113,133,.14);border-color:rgba(251,113,133,.4)}
+.lvl-chip.active.lvl-ERROR{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.4)}
+.lvl-chip.active.lvl-WARN{background:rgba(251,191,36,.14);border-color:rgba(251,191,36,.4)}
+.lvl-chip.active.lvl-SUCCESS{background:rgba(52,211,153,.14);border-color:rgba(52,211,153,.4)}
+.lvl-chip.active.lvl-INFO{background:rgba(96,165,250,.14);border-color:rgba(96,165,250,.4)}
+.lvl-chip.active.lvl-DEBUG{background:rgba(122,130,145,.14);border-color:rgba(122,130,145,.4)}
+.log-controls{display:flex;gap:8px;flex-wrap:wrap}
+.log-select,.log-search{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:7px 11px;font-size:12px;font-family:inherit}
+.log-search{min-width:220px}
+.log-select:focus,.log-search:focus{outline:none;border-color:var(--accent)}
+.log-body{max-height:560px;overflow:auto;padding:6px 0;font-family:'Cascadia Code',Consolas,ui-monospace,monospace}
+.log-row{display:grid;grid-template-columns:74px 66px 118px 1fr;gap:12px;padding:2px 18px;font-size:11.5px;align-items:baseline}
+.log-row:hover{background:var(--card2)}
+.lr-ts{color:var(--faint)}
+.lr-lvl{font-weight:700;font-size:10px;text-align:center;border-radius:5px;padding:1px 0}
+.lr-cmp{color:var(--accent2);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lr-msg{color:var(--text);word-break:break-word;white-space:pre-wrap}
+.lvl-FATAL{background:rgba(251,113,133,.18);color:var(--fatal)}
+.lvl-ERROR{background:rgba(248,113,113,.16);color:var(--danger)}
+.lvl-WARN{background:rgba(251,191,36,.16);color:var(--warn)}
+.lvl-SUCCESS{background:rgba(52,211,153,.16);color:var(--success)}
+.lvl-INFO{background:rgba(96,165,250,.14);color:var(--info)}
+.lvl-DEBUG{background:rgba(122,130,145,.14);color:var(--debug)}
+.log-row.raw{grid-template-columns:1fr;padding:2px 18px}
+.log-row.raw .lr-msg{color:var(--faint)}
+.log-row.raw.sep .lr-msg{color:var(--accent);opacity:.5}
+
+/* FOOTER */
+.footer{text-align:center;color:var(--muted);font-size:12px;padding:24px 0 8px;border-top:1px solid var(--border);margin-top:26px}
+
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:999px}
+::-webkit-scrollbar-thumb:hover{background:var(--faint)}
+'@
+}
+
+function Get-ReportJs {
+    return @'
+(function(){
+  var rows = Array.prototype.slice.call(document.querySelectorAll('.log-row'));
+  var chips = Array.prototype.slice.call(document.querySelectorAll('.lvl-chip'));
+  var search = document.getElementById('logSearch');
+  var comp = document.getElementById('logComp');
+  var shownEl = document.getElementById('logShown');
+
+  function activeLevels(){
+    var s = {};
+    chips.forEach(function(c){ if(c.classList.contains('active')){ s[c.getAttribute('data-level')] = true; } });
+    return s;
+  }
+  function apply(){
+    if(!rows.length) return;
+    var lv = activeLevels();
+    var q = (search && search.value ? search.value : '').toLowerCase();
+    var cp = comp ? comp.value : 'ALL';
+    var shown = 0, i, r, vis;
+    for(i=0;i<rows.length;i++){
+      r = rows[i];
+      vis = !!lv[r.getAttribute('data-level')]
+        && (cp === 'ALL' || r.getAttribute('data-comp') === cp)
+        && (q === '' || (r.getAttribute('data-text') || '').indexOf(q) >= 0);
+      r.style.display = vis ? '' : 'none';
+      if(vis) shown++;
+    }
+    if(shownEl) shownEl.textContent = shown;
+  }
+  chips.forEach(function(c){ c.addEventListener('click', function(){ c.classList.toggle('active'); apply(); }); });
+  if(search) search.addEventListener('input', apply);
+  if(comp) comp.addEventListener('change', apply);
+  apply();
+
+  var tt = document.getElementById('themeToggle');
+  function setToggleLabel(theme){ if(tt) tt.innerHTML = (theme === 'light') ? '☾ Dark' : '☀ Light'; }
+  if(tt){
+    tt.addEventListener('click', function(){
+      var cur = (document.body.getAttribute('data-theme') === 'light') ? 'dark' : 'light';
+      document.body.setAttribute('data-theme', cur);
+      setToggleLabel(cur);
+      try{ localStorage.setItem('wmreport-theme', cur); }catch(e){}
+    });
+    try{
+      var saved = localStorage.getItem('wmreport-theme');
+      if(saved){ document.body.setAttribute('data-theme', saved); setToggleLabel(saved); }
+    }catch(e){}
+  }
+})();
+'@
+}
+
+#endregion
+
+#region ─── EXPORTS ────────────────────────────────────────────────────────────
 
 Export-ModuleMember -Function @(
     'New-MaintenanceReport',
     'Build-ReportHtml',
     'Build-ModuleCard',
+    'Build-SystemOverview',
     'Build-SystemInventorySection',
     'Build-RestorePointSection',
-    'Build-SystemHealthSection'
+    'Build-SystemHealthSection',
+    'ConvertFrom-MaintenanceLog',
+    'Build-LogConsole',
+    'ConvertTo-HtmlText'
 )
 
 #endregion

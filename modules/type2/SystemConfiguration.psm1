@@ -132,7 +132,7 @@ function Install-SysmonWithConfig {
             return $false
         }
         Write-Log -Level INFO -Component CONFIG -Message 'Installing Sysmon via winget (Microsoft.Sysinternals.Sysmon)'
-        $exit = Invoke-ExternalPackageCommand -FilePath 'winget' -ArgumentList @(
+        $exit = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) -ArgumentList @(
             'install', '--id', 'Microsoft.Sysinternals.Sysmon', '--source', 'winget', '--silent',
             '--disable-interactivity', '--accept-package-agreements', '--accept-source-agreements', '--scope', 'machine')
         if ($exit -notin 0, -1978335135, -1978335189) {

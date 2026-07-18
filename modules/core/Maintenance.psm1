@@ -1122,7 +1122,8 @@ function Get-WingetUpgrade {
     if (-not (Test-CommandAvailable 'winget')) { return @() }
 
     try {
-        $raw = & winget upgrade --include-unknown 2>&1 | Where-Object { $_ -is [string] }
+        $wingetExe = Resolve-WingetPath
+        $raw = & $wingetExe upgrade --include-unknown 2>&1 | Where-Object { $_ -is [string] }
         $result = [System.Collections.Generic.List[hashtable]]::new()
 
         $inTable = $false
@@ -1184,6 +1185,59 @@ function Test-CommandAvailable {
     }
 
     return $false
+}
+
+$script:ResolvedWingetPath = $null
+
+<#
+.SYNOPSIS
+    Resolves and caches the most reliable winget.exe path for this session.
+.DESCRIPTION
+    Prefers the REAL, machine-wide winget.exe under Program Files\WindowsApps over the
+    per-user WindowsApps App Execution Alias stub (…\Microsoft\WindowsApps\winget.exe).
+    The alias is a reparse-point activation shim for the packaged app, and is a
+    well-documented source of unreliable/failing invocations when the calling process is
+    ELEVATED (as this project's orchestrator always is, #Requires -RunAsAdministrator) -
+    the alias's packaged-app activation depends on per-user context an elevated token
+    doesn't consistently carry, whereas the real exe under Program Files is a normal PE
+    any elevated process can launch directly.
+    Each candidate is VALIDATED by actually running `--version` before being trusted, so
+    this can never behave worse than the previous bare 'winget' PATH lookup - it only
+    upgrades to a better-resolved path when one is proven to work.
+.OUTPUTS
+    [string] - a winget.exe path (or literal 'winget' as a last-resort fallback) that
+    has been confirmed runnable in this session.
+#>
+function Resolve-WingetPath {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
+
+    if ($script:ResolvedWingetPath) { return $script:ResolvedWingetPath }
+
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    $realExe = Get-Item -Path (Join-Path $env:ProgramFiles 'WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe') `
+        -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($realExe) { $candidates.Add($realExe.FullName) }
+    $candidates.Add((Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\winget.exe'))
+    $candidates.Add('winget')   # last resort: today's PATH-based resolution
+
+    foreach ($cand in $candidates) {
+        try {
+            if ($cand -ne 'winget' -and -not (Test-Path -Path $cand -ErrorAction SilentlyContinue)) { continue }
+            $null = & $cand --version 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                $script:ResolvedWingetPath = $cand
+                Write-Log -Level DEBUG -Component CORE -Message "Resolved winget to: $cand"
+                return $cand
+            }
+        }
+        catch { Write-Log -Level DEBUG -Component CORE -Message "winget candidate failed validation ($cand): $_" }
+    }
+
+    Write-Log -Level WARN -Component CORE -Message 'No winget.exe candidate validated - falling back to bare "winget" (PATH resolution)'
+    $script:ResolvedWingetPath = 'winget'
+    return 'winget'
 }
 
 <#
@@ -1305,9 +1359,23 @@ function Invoke-ExternalPackageCommand {
             return -1
         }
 
-        # Reap the readers so the pipes are fully consumed before we read ExitCode.
-        try { $null = $outTask.GetAwaiter().GetResult() } catch { }
-        try { $null = $errTask.GetAwaiter().GetResult() } catch { }
+        # Reap the readers so the pipes are fully consumed before we read ExitCode. Capture
+        # (rather than discard) the text: on a non-zero exit this is the only place that
+        # ever sees WHY the external command failed - every call site only gets the bare
+        # int back, so without this a failure like winget returning 0x8A15003A leaves no
+        # trace beyond an opaque negative number in the log.
+        $outText = $null; $errText = $null
+        try { $outText = $outTask.GetAwaiter().GetResult() } catch { }
+        try { $errText = $errTask.GetAwaiter().GetResult() } catch { }
+
+        if ($proc.ExitCode -ne 0) {
+            $detail = @($errText, $outText) | Where-Object { $_ -and $_.Trim() } | Select-Object -First 1
+            if ($detail) {
+                $detail = $detail.Trim()
+                if ($detail.Length -gt 600) { $detail = $detail.Substring(0, 600) + '...' }
+                Write-Log -Level WARN -Component CORE -Message "$FilePath exited $($proc.ExitCode): $detail"
+            }
+        }
 
         return $proc.ExitCode
     }
@@ -1344,6 +1412,7 @@ Export-ModuleMember -Function @(
     'Get-InstalledApp',
     'Get-WingetUpgrade',
     'Test-CommandAvailable',
+    'Resolve-WingetPath',
     'Get-RegistryValue',
     'Set-RegistryValue',
     'Invoke-ExternalPackageCommand',
