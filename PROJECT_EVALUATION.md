@@ -318,3 +318,15 @@ Full rewrite of `modules/core/ReportGenerator.psm1` (859 → ~900 lines) plus a 
 - Added `ConvertTo-HtmlText` helper (encodes `&` first) used uniformly for escaping — verified in an isolated render that `<`/`>`/`&` in log messages and data survive correctly.
 
 **Validation:** `ReportGenerator.psm1` parse-checks clean; a full synthetic render (inventory + a log with every level + banners + a diff for card details + a 6-module `SessionResults`) produced a 32.6 KB self-contained HTML with all sections, meters, escaping, theme toggle, and the interactive console confirmed present. Fixed one real bug found during validation: `title='$lv: $c'` — the `$lv:` was parsed as a scoped-variable reference and had to be brace-delimited (`${lv}`).
+
+---
+
+# J. SELF-INFLICTED winget-DISABLE BUG (2026-07-18) — surfaced by the H10 logging fix
+
+A production run's winget calls all failed with `-1978335174`; the H10 stderr-capture fix (Section H10) revealed the real message: **"This operation is disabled by Group Policy: Enable Windows Package Manager."** Root cause is **the tool disabling its own dependency**:
+
+- `config/lists/security/security-baseline.json` (CIS 18.10.18.1) set `HKLM\SOFTWARE\Policies\Microsoft\Windows\AppInstaller\EnableAppInstaller = 0` — the winget CLI **master kill-switch**.
+- Flow: `SystemConfiguration` (Type2) applies the baseline → writes `EnableAppInstaller=0` → winget disabled machine-wide, and the policy **persists across runs**. Then `SoftwareManagement` (Type2) — and `SystemConfiguration`'s own **Sysmon-via-winget** install — fail.
+- The H8 Stage-3 reorder (SystemConfiguration before SoftwareManagement) made this bite within a single run, not just on run 2+.
+
+Fundamental incoherence: a winget-based maintenance tool cannot also disable winget. **Fix:** flipped `EnableAppInstaller` to `desiredValue: 1` ("ensure enabled") with an explanatory `_note`. This stops the tool disabling winget AND self-heals already-disabled machines — on the next run SystemConfiguration (which now runs first in Stage 3) re-enables the policy before SoftwareManagement uses winget, and winget re-reads the policy per invocation so no reboot is needed. The three sibling AppInstaller policies (`EnableExperimentalFeatures`, `EnableHashOverride`, `EnableMSAppInstallerProtocol` = 0) were left disabled — they harden peripheral features and do not affect the CLI. Note: on the *healing* run, Stage 1's winget-based audit detail is still degraded (the re-enable happens in Stage 3); from the following run everything is fully healthy.

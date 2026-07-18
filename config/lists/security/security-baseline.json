@@ -1403,8 +1403,9 @@
             "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\AppInstaller",
             "name": "EnableAppInstaller",
             "type": "DWord",
-            "desiredValue": 0,
-            "description": "Disable App Installer"
+            "desiredValue": 1,
+            "description": "Ensure App Installer (winget) is ENABLED",
+            "_note": "MUST stay 1 (or be removed). This is the winget CLI master switch; the CIS-recommended 0 (disable) fully breaks winget with 'This operation is disabled by Group Policy'. SoftwareManagement (install/upgrade/remove) AND SystemConfiguration's own Sysmon install depend on winget, so this tool cannot disable it. Setting 1 also self-heals machines a prior run already disabled: SystemConfiguration runs before SoftwareManagement in Stage 3, re-enabling winget before the software phase uses it (winget re-reads this policy per invocation, no reboot needed)."
         },
         {
             "cis": "18.10.18.2",
