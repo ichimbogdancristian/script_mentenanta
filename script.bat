@@ -166,18 +166,9 @@ REM  nothing; the orchestrator derives its own root from $PSScriptRoot.)
 SET "SCRIPT_LOG_FILE=%LOG_FILE%"
 
 REM Repository configuration for auto-updates
-REM Extraction target is a stable per-machine location, NOT next to script.bat:
-REM   - Keeps OneDrive/Desktop (or any synced folder) from seeing the working tree,
-REM     logs, or reports mid-run - no sync-lock fights when Stage 5 deletes it.
-REM   - Makes the Stage-5 delete target unambiguous and independent of where the
-REM     user double-clicked script.bat from.
-REM   - USB-stick / network launches still work unchanged: ORIGINAL_SCRIPT_DIR keeps
-REM     pointing at the launch folder, and the HTML report is still copied back there.
 SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/master.zip"
-SET "EXTRACT_ROOT=%ProgramData%\WindowsMaintenance"
-SET "ZIP_FILE=%EXTRACT_ROOT%\update.zip"
+SET "ZIP_FILE=%WORKING_DIR%update.zip"
 SET "EXTRACT_FOLDER=script_mentenanta-master"
-IF NOT EXIST "%EXTRACT_ROOT%" MKDIR "%EXTRACT_ROOT%" >nul 2>&1
 
 CALL :LOG_MESSAGE "Self-discovery environment initialized" "SUCCESS" "LAUNCHER"
 
@@ -403,9 +394,9 @@ REM ----------------------------------------------------------------------------
 :DOWNLOAD_REPOSITORY
 CALL :LOG_MESSAGE "Downloading latest repository from GitHub..." "INFO" "LAUNCHER"
 
-REM Clean up existing files (in the stable extraction root, not the launch folder)
+REM Clean up existing files
 IF EXIST "%ZIP_FILE%" DEL /Q "%ZIP_FILE%" >nul 2>&1
-IF EXIST "%EXTRACT_ROOT%\%EXTRACT_FOLDER%" RMDIR /S /Q "%EXTRACT_ROOT%\%EXTRACT_FOLDER%" >nul 2>&1
+IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" RMDIR /S /Q "%WORKING_DIR%%EXTRACT_FOLDER%" >nul 2>&1
 
 REM Download repository
 CALL :LOG_MESSAGE "Downloading from: %REPO_URL%" "DEBUG" "LAUNCHER"
@@ -427,7 +418,7 @@ CALL :LOG_MESSAGE "Repository downloaded successfully" "SUCCESS" "LAUNCHER"
 
 REM Extract repository
 CALL :LOG_MESSAGE "Extracting repository..." "INFO" "LAUNCHER"
-powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%EXTRACT_ROOT%'); Write-Host 'EXTRACTION_SUCCESS' } catch { Write-Host 'EXTRACTION_FAILED'; Write-Error $_.Exception.Message; exit 1 }"
+powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory('%ZIP_FILE%', '%WORKING_DIR%'); Write-Host 'EXTRACTION_SUCCESS' } catch { Write-Host 'EXTRACTION_FAILED'; Write-Error $_.Exception.Message; exit 1 }"
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository extraction failed" "ERROR" "LAUNCHER"
@@ -435,8 +426,8 @@ IF !ERRORLEVEL! NEQ 0 (
     EXIT /B 3
 )
 
-REM Verify extraction (now rooted under %EXTRACT_ROOT%, not next to script.bat)
-SET "EXTRACTED_PATH=%EXTRACT_ROOT%\%EXTRACT_FOLDER%"
+REM Verify extraction
+SET "EXTRACTED_PATH=%WORKING_DIR%%EXTRACT_FOLDER%"
 IF EXIST "%EXTRACTED_PATH%" (
     CALL :LOG_MESSAGE "Repository extracted to: %EXTRACTED_PATH%" "SUCCESS" "LAUNCHER"
     
