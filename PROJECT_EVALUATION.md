@@ -330,3 +330,24 @@ A production run's winget calls all failed with `-1978335174`; the H10 stderr-ca
 - The H8 Stage-3 reorder (SystemConfiguration before SoftwareManagement) made this bite within a single run, not just on run 2+.
 
 Fundamental incoherence: a winget-based maintenance tool cannot also disable winget. **Fix:** flipped `EnableAppInstaller` to `desiredValue: 1` ("ensure enabled") with an explanatory `_note`. This stops the tool disabling winget AND self-heals already-disabled machines — on the next run SystemConfiguration (which now runs first in Stage 3) re-enables the policy before SoftwareManagement uses winget, and winget re-reads the policy per invocation so no reboot is needed. The three sibling AppInstaller policies (`EnableExperimentalFeatures`, `EnableHashOverride`, `EnableMSAppInstallerProtocol` = 0) were left disabled — they harden peripheral features and do not affect the CLI. Note: on the *healing* run, Stage 1's winget-based audit detail is still degraded (the re-enable happens in Stage 3); from the following run everything is fully healthy.
+
+---
+
+# K. INFINITE LAUNCHER RELAUNCH LOOP (2026-07-18) — the actual "loops forever" cause
+
+User reported script.bat relaunching its own window "over and over" (NOT an OS reboot). A captured `maintenance.log` showed the same launcher session banner repeating every ~3 seconds, each cycle ending in `Restarting script with fresh environment to detect PowerShell 7...` → `Detected PowerShell executable: <empty>` → `No valid PowerShell orchestrator found`.
+
+**Root cause — a broken loop-guard on the PowerShell-7 install-relaunch:**
+- When `:FIND_PWSH` can't resolve PS7 after an install attempt, the launcher writes `restart_flag.tmp` and `START`s a fresh `script.bat` window to retry with an updated PATH. This is meant to happen **at most once** (the flag is the guard).
+- **Bug 1 (path mismatch):** the flag was *written* to `%WORKING_DIR%restart_flag.tmp` — where `WORKING_DIR` = the **extracted** repo folder (post-extraction) — but *read* at `:AFTER_RESTART_CHECK` as `%WORKING_DIR%restart_flag.tmp` where `WORKING_DIR` = the **launch** folder (pre-extraction). Two different paths, so the guard never found its own flag. (The extracted folder is also wiped and re-created every run, erasing the flag regardless.)
+- **Bug 2 (no enforcement):** even when the flag *was* found, `:AFTER_RESTART_CHECK` only logged and deleted it — it never actually prevented another relaunch.
+- Net: every run that couldn't detect PS7 relaunched unconditionally → a new window every 3s, forever. Concurrent instances then fought over the same extract folder (RMDIR vs re-extract), which is why the log also shows `config missing` / `no orchestrator` — the extraction was being corrupted by the pile-up, a *symptom* of the loop, not a separate bug.
+
+**Why PS7 couldn't be detected/installed here:** winget was disabled by policy (Section J), so the winget PS7 install failed; Chocolatey/MSI fallbacks also failed → `:FIND_PWSH` never resolved → endless relaunch.
+
+**Fix (script.bat):**
+- The guard flag now lives in `%ORIGINAL_SCRIPT_DIR%` (the **stable** launch folder, which is never wiped).
+- `:AFTER_RESTART_CHECK` reads it into `PS7_ALREADY_RELAUNCHED` (and no longer deletes it).
+- The relaunch decision became a three-way branch: PS7 found → clear flag + continue; **else if already relaunched once → abort cleanly with a fatal message (the winget re-enable + manual PS7 install steps), never relaunch again**; else → write flag + relaunch once. Verified the exact nested `IF DEFINED … ) ELSE IF … ) ELSE ( …` branching in cmd (`found→FOUND`, `retry→GUARD-ABORT`, `first→RELAUNCH-ONCE`). The flag is also cleared on every "PS7 is present" path so a stale flag can't wrongly block a future legitimate retry.
+
+**Operational note (the reason on-machine symptoms didn't change):** script.bat **self-updates from GitHub `master` every run** and executes the *downloaded* copy — so none of these local fixes take effect on a real `script.bat` run until they are committed and pushed to `master`. To validate locally without pushing, run `pwsh -File .\MaintenanceOrchestrator.ps1` (elevated) against the edited working tree, which bypasses the launcher's re-download.

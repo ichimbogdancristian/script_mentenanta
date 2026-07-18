@@ -322,14 +322,23 @@ IF /I "%RESTART_NEEDED_WU%"=="YES" (
 
 REM No pending restart; continue normal execution
 
-REM Check for PowerShell restart flag
-IF EXIST "%WORKING_DIR%restart_flag.tmp" (
-    CALL :LOG_MESSAGE "Detected PowerShell 7 installation restart flag - cleaning up..." "INFO" "LAUNCHER"
-    FOR /F "tokens=*" %%i IN ('TYPE "%WORKING_DIR%restart_flag.tmp" 2^>nul') DO (
+REM PowerShell 7 relaunch loop-guard.
+REM The flag lives in ORIGINAL_SCRIPT_DIR (the launch folder) - a STABLE location. The
+REM previous code wrote it to %WORKING_DIR% AFTER extraction (the extracted folder) but
+REM checked %WORKING_DIR% here BEFORE extraction (the launch folder): two different paths,
+REM so the guard never saw its own flag - and even when it did it only logged/deleted it,
+REM never actually stopping the relaunch. Result: if PS7 could not be detected/installed,
+REM the launcher spawned a fresh window every ~3s forever.
+REM If the flag is present now, this IS the retry run: record it so the PS7 section below
+REM refuses to relaunch a SECOND time and instead fails cleanly. Do NOT delete the flag here
+REM (it is cleared only once PS7 is actually found, or on the clean-abort path).
+SET "PS7_ALREADY_RELAUNCHED=NO"
+IF EXIST "%ORIGINAL_SCRIPT_DIR%restart_flag.tmp" (
+    SET "PS7_ALREADY_RELAUNCHED=YES"
+    CALL :LOG_MESSAGE "PowerShell 7 relaunch flag present - this is the single retry run" "INFO" "LAUNCHER"
+    FOR /F "tokens=*" %%i IN ('TYPE "%ORIGINAL_SCRIPT_DIR%restart_flag.tmp" 2^>nul') DO (
         CALL :LOG_MESSAGE "Restart context: %%i" "DEBUG" "LAUNCHER"
     )
-    DEL "%WORKING_DIR%restart_flag.tmp" >nul 2>&1
-    CALL :LOG_MESSAGE "Script restarted after PowerShell 7 installation - continuing with fresh environment" "SUCCESS" "LAUNCHER"
 )
 
 REM Create/Verify monthly maintenance scheduled task before continuing
@@ -744,6 +753,9 @@ SET "PS7_FOUND=NO"
 CALL :FIND_PWSH
 IF DEFINED PWSH_PATH (
     SET "PS7_FOUND=YES"
+    REM PS7 already present - clear any stale relaunch-guard flag so it can't wrongly block
+    REM a legitimate one-time relaunch on some later run.
+    DEL "%ORIGINAL_SCRIPT_DIR%restart_flag.tmp" >nul 2>&1
     CALL :LOG_MESSAGE "PowerShell 7 found: !PWSH_PATH! - skipping installation" "SUCCESS" "LAUNCHER"
 )
 
@@ -858,17 +870,30 @@ IF "%PS7_FOUND%"=="NO" (
         CALL :FIND_PWSH
         IF DEFINED PWSH_PATH (
             SET "PS7_FOUND=YES"
+            REM PS7 resolved - clear any relaunch flag so the guard is reset for future runs.
+            DEL "%ORIGINAL_SCRIPT_DIR%restart_flag.tmp" >nul 2>&1
             CALL :LOG_MESSAGE "PowerShell 7 installed and reachable: !PWSH_PATH! - continuing" "SUCCESS" "LAUNCHER"
+        ) ELSE IF "!PS7_ALREADY_RELAUNCHED!"=="YES" (
+            REM GUARD: we already relaunched once and PS7 is STILL not detectable. Do NOT
+            REM relaunch again (that is the infinite new-window loop). Fail cleanly instead.
+            DEL "%ORIGINAL_SCRIPT_DIR%restart_flag.tmp" >nul 2>&1
+            CALL :LOG_MESSAGE "PowerShell 7 still not detected after one relaunch - aborting to avoid an infinite relaunch loop." "ERROR" "LAUNCHER"
+            CALL :LOG_MESSAGE "winget is likely disabled by policy (EnableAppInstaller=0) so PS7 cannot install. Re-enable it:" "ERROR" "LAUNCHER"
+            CALL :LOG_MESSAGE "  reg add HKLM\SOFTWARE\Policies\Microsoft\Windows\AppInstaller /v EnableAppInstaller /t REG_DWORD /d 1 /f" "ERROR" "LAUNCHER"
+            CALL :LOG_MESSAGE "  then: winget install --id Microsoft.PowerShell --source winget   (or install the MSI from GitHub)" "ERROR" "LAUNCHER"
+            TIMEOUT /T 30 >nul 2>&1
+            EXIT /B 1
         ) ELSE (
-            CALL :LOG_MESSAGE "Restarting script with fresh environment to detect PowerShell 7..." "INFO" "LAUNCHER"
+            CALL :LOG_MESSAGE "Restarting script once with a fresh environment to detect PowerShell 7..." "INFO" "LAUNCHER"
 
             REM Preserve the log across the relaunch: copy it back next to script.bat so the
             REM new instance's :INIT_LOG appends to it (the relaunched instance wipes and
             REM re-extracts the repo folder, taking the migrated copy with it).
             IF EXIST "!LOG_FILE!" COPY /Y "!LOG_FILE!" "%ORIGINAL_SCRIPT_DIR%maintenance.log" >nul 2>&1
 
-            REM Create restart flag with timestamp to prevent infinite loops
-            ECHO POWERSHELL_RESTART_%DATE:~-4,4%%DATE:~-10,2%%DATE:~-7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2% > "%WORKING_DIR%restart_flag.tmp"
+            REM Loop-guard flag in the STABLE launch folder (survives the extracted-folder wipe),
+            REM read at :AFTER_RESTART_CHECK on the next run to enforce at-most-one relaunch.
+            ECHO POWERSHELL_RESTART_%DATE:~-4,4%%DATE:~-10,2%%DATE:~-7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2% > "%ORIGINAL_SCRIPT_DIR%restart_flag.tmp"
 
             REM Restart the script with a fresh environment (give Windows a moment to update PATH).
             REM No /WAIT: the relaunched instance takes over, so this window must close instead
