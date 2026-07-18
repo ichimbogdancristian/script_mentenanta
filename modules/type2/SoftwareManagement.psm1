@@ -139,6 +139,7 @@ function Invoke-SoftwareManagement {
     $hasChoco = Test-CommandAvailable 'choco'
     $processed = 0
     $failed = 0
+    $skipped = 0
     $errors = @()
 
     # Deterministic phase ordering: remove junk, then install wanted, then upgrade.
@@ -251,21 +252,31 @@ function Invoke-SoftwareManagement {
         try {
             Write-Log -Level INFO -Component SOFTWARE -Message "Upgrading $name ($current -> $available)"
             $upgraded = $false
+            $notWingetManaged = $false
 
             if ($source -eq 'winget' -and $id -and $hasWinget) {
                 $wingetArgs = @('upgrade', '--id', $id, '--silent', '--accept-package-agreements',
                     '--accept-source-agreements', '--disable-interactivity')
                 $exitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) -ArgumentList $wingetArgs
+                # 0 = upgraded; -1978335189 (UPDATE_NOT_APPLICABLE) = already current, nothing to do.
                 if ($exitCode -in 0, -1978335189) {
                     Write-Log -Level SUCCESS -Component SOFTWARE -Message "Upgraded (winget): $name"
                     $upgraded = $true
+                }
+                # -1978335212 (NO_APPLICATIONS_FOUND): winget lists this package (correlated from
+                # Add/Remove Programs) but it was NOT installed via winget, so 'winget upgrade --id'
+                # can't manage it. Expected for MSI/vendor-installed apps (e.g. Wazuh Agent) — a
+                # skip, not a failure.
+                elseif ($exitCode -eq -1978335212) {
+                    Write-Log -Level INFO -Component SOFTWARE -Message "Not managed by winget (installed outside winget) — skipping upgrade: $name"
+                    $notWingetManaged = $true
                 }
                 else {
                     Write-Log -Level WARN -Component SOFTWARE -Message "winget exit $exitCode for $name"
                 }
             }
 
-            if (-not $upgraded -and $source -eq 'choco' -and $id -and $hasChoco) {
+            if (-not $upgraded -and -not $notWingetManaged -and $source -eq 'choco' -and $id -and $hasChoco) {
                 $exitCode = Invoke-ExternalPackageCommand -FilePath 'choco' -ArgumentList @('upgrade', $id, '--yes', '--no-progress')
                 if ($exitCode -eq 0) {
                     Write-Log -Level SUCCESS -Component SOFTWARE -Message "Upgraded (choco): $name"
@@ -275,6 +286,9 @@ function Invoke-SoftwareManagement {
 
             if ($upgraded) {
                 $processed++
+            }
+            elseif ($notWingetManaged) {
+                $skipped++
             }
             else {
                 Write-Log -Level WARN -Component SOFTWARE -Message "Could not upgrade: $name"
@@ -290,10 +304,10 @@ function Invoke-SoftwareManagement {
     }
 
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
-    Write-Log -Level INFO -Component SOFTWARE -Message "Done: $processed processed, $failed failed"
+    Write-Log -Level INFO -Component SOFTWARE -Message "Done: $processed processed, $skipped skipped, $failed failed"
 
     return New-ModuleResult -ModuleName 'SoftwareManagement' -Status $status -ModuleType 'Type2' `
-        -ItemsDetected $diff.Count -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors
+        -ItemsDetected $diff.Count -ItemsProcessed $processed -ItemsSkipped $skipped -ItemsFailed $failed -Errors $errors
 }
 
 Export-ModuleMember -Function 'Invoke-SoftwareManagement'
