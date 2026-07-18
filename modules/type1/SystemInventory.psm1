@@ -21,51 +21,41 @@ function Invoke-SystemInventory {
     try {
         $inv = [ordered]@{ Timestamp = (Get-Date -Format 'o') }
 
-        Write-Log -Level DEBUG -Component INVENTORY -Message 'Running parallel hardware queries (OS, CPU, Memory, Disks)...'
+        Write-Log -Level DEBUG -Component INVENTORY -Message 'Running hardware queries (OS, CPU, Memory, Disks)...'
 
-        # Run 4 independent CIM queries in parallel
-        $jobs = @(
-            {
-                try {
-                    Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
-                }
-                catch {
-                    $null
-                }
-            },
-            {
-                try {
-                    Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -First 1
-                }
-                catch {
-                    $null
-                }
-            },
-            {
-                try {
-                    Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
-                }
-                catch {
-                    $null
-                }
-            },
-            {
-                try {
-                    Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' -ErrorAction Stop
-                }
-                catch {
-                    $null
-                }
-            }
-        )
+        # Run independent CIM queries sequentially (simpler, avoids -Parallel issues)
+        $os = $null
+        $cpu = $null
+        $cs = $null
+        $disks = $null
 
-        $results = $jobs | ForEach-Object -Parallel { & $_ } -ThrottleLimit 4
+        try {
+            $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+        }
+        catch {
+            Write-Log -Level DEBUG -Component INVENTORY -Message "OS query failed: $_"
+        }
 
-        # Extract results (order: OS, CPU, Memory, Disks)
-        $os = $results[0]
-        $cpu = $results[1]
-        $cs = $results[2]
-        $disks = $results[3]
+        try {
+            $cpu = Get-CimInstance Win32_Processor -ErrorAction Stop | Select-Object -First 1
+        }
+        catch {
+            Write-Log -Level DEBUG -Component INVENTORY -Message "CPU query failed: $_"
+        }
+
+        try {
+            $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
+        }
+        catch {
+            Write-Log -Level DEBUG -Component INVENTORY -Message "ComputerSystem query failed: $_"
+        }
+
+        try {
+            $disks = Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' -ErrorAction Stop
+        }
+        catch {
+            Write-Log -Level DEBUG -Component INVENTORY -Message "Disk query failed: $_"
+        }
 
         # OS
         try {
