@@ -85,6 +85,7 @@ function Invoke-WindowsUpdate {
         [Parameter()][hashtable]$OSContext
     )
 
+    $null = $OSContext  # Type2 interface parameter, may be used by future optimizations
     Write-Log -Level INFO -Component WINUPDATE -Message 'Starting Windows updates installation'
 
     $diff = Get-DiffList -ModuleName 'WindowsUpdates'
@@ -167,8 +168,14 @@ function Invoke-WindowsUpdate {
         Write-Log -Level WARN -Component WINUPDATE -Message "Triggering usoclient to install $($diff.Count) update(s) (async — results unverifiable)"
         $usoClient = Join-Path $env:SystemRoot 'System32\usoclient.exe'
         $null = & $usoClient StartScan 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Log -Level WARN -Component WINUPDATE -Message "usoclient StartScan failed with exit code $LASTEXITCODE"
+        }
         Start-Sleep -Seconds 2
         $null = & $usoClient StartInstall 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Log -Level WARN -Component WINUPDATE -Message "usoclient StartInstall failed with exit code $LASTEXITCODE"
+        }
         $processed = $diff.Count
         $rebootRequired = $true
         Write-Log -Level INFO -Component WINUPDATE -Message "usoclient triggered $processed update(s) — reboot expected"

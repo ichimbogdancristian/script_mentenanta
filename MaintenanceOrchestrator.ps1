@@ -92,8 +92,13 @@ try {
 }
 catch {
     Write-Host "[FATAL] Failed to import core module: $_" -ForegroundColor Red
-    try { "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [FATAL] [ORCH] Core import failed: $_" |
-            Add-Content -Path $LogPath -Encoding UTF8 } catch { }
+    try {
+        "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [FATAL] [ORCH] Core import failed: $_" |
+            Add-Content -Path $LogPath -Encoding UTF8
+    }
+    catch {
+        Write-Host "[WARN] Could not write to log file: $_" -ForegroundColor Yellow
+    }
     Stop-Transcript | Out-Null
     exit 1
 }
@@ -746,6 +751,12 @@ catch {
 }
 finally {
     # Always flush/close the log and stop the raw transcript, even on crash or exit.
-    try { Stop-Transcript -ErrorAction SilentlyContinue | Out-Null } catch { }
+    try {
+        Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
+    }
+    catch {
+        # Transcript may not be active; silently continue cleanup
+        $null = $_
+    }
     Close-LogFile
 }

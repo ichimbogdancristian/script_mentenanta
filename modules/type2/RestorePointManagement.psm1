@@ -20,6 +20,7 @@ function Invoke-RestorePointManagement {
         [Parameter()][hashtable]$OSContext
     )
 
+    $null = $OSContext  # Type2 interface parameter, may be used by future optimizations
     Write-Log -Level INFO -Component RESTORE -Message 'Starting restore point management'
 
     $diff = Get-DiffList -ModuleName 'RestorePoint'

@@ -182,6 +182,7 @@ function Invoke-SystemConfiguration {
         [Parameter()][hashtable]$OSContext
     )
 
+    $null = $OSContext  # Type2 interface parameter, may be used by future optimizations
     Write-Log -Level INFO -Component CONFIG -Message 'Starting system configuration (security + telemetry + optimization)'
 
     $diff = Get-DiffList -ModuleName 'SystemConfiguration'
@@ -230,13 +231,30 @@ function Invoke-SystemConfiguration {
                         'registry' {
                             $vname = $item.ValueName ?? $item.Name
                             if ($vname) {
-                                $backup = Backup-RegistryValue -Path $item.Path -Name $vname
+                                $backup = $null
+                                try {
+                                    $backup = Backup-RegistryValue -Path $item.Path -Name $vname
+                                }
+                                catch {
+                                    Write-Log -Level WARN -Component CONFIG -Message "Registry backup failed: $_"
+                                }
                                 $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
                                 if ($changed) {
                                     $verified = Test-RegistryValueApplied -Path $item.Path -Name $vname -ExpectedValue $item.DesiredValue
                                     if (-not $verified) {
                                         Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$vname"
-                                        if ($backup) { Restore-RegistryValue -Backup $backup | Out-Null }
+                                        if ($backup) {
+                                            $restored = Restore-RegistryValue -Backup $backup
+                                            if ($restored) {
+                                                Write-Log -Level SUCCESS -Component CONFIG -Message "Rollback successful"
+                                            }
+                                            else {
+                                                Write-Log -Level ERROR -Component CONFIG -Message "Rollback FAILED - manual intervention required"
+                                            }
+                                        }
+                                        else {
+                                            Write-Log -Level ERROR -Component CONFIG -Message "No backup available - manual remediation required"
+                                        }
                                         $errors += "[Verification Failed] $name"; $failed++; $changed = $false
                                     }
                                 }
@@ -290,13 +308,30 @@ function Invoke-SystemConfiguration {
                         'registry' {
                             $vname = $item.ValueName ?? $item.Name
                             if ($vname) {
-                                $backup = Backup-RegistryValue -Path $item.Path -Name $vname
+                                $backup = $null
+                                try {
+                                    $backup = Backup-RegistryValue -Path $item.Path -Name $vname
+                                }
+                                catch {
+                                    Write-Log -Level WARN -Component CONFIG -Message "Registry backup failed: $_"
+                                }
                                 $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
                                 if ($changed) {
                                     $verified = Test-RegistryValueApplied -Path $item.Path -Name $vname -ExpectedValue $item.DesiredValue
                                     if (-not $verified) {
                                         Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$vname"
-                                        if ($backup) { Restore-RegistryValue -Backup $backup | Out-Null }
+                                        if ($backup) {
+                                            $restored = Restore-RegistryValue -Backup $backup
+                                            if ($restored) {
+                                                Write-Log -Level SUCCESS -Component CONFIG -Message "Rollback successful"
+                                            }
+                                            else {
+                                                Write-Log -Level ERROR -Component CONFIG -Message "Rollback FAILED - manual intervention required"
+                                            }
+                                        }
+                                        else {
+                                            Write-Log -Level ERROR -Component CONFIG -Message "No backup available - manual remediation required"
+                                        }
                                         $errors += "[Verification Failed] $name"; $failed++; $changed = $false
                                     }
                                 }
@@ -323,13 +358,30 @@ function Invoke-SystemConfiguration {
                         'registry' {
                             $vname = $item.ValueName ?? $item.Name
                             if ($vname) {
-                                $backup = Backup-RegistryValue -Path $item.Path -Name $vname
+                                $backup = $null
+                                try {
+                                    $backup = Backup-RegistryValue -Path $item.Path -Name $vname
+                                }
+                                catch {
+                                    Write-Log -Level WARN -Component CONFIG -Message "Registry backup failed: $_"
+                                }
                                 $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
                                 if ($changed) {
                                     $verified = Test-RegistryValueApplied -Path $item.Path -Name $vname -ExpectedValue $item.DesiredValue
                                     if (-not $verified) {
                                         Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$vname"
-                                        if ($backup) { Restore-RegistryValue -Backup $backup | Out-Null }
+                                        if ($backup) {
+                                            $restored = Restore-RegistryValue -Backup $backup
+                                            if ($restored) {
+                                                Write-Log -Level SUCCESS -Component CONFIG -Message "Rollback successful"
+                                            }
+                                            else {
+                                                Write-Log -Level ERROR -Component CONFIG -Message "Rollback FAILED - manual intervention required"
+                                            }
+                                        }
+                                        else {
+                                            Write-Log -Level ERROR -Component CONFIG -Message "No backup available - manual remediation required"
+                                        }
                                         $errors += "[Verification Failed] $name"; $failed++; $changed = $false
                                     }
                                 }

@@ -18,6 +18,7 @@ function Invoke-DiskCleanup {
         [Parameter()][hashtable]$OSContext
     )
 
+    $null = $OSContext  # Type2 interface parameter, may be used by future optimizations
     Write-Log -Level INFO -Component DISKCLEAN -Message 'Starting disk cleanup'
 
     $diff = Get-DiffList -ModuleName 'DiskCleanup'
