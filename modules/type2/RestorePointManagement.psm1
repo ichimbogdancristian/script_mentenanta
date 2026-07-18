@@ -118,7 +118,8 @@ function Invoke-RestorePointManagement {
     }
 
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
-    $message = "Restore point management: Created=$($if($created) { 1 } else { 0 }), Removed=$removed"
+    $createdCount = if ($created) { 1 } else { 0 }
+    $message = "Restore point management: Created=$createdCount, Removed=$removed"
 
     Write-Log -Level INFO -Component RESTORE -Message "Done: $message"
 
