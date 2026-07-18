@@ -11,7 +11,9 @@
     "skipSoftwareManagement": false,
     "skipSystemConfiguration": false,
     "skipDiskCleanup": false,
-    "skipWindowsUpdates": false
+    "skipWindowsUpdates": false,
+    "skipSystemHealth": false,
+    "skipRestorePointManagement": false
   },
   "reporting": {
     "enableHtmlReport": true

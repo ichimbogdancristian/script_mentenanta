@@ -68,17 +68,27 @@ function Get-PendingUpdatesMultiSource {
         Write-Log -Level DEBUG -Component WU-AUDIT -Message "Layer 1 failed: $_. Trying Layer 2..."
     }
 
-    # Layer 2: WMI Fallback - Get-CimInstance Win32_QuickFixEngineering
-    Write-Log -Level DEBUG -Component WU-AUDIT -Message 'Attempting Layer 2: WMI (Quick Fix Engineering)'
+    # Layer 2: Registry Fallback - Check Windows Update registry for pending updates
+    Write-Log -Level DEBUG -Component WU-AUDIT -Message 'Attempting Layer 2: Registry (pending updates)'
     try {
-        $quickFixes = Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction Stop |
-            Where-Object { $_.HotFixID -match '^KB\d+' } |
-            Sort-Object -Property InstalledOn -Descending
-
-        foreach ($fix in $quickFixes) {
+        $updateKeys = Get-ChildItem -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending' -ErrorAction SilentlyContinue
+        if ($updateKeys) {
             $pendingUpdates.Add(@{
-                Title = "KB$($fix.HotFixID)"
-                Identity = $fix.HotFixID
+                Title = 'Component-based servicing updates'
+                Identity = 'CBS'
+                Severity = 'Unknown'
+                SizeMB = 0
+                IsMandatory = $false
+            })
+        }
+
+        # Also check Windows Update registry for pending updates
+        $regPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate'
+        $setupInProgress = Get-ItemProperty -Path $regPath -Name 'SetupInProgress' -ErrorAction SilentlyContinue
+        if ($setupInProgress -and $setupInProgress.SetupInProgress -eq 1) {
+            $pendingUpdates.Add(@{
+                Title = 'Windows Update setup in progress'
+                Identity = 'WindowsUpdate'
                 Severity = 'Unknown'
                 SizeMB = 0
                 IsMandatory = $false
@@ -86,12 +96,12 @@ function Get-PendingUpdatesMultiSource {
         }
 
         if ($pendingUpdates.Count -gt 0) {
-            $detectionMethod = 'WMI (Quick Fix Engineering - Historical)'
-            Write-Log -Level DEBUG -Component WU-AUDIT -Message "✓ Layer 2 successful: Found $($pendingUpdates.Count) installed updates"
+            $detectionMethod = 'Registry (Windows Update pending)'
+            Write-Log -Level DEBUG -Component WU-AUDIT -Message "✓ Layer 2 successful: Found $($pendingUpdates.Count) pending updates via registry"
             return @{ Updates = $pendingUpdates; Method = $detectionMethod }
         }
         else {
-            Write-Log -Level DEBUG -Component WU-AUDIT -Message "Layer 2 found no updates, trying Layer 3"
+            Write-Log -Level DEBUG -Component WU-AUDIT -Message "Layer 2 found no pending updates, trying Layer 3"
         }
     }
     catch {
