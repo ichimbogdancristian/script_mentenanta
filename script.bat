@@ -92,14 +92,20 @@ EXIT /B
 
 :FIND_OTHER_INSTANCES
 REM Sets OTHER_INSTANCES to a comma-separated list of OTHER cmd.exe PIDs whose command
-REM line references script.bat, excluding THIS cmd (= the parent of the probing
-REM powershell). Empty when this is the only instance.
+REM line references script.bat. Empty when this is the only instance.
+REM
+REM Self-exclusion MUST cover the probe's whole ANCESTOR CHAIN, not just its parent:
+REM FOR /F executes the backquoted command through an ephemeral child cmd.exe, so the
+REM chain is: this batch's cmd -> FOR /F child cmd -> powershell. Excluding only the
+REM powershell's parent (the FOR /F child) left the batch's own cmd "visible" and the
+REM first version of this guard aborted every run by detecting ITSELF. INSTANCE_ID is
+REM excluded too as a belt-and-suspenders (covers an ancestor walk cut short).
 REM Process-based detection (instead of a lock file) self-heals after crashes: a dead
 REM instance simply stops matching, so nothing stale ever blocks the next run.
 REM Same escaping rules as :FIND_PWSH: single quotes only, no pipes, no ^ escapes,
 REM no %% and no ^^! inside the PowerShell code.
 SET "OTHER_INSTANCES="
-FOR /F "usebackq delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; $my=(Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID)).ParentProcessId; $hits=@(); foreach($p in @(Get-CimInstance Win32_Process)){ if($p.Name -eq 'cmd.exe' -and $p.ProcessId -ne $my -and $p.CommandLine -match 'script\.bat'){ $hits += $p.ProcessId } }; if($hits.Count -gt 0){ Write-Output ($hits -join ',') }" 2^>nul`) DO SET "OTHER_INSTANCES=%%i"
+FOR /F "usebackq delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; $skip='%INSTANCE_ID%'; $all=@(Get-CimInstance Win32_Process); $byId=@{}; foreach($p in $all){ $byId[[int]$p.ProcessId]=$p }; $anc=@(); $cur=[int]$PID; for($i=0; $i -lt 10; $i++){ $anc += $cur; $proc=$byId[$cur]; if(-not $proc){ break }; $cur=[int]$proc.ParentProcessId; if($cur -le 0){ break } }; $hits=@(); foreach($p in $all){ if($p.Name -eq 'cmd.exe' -and ($anc -notcontains [int]$p.ProcessId) -and ([string]$p.ProcessId -ne $skip) -and $p.CommandLine -match 'script\.bat'){ $hits += [int]$p.ProcessId } }; if($hits.Count -gt 0){ Write-Output ($hits -join ',') }" 2^>nul`) DO SET "OTHER_INSTANCES=%%i"
 EXIT /B
 
 :INIT_LOG
@@ -154,11 +160,18 @@ REM Store original script directory BEFORE any updates (log location + report co
 SET "ORIGINAL_SCRIPT_DIR=%SCRIPT_DIR%"
 
 REM Instance identity for the [PID:n] tag on every log line and for the
-REM single-instance guard below. The probing powershell's parent IS this cmd.exe,
-REM so its ParentProcessId is our own PID. %RANDOM% fallback if the probe fails so
-REM interleaved instances still get distinct tags.
+REM single-instance guard below.
+REM GOTCHA: FOR /F runs its backquoted command through a CHILD cmd.exe, so the
+REM probing powershell's DIRECT parent is that ephemeral child - NOT the cmd
+REM running this batch. (Assuming parent == our PID made the first guard version
+REM detect its own launcher cmd as a foreign instance and abort every run.)
+REM So instead: walk the ancestor chain upward and take the first cmd.exe whose
+REM command line references script.bat (falling back to the first cmd.exe ancestor
+REM for a batch started by typing into an interactive cmd window).
+REM %RANDOM% fallback if the probe fails so interleaved instances still get
+REM distinct tags.
 SET "INSTANCE_ID=R%RANDOM%"
-FOR /F "usebackq delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID)).ParentProcessId" 2^>nul`) DO SET "INSTANCE_ID=%%i"
+FOR /F "usebackq delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; $all=@(Get-CimInstance Win32_Process); $byId=@{}; foreach($p in $all){ $byId[[int]$p.ProcessId]=$p }; $cur=[int]$PID; $best=''; $firstCmd=''; for($i=0; $i -lt 10; $i++){ $proc=$byId[$cur]; if(-not $proc){ break }; $par=[int]$proc.ParentProcessId; $pp=$byId[$par]; if(-not $pp){ break }; if($pp.Name -eq 'cmd.exe'){ if($firstCmd -eq ''){ $firstCmd=$par }; if($pp.CommandLine -match 'script\.bat'){ $best=$par; break } }; $cur=$par }; if($best -ne ''){ Write-Output $best } elseif($firstCmd -ne ''){ Write-Output $firstCmd }" 2^>nul`) DO SET "INSTANCE_ID=%%i"
 
 REM -----------------------------------------------------------------------------
 REM Unified maintenance.log - created next to script.bat immediately so the whole run
