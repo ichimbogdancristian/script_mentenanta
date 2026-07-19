@@ -29,8 +29,12 @@ IF "%LEVEL%"=="" SET "LEVEL=INFO"
 SET "COMPONENT=%~3"
 IF "%COMPONENT%"=="" SET "COMPONENT=LAUNCHER"
 
-REM Unified format: [TIMESTAMP] [LEVEL] [COMPONENT] MESSAGE
-SET "LOG_ENTRY=[%LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] %~1"
+REM Unified format: [TIMESTAMP] [LEVEL] [COMPONENT] [PID:n] MESSAGE
+REM The [PID:n] tag identifies WHICH launcher instance wrote the line: concurrent
+REM script.bat runs interleave in the same maintenance.log and are otherwise
+REM indistinguishable (that ambiguity is what made the 2026-07-19 double-run
+REM incident unreadable). The report parser keeps the tag inside the message text.
+SET "LOG_ENTRY=[%LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] [PID:%INSTANCE_ID%] %~1"
 
 REM Use DELAYED expansion (!LOG_ENTRY!) for the echoed text: with %LOG_ENTRY% the value is
 REM substituted at parse time, so any >, <, & or | inside a message is treated as a shell
@@ -39,7 +43,11 @@ REM (e.g. "...allocation is sufficient (5 GB >= 10 GB)" echoed only "...sufficie
 REM Delayed expansion substitutes AFTER parsing, so the text stays literal.
 REM Console shows INFO/SUCCESS/WARN/ERROR; DEBUG goes to maintenance.log only.
 IF /I NOT "%LEVEL%"=="DEBUG" ECHO !LOG_ENTRY!
-IF EXIST "%LOG_FILE%" ECHO !LOG_ENTRY!>>"%LOG_FILE%" 2>nul
+REM Guard on the VARIABLE, not the file: >> recreates a missing file, so lines are
+REM never dropped when another process moves/deletes maintenance.log mid-run (the
+REM old IF EXIST "%%LOG_FILE%%" guard silently discarded whole phases of the log).
+REM LOG_FILE is cleared at orchestrator handoff, which stops writes as before.
+IF DEFINED LOG_FILE ECHO !LOG_ENTRY!>>"%LOG_FILE%" 2>nul
 EXIT /B
 
 :REFRESH_TOOL_PATHS
@@ -82,6 +90,18 @@ SET "PWSH_PATH="
 FOR /F "usebackq delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; $c=@(); $g=@(Get-Command pwsh.exe -CommandType Application -EA 0); if($g.Count -gt 0){$c+=$g[0].Source}; foreach($r in @((Join-Path $env:ProgramFiles 'PowerShell'),(Join-Path $env:LOCALAPPDATA 'Microsoft\powershell'),(Join-Path $env:ProgramData 'chocolatey\lib\powershell-core\tools'))){ if($r -and (Test-Path $r)){ foreach($f in @(Get-ChildItem $r -Filter pwsh.exe -Recurse -EA 0)){ $c+=$f.FullName } } }; foreach($a in @(Get-AppxPackage -Name Microsoft.PowerShell -EA 0)){ if($a.InstallLocation){ $c+=(Join-Path $a.InstallLocation 'pwsh.exe') } }; $c+=(Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\pwsh.exe'); foreach($p in $c){ if($p -and (Test-Path $p)){ $v=(& $p -NoProfile -NoLogo -Command '$PSVersionTable.PSVersion.Major'); if($v -and [int]$v -ge 7){ Write-Output $p; break } } }" 2^>nul`) DO SET "PWSH_PATH=%%i"
 EXIT /B
 
+:FIND_OTHER_INSTANCES
+REM Sets OTHER_INSTANCES to a comma-separated list of OTHER cmd.exe PIDs whose command
+REM line references script.bat, excluding THIS cmd (= the parent of the probing
+REM powershell). Empty when this is the only instance.
+REM Process-based detection (instead of a lock file) self-heals after crashes: a dead
+REM instance simply stops matching, so nothing stale ever blocks the next run.
+REM Same escaping rules as :FIND_PWSH: single quotes only, no pipes, no ^ escapes,
+REM no %% and no ^^! inside the PowerShell code.
+SET "OTHER_INSTANCES="
+FOR /F "usebackq delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; $my=(Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID)).ParentProcessId; $hits=@(); foreach($p in @(Get-CimInstance Win32_Process)){ if($p.Name -eq 'cmd.exe' -and $p.ProcessId -ne $my -and $p.CommandLine -match 'script\.bat'){ $hits += $p.ProcessId } }; if($hits.Count -gt 0){ Write-Output ($hits -join ',') }" 2^>nul`) DO SET "OTHER_INSTANCES=%%i"
+EXIT /B
+
 :INIT_LOG
 REM Append a session banner to %LOG_FILE% (creates the file if it does not exist).
 REM Append mode means elevation/PS7 relaunches continue the same maintenance.log.
@@ -93,6 +113,8 @@ FOR /F "tokens=1-2 delims=/:" %%A IN ('TIME /T') DO SET "BANNER_TIME=%%A:%%B"
     ECHO  Windows Maintenance Automation - Launcher
     ECHO  Session: %COMPUTERNAME% \ %USERNAME%
     ECHO  Date: %BANNER_DATE%  Time: %BANNER_TIME%
+    ECHO  Instance: cmd PID %INSTANCE_ID%
+    ECHO  Script: %SCRIPT_PATH%
     ECHO ================================================
 ) >> "%LOG_FILE%" 2>nul
 EXIT /B
@@ -105,8 +127,16 @@ SET "MAINT_LOG_DEST_DIR=%EXTRACTED_PATH%\temp_files\logs"
 IF NOT EXIST "%MAINT_LOG_DEST_DIR%" MKDIR "%MAINT_LOG_DEST_DIR%" >nul 2>&1
 SET "MAINT_LOG_DEST=%MAINT_LOG_DEST_DIR%\maintenance.log"
 IF EXIST "%LOG_FILE%" MOVE /Y "%LOG_FILE%" "%MAINT_LOG_DEST%" >nul 2>&1
-SET "LOG_FILE=%MAINT_LOG_DEST%"
-CALL :LOG_MESSAGE "maintenance.log migrated to: %LOG_FILE%" "INFO" "LAUNCHER"
+REM Repoint LOG_FILE only when the file actually arrived. Repointing after a failed
+REM MOVE (file locked by another instance, or already moved away) used to aim every
+REM later launcher line at a nonexistent path, and the old IF EXIST write guard then
+REM silently dropped them - the log looked like the run "skipped" whole phases.
+IF EXIST "%MAINT_LOG_DEST%" (
+    SET "LOG_FILE=%MAINT_LOG_DEST%"
+    CALL :LOG_MESSAGE "maintenance.log migrated to: !LOG_FILE!" "INFO" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "maintenance.log migration to %MAINT_LOG_DEST% failed (file locked or already moved) - continuing at %LOG_FILE%" "WARN" "LAUNCHER"
+)
 EXIT /B
 
 :MAIN_SCRIPT
@@ -122,6 +152,13 @@ SET "WORKING_DIR=%SCRIPT_DIR%"
 
 REM Store original script directory BEFORE any updates (log location + report copy target)
 SET "ORIGINAL_SCRIPT_DIR=%SCRIPT_DIR%"
+
+REM Instance identity for the [PID:n] tag on every log line and for the
+REM single-instance guard below. The probing powershell's parent IS this cmd.exe,
+REM so its ParentProcessId is our own PID. %RANDOM% fallback if the probe fails so
+REM interleaved instances still get distinct tags.
+SET "INSTANCE_ID=R%RANDOM%"
+FOR /F "usebackq delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "(Get-CimInstance Win32_Process -Filter ('ProcessId=' + $PID)).ParentProcessId" 2^>nul`) DO SET "INSTANCE_ID=%%i"
 
 REM -----------------------------------------------------------------------------
 REM Unified maintenance.log - created next to script.bat immediately so the whole run
@@ -201,6 +238,34 @@ IF "%IS_ADMIN%"=="NO" (
 )
 
 CALL :LOG_MESSAGE "Administrator privileges confirmed" "SUCCESS" "LAUNCHER"
+
+REM -----------------------------------------------------------------------------
+REM Single-Instance Guard
+REM Concurrent launcher instances are mutually DESTRUCTIVE: every instance deletes
+REM and re-extracts the SAME %WORKING_DIR%script_mentenanta-master folder, downloads
+REM to the SAME update.zip, and moves the SAME maintenance.log. A second instance
+REM therefore makes the first one fail mid-run with "No valid PowerShell
+REM orchestrator found" / "config\lists directory not found" while both logs
+REM interleave with silent gaps (observed 2026-07-19). Only ONE instance may pass.
+REM Placed AFTER elevation so the un-elevated parent (which exits within ~1s of
+REM spawning the elevated child) is not counted against its own child.
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Checking for other running launcher instances..." "INFO" "LAUNCHER"
+CALL :FIND_OTHER_INSTANCES
+IF DEFINED OTHER_INSTANCES (
+    REM One retry: an elevation parent or a just-finished run may still be exiting.
+    CALL :LOG_MESSAGE "Other launcher cmd process(es) detected: !OTHER_INSTANCES! - rechecking in 8s..." "WARN" "LAUNCHER"
+    TIMEOUT /T 8 >nul 2>&1
+    CALL :FIND_OTHER_INSTANCES
+)
+IF DEFINED OTHER_INSTANCES (
+    CALL :LOG_MESSAGE "Another script.bat instance is still running (cmd PID(s): !OTHER_INSTANCES!)" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Concurrent runs delete each other's downloaded/extracted files and move the shared log - aborting THIS instance (PID %INSTANCE_ID%)." "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Let the other window finish (or close it), then run script.bat again." "ERROR" "LAUNCHER"
+    TIMEOUT /T 20 >nul 2>&1
+    EXIT /B 9
+)
+CALL :LOG_MESSAGE "No other launcher instances running - continuing" "SUCCESS" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
 REM Startup Task Cleanup and Pending Restart Handling (Always check first)
@@ -389,10 +454,23 @@ REM Repository Download and Extraction (Moved before structure discovery)
 REM -----------------------------------------------------------------------------
 :DOWNLOAD_REPOSITORY
 CALL :LOG_MESSAGE "Downloading latest repository from GitHub..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Download phase state: WORKING_DIR=%WORKING_DIR% ZIP=%ZIP_FILE% EXTRACT=%WORKING_DIR%%EXTRACT_FOLDER%" "DEBUG" "LAUNCHER"
 
-REM Clean up existing files
+REM Clean up leftovers from a previous run. If the extracted folder cannot be fully
+REM removed (files held open by another process), abort NOW instead of extracting
+REM into a half-deleted tree: ZipFile.ExtractToDirectory fails on existing files and
+REM the run would otherwise die much later with a confusing "orchestrator not found".
 IF EXIST "%ZIP_FILE%" DEL /Q "%ZIP_FILE%" >nul 2>&1
-IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" RMDIR /S /Q "%WORKING_DIR%%EXTRACT_FOLDER%" >nul 2>&1
+IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" (
+    CALL :LOG_MESSAGE "Removing leftover extracted folder from a previous run: %WORKING_DIR%%EXTRACT_FOLDER%" "DEBUG" "LAUNCHER"
+    RMDIR /S /Q "%WORKING_DIR%%EXTRACT_FOLDER%" >nul 2>&1
+)
+IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" (
+    CALL :LOG_MESSAGE "Could not remove previous extracted folder - files are in use (a previous run's window still open? antivirus scan?)" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Close anything using %WORKING_DIR%%EXTRACT_FOLDER%, then run script.bat again." "ERROR" "LAUNCHER"
+    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
+    EXIT /B 3
+)
 
 REM Download repository
 CALL :LOG_MESSAGE "Downloading from: %REPO_URL%" "DEBUG" "LAUNCHER"
@@ -484,6 +562,7 @@ REM ----------------------------------------------------------------------------
 REM Project Structure Discovery and Validation (Moved after extraction)
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Discovering project structure..." "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Structure scan root: %WORKING_DIR%" "DEBUG" "LAUNCHER"
 
 REM Check for required components with detailed verification
 SET "STRUCTURE_VALID=YES"
@@ -1131,15 +1210,25 @@ CALL :LOG_MESSAGE "AUTO_NONINTERACTIVE flag: %AUTO_NONINTERACTIVE%" "DEBUG" "LAU
 
 IF "%ORCHESTRATOR_PATH%"=="" (
     CALL :LOG_MESSAGE "No valid PowerShell orchestrator found" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Diagnostics: WORKING_DIR=%WORKING_DIR%" "ERROR" "LAUNCHER"
+    IF NOT EXIST "%WORKING_DIR%" (
+        CALL :LOG_MESSAGE "Diagnostics: the working directory NO LONGER EXISTS - it was deleted after extraction (another script.bat instance, or a still-running previous session's cleanup)" "ERROR" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Diagnostics: working directory exists but MaintenanceOrchestrator.ps1 was never resolved in it" "ERROR" "LAUNCHER"
+    )
     TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
     EXIT /B 4
 )
 
 CALL :LOG_MESSAGE "Orchestrator path: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
 
-REM Verify orchestrator file exists
+REM Verify orchestrator file exists (it was validated at extraction time, but another
+REM process may have deleted the tree since - report WHICH situation this is)
 IF NOT EXIST "%ORCHESTRATOR_PATH%" (
     CALL :LOG_MESSAGE "Orchestrator file not found: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
+    IF NOT EXIST "%WORKING_DIR%" (
+        CALL :LOG_MESSAGE "Diagnostics: the extracted folder was DELETED between extraction and launch (another script.bat instance, or a previous session's cleanup)" "ERROR" "LAUNCHER"
+    )
     TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
     EXIT /B 4
 )

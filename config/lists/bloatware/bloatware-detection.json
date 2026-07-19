@@ -1,344 +1,184 @@
 {
-  "_comment": "v5.0 - Multi-source bloatware detection. Each entry includes detection methods (AppX/Registry/WinGet) and removal strategies.",
+  "_comment": "v6.0 - Multi-source bloatware detection (AppX/Provisioned/Registry/WinGet). The audit uses ONE pattern per app entry: 'appx_pattern' when present, else 'name'. Patterns are matched with PowerShell -like against AppX package .Name, provisioned PackageName, registry DisplayName and winget list lines. Microsoft first-party apps use their exact 'Microsoft.*' package name (matches the AppX .Name); third-party / OEM / games use the real publisher-prefixed identifier or a *wildcard* because their package names carry a variable publisher prefix (e.g. Netflix = 4DF9E0F8.Netflix, HP = AD2F1837.*, Lenovo = E046963F.*).",
   "metadata": {
-    "version": "5.0",
-    "updated": "2026-01-17",
-    "detection_sources": ["AppX", "Provisioned", "Registry", "WinGet"]
+    "version": "6.0",
+    "updated": "2026-07-18",
+    "detection_sources": ["AppX", "Provisioned", "Registry", "WinGet"],
+    "sources_researched": [
+      "https://github.com/Raphire/Win11Debloat (App-Removal wiki)",
+      "https://patchmypc.com/blog/remove-default-microsoft-store-app-packages-windows11-25h2/"
+    ],
+    "notes": "Deliberately EXCLUDES genuinely useful/system apps (Calculator, Camera, Photos, Notepad, Paint, Snipping Tool, Store, Terminal, Sticky Notes, Sound Recorder, Quick Assist, Edge, OneDrive) - those are also guarded by protected-packages.json."
   },
   "categories": {
     "games_entertainment": {
-      "description": "Games and entertainment apps bundled by OEM",
+      "description": "Pre-installed games and casino/entertainment apps (King, Gameloft, OEM game portals)",
       "apps": [
-        {
-          "name": "CandyCrush*",
-          "display_name": "Candy Crush Saga",
-          "detection": ["AppX", "Provisioned"],
-          "appx_pattern": "king.com.CandyCrush*",
-          "removable": true,
-          "notes": "Common pre-installed game, safe to remove"
-        },
-        {
-          "name": "Microsoft.MicrosoftSolitaireCollection",
-          "display_name": "Solitaire Collection",
-          "detection": ["AppX", "Provisioned"],
-          "removable": true,
-          "notes": "Safe to remove"
-        },
-        {
-          "name": "Minecraft.Minecraft",
-          "display_name": "Minecraft",
-          "detection": ["AppX"],
-          "removable": true
-        },
-        {
-          "name": "Microsoft.GamingApp",
-          "display_name": "Xbox Games Pass",
-          "detection": ["AppX", "Provisioned"],
-          "removable": true,
-          "notes": "Related to Xbox services"
-        },
-        {
-          "name": "WildTangent*",
-          "display_name": "WildTangent Games",
-          "detection": ["AppX", "Registry"],
-          "removable": true,
-          "notes": "OEM bloatware on many systems"
-        }
+        { "name": "Candy Crush", "appx_pattern": "king.com.CandyCrush*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Bubble Witch", "appx_pattern": "king.com.BubbleWitch*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Farm Heroes", "appx_pattern": "king.com.FarmHeroes*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "King Games (other)", "appx_pattern": "king.com.*", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "Catch-all for any remaining King.com titles" },
+        { "name": "Microsoft.MicrosoftSolitaireCollection", "display_name": "Solitaire Collection", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Minecraft", "appx_pattern": "*Minecraft*", "detection": ["AppX"], "removable": true },
+        { "name": "Roblox", "appx_pattern": "*Roblox*", "detection": ["AppX", "Registry"], "removable": true },
+        { "name": "Asphalt 8 Airborne", "appx_pattern": "*Asphalt8*", "detection": ["AppX"], "removable": true },
+        { "name": "Gameloft games", "appx_pattern": "*Gameloft*", "detection": ["AppX", "Registry"], "removable": true },
+        { "name": "Disney Magic Kingdoms", "appx_pattern": "*DisneyMagicKingdoms*", "detection": ["AppX"], "removable": true },
+        { "name": "FarmVille 2", "appx_pattern": "*FarmVille*", "detection": ["AppX"], "removable": true },
+        { "name": "Hidden City", "appx_pattern": "*HiddenCity*", "detection": ["AppX"], "removable": true },
+        { "name": "March of Empires", "appx_pattern": "*MarchofEmpires*", "detection": ["AppX"], "removable": true },
+        { "name": "Royal Revolt", "appx_pattern": "*RoyalRevolt*", "detection": ["AppX"], "removable": true },
+        { "name": "Cooking Fever", "appx_pattern": "*CookingFever*", "detection": ["AppX"], "removable": true },
+        { "name": "Caesars Slots / free casino", "appx_pattern": "*CaesarsSlots*", "detection": ["AppX"], "removable": true },
+        { "name": "WildTangent Games", "appx_pattern": "*WildTangent*", "detection": ["AppX", "Registry"], "removable": true, "notes": "OEM bloatware on many systems" },
+        { "name": "Microsoft.GamingApp", "display_name": "Xbox app / Game Pass", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.XboxApp", "display_name": "Xbox Console Companion (legacy)", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Xbox overlays & services", "appx_pattern": "Microsoft.Xbox*", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "Game Bar, Game/Gaming Overlay, SpeechToText, TCUI, IdentityProvider. NOTE: removing Microsoft.XboxIdentityProvider can break Xbox Live sign-in in some games." }
       ]
     },
     "oem_specific": {
-      "description": "Original Equipment Manufacturer pre-installed software",
+      "description": "OEM pre-installed software. Includes both winget-style ids (Dell.*, HP.*) AND the real AppX publisher prefixes (DellInc.*, AD2F1837.* for HP, E046963F.* for Lenovo) so both detection sources actually match.",
       "apps": [
-        {
-          "name": "Dell.*",
-          "display_name": "Dell Software",
-          "detection": ["AppX", "Registry", "WinGet"],
-          "removable": true,
-          "subentries": [
-            "Dell.CommandUpdate",
-            "Dell.DellDigitalDelivery",
-            "Dell.DellUpdate",
-            "Dell.MyDell",
-            "Dell.SupportAssist",
-            "Dell.DellPowerManagement",
-            "Dell.DellThermalController"
-          ]
-        },
-        {
-          "name": "HP.*",
-          "display_name": "HP Software",
-          "detection": ["AppX", "Registry", "WinGet"],
-          "removable": true,
-          "subentries": [
-            "HP.HPDesktopSupportUtilities",
-            "HP.HPJumpStart",
-            "HP.HPPCHardwareDiagnosticsWindows",
-            "HP.HPQuickActions",
-            "HP.HPSupportAssistant",
-            "HP.HPSystemInformation"
-          ]
-        },
-        {
-          "name": "Lenovo.*",
-          "display_name": "Lenovo Software",
-          "detection": ["AppX", "Registry", "WinGet"],
-          "removable": true,
-          "subentries": [
-            "Lenovo.LenovoID",
-            "Lenovo.LenovoNow",
-            "Lenovo.LenovoVantage",
-            "Lenovo.LenovoVoice",
-            "Lenovo.LenovoWiFiSecurity",
-            "Lenovo.LenovoSystemAgent"
-          ]
-        },
-        {
-          "name": "ASUS.*",
-          "display_name": "ASUS Software",
-          "detection": ["AppX", "Registry", "WinGet"],
-          "removable": true,
-          "subentries": [
-            "ASUS.ASUSLiveUpdate",
-            "ASUS.ASUSSmartGesture",
-            "ASUS.GamingCenter",
-            "ASUS.MyASUS",
-            "ASUS.ROGLiveService",
-            "ASUS.ASUSAIBoosterLite"
-          ]
-        },
-        {
-          "name": "Acer.*",
-          "display_name": "Acer Software",
-          "detection": ["AppX", "Registry"],
-          "removable": true,
-          "subentries": [
-            "Acer.AcerPowerManagement",
-            "Acer.AcerQuickAccess",
-            "Acer.AcerUEIPFramework"
-          ]
-        }
+        { "name": "Dell (winget)", "appx_pattern": "Dell.*", "detection": ["Registry", "WinGet"], "removable": true },
+        { "name": "Dell (AppX)", "appx_pattern": "DellInc.*", "detection": ["AppX"], "removable": true, "notes": "DellInc.DellDigitalDelivery / DellMobileConnect / DellSupportAssistforPCs" },
+        { "name": "HP (winget)", "appx_pattern": "HP.*", "detection": ["Registry", "WinGet"], "removable": true },
+        { "name": "HP (AppX)", "appx_pattern": "AD2F1837.*", "detection": ["AppX"], "removable": true, "notes": "HP's AppX publisher prefix - covers myHP, HPSupportAssistant, HPJumpStarts, HPPrivacySettings, HPWelcome, etc." },
+        { "name": "Lenovo (winget)", "appx_pattern": "Lenovo.*", "detection": ["Registry", "WinGet"], "removable": true },
+        { "name": "Lenovo Companion (AppX)", "appx_pattern": "E046963F.*", "detection": ["AppX"], "removable": true },
+        { "name": "Lenovo Vantage Service (AppX)", "appx_pattern": "LenovoCompanyLimited.*", "detection": ["AppX"], "removable": true },
+        { "name": "ASUS", "appx_pattern": "*ASUS*", "detection": ["AppX", "Registry", "WinGet"], "removable": true, "notes": "MyASUS, ArmouryCrate, GlideX, etc." },
+        { "name": "Acer", "appx_pattern": "*Acer*", "detection": ["AppX", "Registry"], "removable": true },
+        { "name": "MSI Center", "appx_pattern": "*MSICenter*", "detection": ["AppX", "Registry"], "removable": true },
+        { "name": "Razer", "appx_pattern": "*Razer*", "detection": ["AppX", "Registry"], "removable": true, "notes": "Razer Synapse / Cortex bundled bloat" },
+        { "name": "LG Monitor App", "appx_pattern": "*LGMonitor*", "detection": ["AppX"], "removable": true },
+        { "name": "CyberLink (PowerDVD/PowerDirector)", "appx_pattern": "*CyberLink*", "detection": ["AppX", "Registry"], "removable": true },
+        { "name": "Nero", "appx_pattern": "*Nero*", "detection": ["Registry"], "removable": true }
       ]
     },
     "microsoft_bloatware": {
-      "description": "Microsoft pre-installed apps that can be safely removed",
+      "description": "Microsoft in-box apps that are safe to remove (news/weather/finance, 3D/mixed-reality, Zune media, legacy communication, etc.)",
       "apps": [
-        {
-          "name": "Microsoft.BingNews",
-          "display_name": "Bing News",
-          "detection": ["AppX", "Provisioned"],
-          "removable": true
-        },
-        {
-          "name": "Microsoft.BingWeather",
-          "display_name": "Weather",
-          "detection": ["AppX", "Provisioned"],
-          "removable": true
-        },
-        {
-          "name": "Microsoft.BingFinance",
-          "display_name": "Money (Finance)",
-          "detection": ["AppX", "Provisioned"],
-          "removable": true
-        },
-        {
-          "name": "Microsoft.GetHelp",
-          "display_name": "Get Help",
-          "detection": ["AppX", "Provisioned"],
-          "removable": true
-        },
-        {
-          "name": "Microsoft.Getstarted",
-          "display_name": "Tips",
-          "detection": ["AppX", "Provisioned"],
-          "removable": true
-        },
-        {
-          "name": "Microsoft.MicrosoftOfficeHub",
-          "display_name": "Office Hub",
-          "detection": ["AppX", "Provisioned"],
-          "removable": true
-        },
-        {
-          "name": "Microsoft.WindowsFeedback",
-          "display_name": "Feedback Hub",
-          "detection": ["AppX", "Provisioned"],
-          "removable": true
-        },
-        {
-          "name": "Microsoft.WindowsTips",
-          "display_name": "Tips",
-          "detection": ["AppX", "Provisioned"],
-          "removable": true
-        },
-        {
-          "name": "Microsoft.ZuneMusic",
-          "display_name": "Groove Music",
-          "detection": ["AppX", "Provisioned"],
-          "removable": true
-        },
-        {
-          "name": "Microsoft.ZuneVideo",
-          "display_name": "Movies & TV",
-          "detection": ["AppX", "Provisioned"],
-          "removable": true
-        },
-        {
-          "name": "Microsoft.Xbox*",
-          "display_name": "Xbox Services",
-          "detection": ["AppX", "Provisioned"],
-          "removable": true,
-          "subentries": [
-            "Microsoft.Xbox.TCUI",
-            "Microsoft.XboxApp",
-            "Microsoft.XboxGameCallableUI",
-            "Microsoft.XboxGameOverlay",
-            "Microsoft.XboxGamingOverlay",
-            "Microsoft.XboxIdentityProvider",
-            "Microsoft.XboxSpeechToTextOverlay"
-          ]
-        },
-        {
-          "name": "Microsoft.Copilot",
-          "display_name": "Copilot (AI Assistant)",
-          "detection": ["AppX", "Provisioned"],
-          "removable": true,
-          "notes": "Windows 11 24H2+ AI feature, safe to remove"
-        }
+        { "name": "Microsoft.BingNews", "display_name": "Bing News", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.BingWeather", "display_name": "Weather", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.BingFinance", "display_name": "Money (Finance)", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.BingSports", "display_name": "Sports", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.BingFoodAndDrink", "display_name": "Food & Drink", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.BingHealthAndFitness", "display_name": "Health & Fitness", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.BingTravel", "display_name": "Travel", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.BingTranslator", "display_name": "Translator", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.News", "display_name": "Microsoft News", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.GetHelp", "display_name": "Get Help", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.Getstarted", "display_name": "Tips / Get Started", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.WindowsTips", "display_name": "Tips", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.MicrosoftOfficeHub", "display_name": "Office Hub / Microsoft 365", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.WindowsFeedbackHub", "display_name": "Feedback Hub", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.3DBuilder", "display_name": "3D Builder", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.Microsoft3DViewer", "display_name": "3D Viewer", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.MixedReality.Portal", "display_name": "Mixed Reality Portal", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.Print3D", "display_name": "Print 3D", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.MSPaint", "display_name": "Paint 3D", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "Paint 3D (NOT classic Paint, which is Microsoft.Paint and is kept)" },
+        { "name": "Microsoft.ZuneMusic", "display_name": "Groove Music / Media Player", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.ZuneVideo", "display_name": "Movies & TV", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.SkypeApp", "display_name": "Skype", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.Messaging", "display_name": "Messaging", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.OneConnect", "display_name": "Mobile Plans / Paid Wi-Fi", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.NetworkSpeedTest", "display_name": "Network Speed Test", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.MicrosoftPowerBIForWindows", "display_name": "Power BI", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.Office.Sway", "display_name": "Sway", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.Office.OneNote", "display_name": "OneNote (Store UWP)", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "Store UWP OneNote, superseded by OneNote desktop" },
+        { "name": "Microsoft.Whiteboard", "display_name": "Whiteboard", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.WindowsMaps", "display_name": "Maps", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.MicrosoftJournal", "display_name": "Journal", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.Todos", "display_name": "Microsoft To Do", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.PowerAutomateDesktop", "display_name": "Power Automate", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.YourPhone", "display_name": "Phone Link", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "Phone Link; remove if unused" },
+        { "name": "Microsoft.People", "display_name": "People", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.Wallet", "display_name": "Wallet", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "microsoft.windowscommunicationsapps", "display_name": "Mail and Calendar", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "Legacy Mail & Calendar, being retired in favour of new Outlook" },
+        { "name": "Microsoft.549981C3F5F10", "display_name": "Cortana", "detection": ["AppX", "Provisioned"], "removable": true }
+      ]
+    },
+    "windows11_new_apps": {
+      "description": "Newer Windows 11 (23H2 / 24H2 / 25H2) in-box apps and AI/experience components",
+      "apps": [
+        { "name": "Microsoft.Copilot", "display_name": "Copilot (AI Assistant)", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "Windows 11 24H2+ AI feature" },
+        { "name": "Microsoft.Windows.AIHub", "display_name": "AI Hub", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.BingSearch", "display_name": "Web Search (Bing)", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "24H2 in-box web-search app" },
+        { "name": "MicrosoftWindows.CrossDevice", "display_name": "Cross Device Experience", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "24H2 phone/cross-device integration" },
+        { "name": "Microsoft.Windows.DevHome", "display_name": "Dev Home", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.OutlookForWindows", "display_name": "new Outlook for Windows", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Clipchamp.Clipchamp", "display_name": "Clipchamp (video editor)", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.PCManager", "display_name": "PC Manager", "detection": ["AppX", "Provisioned", "WinGet"], "removable": true },
+        { "name": "Microsoft.M365Companions", "display_name": "M365 Copilot companion", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.StartExperiencesApp", "display_name": "Start Experiences (recommended)", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "MicrosoftCorporationII.MicrosoftFamily", "display_name": "Family Safety", "detection": ["AppX", "Provisioned"], "removable": true }
       ]
     },
     "third_party_bloatware": {
-      "description": "Third-party applications commonly pre-installed",
+      "description": "Third-party consumer apps commonly auto-installed via the Microsoft Store (streaming, social, shopping, media editors). Uses the real publisher-prefixed package identifiers.",
       "apps": [
-        {
-          "name": "Netflix.Netflix",
-          "display_name": "Netflix",
-          "detection": ["AppX"],
-          "removable": true
-        },
-        {
-          "name": "Spotify.Spotify*",
-          "display_name": "Spotify",
-          "detection": ["AppX"],
-          "removable": true
-        },
-        {
-          "name": "Discord.Discord",
-          "display_name": "Discord",
-          "detection": ["AppX", "WinGet"],
-          "removable": true
-        },
-        {
-          "name": "TikTok.TikTok",
-          "display_name": "TikTok",
-          "detection": ["AppX"],
-          "removable": true
-        },
-        {
-          "name": "Snapchat.Snapchat",
-          "display_name": "Snapchat",
-          "detection": ["AppX"],
-          "removable": true
-        },
-        {
-          "name": "Facebook.Facebook",
-          "display_name": "Facebook",
-          "detection": ["AppX"],
-          "removable": true
-        },
-        {
-          "name": "Instagram.Instagram",
-          "display_name": "Instagram",
-          "detection": ["AppX"],
-          "removable": true
-        },
-        {
-          "name": "Twitter.Twitter",
-          "display_name": "Twitter/X",
-          "detection": ["AppX"],
-          "removable": true
-        }
+        { "name": "Netflix", "appx_pattern": "*Netflix*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Spotify", "appx_pattern": "*Spotify*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Amazon Prime Video", "appx_pattern": "*PrimeVideo*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Amazon Shopping", "appx_pattern": "Amazon.com.Amazon", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Disney+", "appx_pattern": "Disney.*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Hulu", "appx_pattern": "*Hulu*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Sling TV", "appx_pattern": "*SlingTV*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Discord", "appx_pattern": "*Discord*", "detection": ["AppX", "WinGet"], "removable": true },
+        { "name": "TikTok", "appx_pattern": "*TikTok*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Snapchat", "appx_pattern": "*Snapchat*", "detection": ["AppX"], "removable": true },
+        { "name": "Facebook", "appx_pattern": "*Facebook*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Instagram", "appx_pattern": "*Instagram*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Messenger", "appx_pattern": "*Messenger*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "WhatsApp", "appx_pattern": "*WhatsApp*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Twitter / X", "appx_pattern": "*Twitter*", "detection": ["AppX"], "removable": true },
+        { "name": "LinkedIn", "appx_pattern": "*LinkedIn*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Duolingo", "appx_pattern": "*Duolingo*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Flipboard", "appx_pattern": "*Flipboard*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "iHeartRadio", "appx_pattern": "*iHeartRadio*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "TuneIn Radio", "appx_pattern": "*TuneIn*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Adobe Photoshop Express", "appx_pattern": "*PhotoshopExpress*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "PicsArt", "appx_pattern": "*PicsArt*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Polarr Photo Editor", "appx_pattern": "*PolarrPhotoEditor*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Phototastic Collage", "appx_pattern": "*PhototasticCollage*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Autodesk SketchBook", "appx_pattern": "*AutodeskSketchBook*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Drawboard PDF", "appx_pattern": "*DrawboardPDF*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "WinZip (Universal)", "appx_pattern": "*WinZipUniversal*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Live Wallpaper (Sidia)", "appx_pattern": "*LiveWallpaper*", "detection": ["AppX", "Provisioned"], "removable": true }
       ]
     },
     "toolbars_extensions": {
-      "description": "Toolbars and browser extensions",
+      "description": "Toolbars and injected browser extensions (PUP)",
       "apps": [
-        {
-          "name": "Ask.AskToolbar",
-          "display_name": "Ask Toolbar",
-          "detection": ["Registry"],
-          "removable": true
-        },
-        {
-          "name": "Babylon.BabylonToolbar",
-          "display_name": "Babylon Toolbar",
-          "detection": ["Registry"],
-          "removable": true
-        }
+        { "name": "Ask.AskToolbar", "display_name": "Ask Toolbar", "detection": ["Registry"], "removable": true },
+        { "name": "Babylon.BabylonToolbar", "display_name": "Babylon Toolbar", "detection": ["Registry"], "removable": true },
+        { "name": "Conduit toolbar", "appx_pattern": "*Conduit*", "detection": ["Registry"], "removable": true }
       ]
     },
     "security_questionable": {
-      "description": "Security software and utilities of questionable value",
+      "description": "Third-party AV / security trialware that is redundant with Windows Defender, plus known PUP 'security' scareware",
       "apps": [
-        {
-          "name": "Avast.Avast*",
-          "display_name": "Avast Antivirus",
-          "detection": ["AppX", "Registry", "WinGet"],
-          "removable": true,
-          "notes": "Use Windows Defender instead"
-        },
-        {
-          "name": "AVG.AVG*",
-          "display_name": "AVG Antivirus",
-          "detection": ["Registry", "WinGet"],
-          "removable": true,
-          "notes": "Redundant with Windows Defender"
-        },
-        {
-          "name": "Norton.Norton*",
-          "display_name": "Norton Security",
-          "detection": ["Registry", "WinGet"],
-          "removable": true,
-          "notes": "Redundant with Windows Defender"
-        },
-        {
-          "name": "McAfee.*",
-          "display_name": "McAfee Security",
-          "detection": ["Registry", "WinGet"],
-          "removable": true,
-          "notes": "Resource-heavy; use Windows Defender"
-        },
-        {
-          "name": "Kaspersky.*",
-          "display_name": "Kaspersky Antivirus",
-          "detection": ["Registry", "WinGet"],
-          "removable": true,
-          "notes": "Redundant with Windows Defender"
-        }
+        { "name": "Avast", "appx_pattern": "*Avast*", "detection": ["AppX", "Registry", "WinGet"], "removable": true, "notes": "Use Windows Defender instead" },
+        { "name": "AVG", "appx_pattern": "*AVG*", "detection": ["Registry", "WinGet"], "removable": true, "notes": "Redundant with Windows Defender" },
+        { "name": "Norton", "appx_pattern": "*Norton*", "detection": ["Registry", "WinGet"], "removable": true, "notes": "Trialware; redundant with Windows Defender" },
+        { "name": "McAfee", "appx_pattern": "*McAfee*", "detection": ["Registry", "WinGet"], "removable": true, "notes": "Resource-heavy trialware" },
+        { "name": "Kaspersky", "appx_pattern": "*Kaspersky*", "detection": ["Registry", "WinGet"], "removable": true },
+        { "name": "Webroot", "appx_pattern": "*Webroot*", "detection": ["Registry", "WinGet"], "removable": true },
+        { "name": "Segurazo / Digital Care (PUP)", "appx_pattern": "*Segurazo*", "detection": ["Registry"], "removable": true },
+        { "name": "Reimage Repair (PUP)", "appx_pattern": "*Reimage*", "detection": ["Registry"], "removable": true }
       ]
     },
     "utilities_questionable": {
-      "description": "Utility software of questionable necessity",
+      "description": "'System optimizer' / driver-updater utilities of dubious value (built-in Storage Sense + Windows Update cover these)",
       "apps": [
-        {
-          "name": "IOBit.AdvancedSystemCare",
-          "display_name": "Advanced SystemCare",
-          "detection": ["Registry", "WinGet"],
-          "removable": true,
-          "notes": "Windows Defender Optimization sufficient"
-        },
-        {
-          "name": "Piriform.CCleaner",
-          "display_name": "CCleaner",
-          "detection": ["Registry", "WinGet"],
-          "removable": true,
-          "notes": "Built-in Storage Sense is sufficient"
-        },
-        {
-          "name": "TuneUp.TuneUpUtilities",
-          "display_name": "TuneUp Utilities",
-          "detection": ["Registry"],
-          "removable": true
-        }
+        { "name": "IObit Advanced SystemCare", "appx_pattern": "*Advanced SystemCare*", "detection": ["Registry", "WinGet"], "removable": true },
+        { "name": "IObit Driver Booster", "appx_pattern": "*Driver Booster*", "detection": ["Registry", "WinGet"], "removable": true },
+        { "name": "CCleaner", "appx_pattern": "*CCleaner*", "detection": ["Registry", "WinGet"], "removable": true, "notes": "Built-in Storage Sense is sufficient" },
+        { "name": "TuneUp Utilities", "appx_pattern": "*TuneUp*", "detection": ["Registry"], "removable": true },
+        { "name": "Wondershare (bundled)", "appx_pattern": "*Wondershare*", "detection": ["Registry", "WinGet"], "removable": true },
+        { "name": "MyCleanPC (PUP)", "appx_pattern": "*MyCleanPC*", "detection": ["Registry"], "removable": true },
+        { "name": "PC Accelerate / PC Optimizer (PUP)", "appx_pattern": "*PC Optimizer*", "detection": ["Registry"], "removable": true },
+        { "name": "Driver Updater (WinZip)", "appx_pattern": "*Driver Updater*", "detection": ["Registry"], "removable": true }
       ]
     }
   }
