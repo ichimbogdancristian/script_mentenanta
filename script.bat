@@ -29,119 +29,28 @@ IF "%LEVEL%"=="" SET "LEVEL=INFO"
 SET "COMPONENT=%~3"
 IF "%COMPONENT%"=="" SET "COMPONENT=LAUNCHER"
 
-REM Unified format: [TIMESTAMP] [LEVEL] [COMPONENT] [PID:n] MESSAGE
-REM The [PID:n] tag identifies WHICH launcher instance wrote the line: concurrent
-REM script.bat runs interleave in the same maintenance.log and are otherwise
-REM indistinguishable (that ambiguity is what made the 2026-07-19 double-run
-REM incident unreadable). The report parser keeps the tag inside the message text.
-SET "LOG_ENTRY=[%LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] [PID:%INSTANCE_ID%] %~1"
+REM Unified format: [TIMESTAMP] [LEVEL] [COMPONENT] MESSAGE
+SET "LOG_ENTRY=[%LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] %~1"
 
-REM Use DELAYED expansion (!LOG_ENTRY!) for the echoed text: with %LOG_ENTRY% the value is
-REM substituted at parse time, so any >, <, & or | inside a message is treated as a shell
-REM operator. That silently truncated messages and created stray files
-REM (e.g. "...allocation is sufficient (5 GB >= 10 GB)" echoed only "...sufficient (5 GB").
-REM Delayed expansion substitutes AFTER parsing, so the text stays literal.
-REM Console shows INFO/SUCCESS/WARN/ERROR; DEBUG goes to maintenance.log only.
-IF /I NOT "%LEVEL%"=="DEBUG" ECHO !LOG_ENTRY!
-REM Guard on the VARIABLE, not the file: >> recreates a missing file, so lines are
-REM never dropped when another process moves/deletes maintenance.log mid-run (the
-REM old IF EXIST "%%LOG_FILE%%" guard silently discarded whole phases of the log).
-REM LOG_FILE is cleared at orchestrator handoff, which stops writes as before.
-IF DEFINED LOG_FILE ECHO !LOG_ENTRY!>>"%LOG_FILE%" 2>nul
+ECHO %LOG_ENTRY%
+IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
 EXIT /B
 
-:REFRESH_TOOL_PATHS
-REM Make freshly-installed tools reachable by APPENDING their known install directories
-REM to the CURRENT PATH.
-REM
-REM Do NOT rebuild PATH from the registry. HKLM/HKCU PATH are REG_EXPAND_SZ values holding
-REM unexpanded placeholders (e.g. "%SystemRoot%\system32"). REG QUERY returns that text
-REM verbatim, and assigning it to PATH leaves literal "%SystemRoot%" entries Windows cannot
-REM resolve - which silently breaks EVERY command, including powershell.exe and pwsh.exe.
-REM (That is exactly what happened: a PATH "refresh" after installing PS7 wiped the PATH,
-REM  causing the Chocolatey/MSI fallbacks, PSWindowsUpdate, Defender exclusions and all
-REM  PS7 detection to fail with "'powershell' is not recognized".)
-REM Appending known-good absolute directories can never destroy a working PATH.
-IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
-IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "PATH=%PATH%;%ProgramData%\chocolatey\bin"
-IF EXIST "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" SET "PATH=%PATH%;%LocalAppData%\Microsoft\WindowsApps"
-EXIT /B
-
-:FIND_PWSH
-REM Locate a usable PowerShell 7+ and set PWSH_PATH (empty when none is usable).
-REM
-REM Batch PATH probing alone cannot find every install shape:
-REM   * PATH is stale in this session right after an install.
-REM   * A Store / winget "msstore" install puts the real binary under
-REM     Program Files\WindowsApps and only exposes a per-user App Execution Alias.
-REM   * Side-by-side installs are not always under ...\PowerShell\7\.
-REM So we hand the search to Windows PowerShell 5.1 (always present): it collects every
-REM candidate (PATH, MSI/ZIP/Chocolatey dirs, the AppX package InstallLocation, the alias)
-REM and VALIDATES each by running it and requiring PSVersion.Major >= 7. First hit wins.
-REM
-REM BATCH ESCAPING RULES for the line below - do not "tidy" these away:
-REM   * The PowerShell code sits inside a double-quoted -Command argument, so cmd already
-REM     protects | & > inside it. Adding ^ escapes there would pass a LITERAL ^ to
-REM     PowerShell and break its syntax (that made this return nothing every time).
-REM   * It therefore uses NO carets and NO pipes at all (foreach loops instead), and only
-REM     single quotes, no % and no ! - so batch parsing and delayed expansion leave it intact.
-REM   * The trailing 2^>nul IS outside the quotes and must stay escaped for FOR /F.
-SET "PWSH_PATH="
-FOR /F "usebackq delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; $c=@(); $g=@(Get-Command pwsh.exe -CommandType Application -EA 0); if($g.Count -gt 0){$c+=$g[0].Source}; foreach($r in @((Join-Path $env:ProgramFiles 'PowerShell'),(Join-Path $env:LOCALAPPDATA 'Microsoft\powershell'),(Join-Path $env:ProgramData 'chocolatey\lib\powershell-core\tools'))){ if($r -and (Test-Path $r)){ foreach($f in @(Get-ChildItem $r -Filter pwsh.exe -Recurse -EA 0)){ $c+=$f.FullName } } }; foreach($a in @(Get-AppxPackage -Name Microsoft.PowerShell -EA 0)){ if($a.InstallLocation){ $c+=(Join-Path $a.InstallLocation 'pwsh.exe') } }; $c+=(Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\pwsh.exe'); foreach($p in $c){ if($p -and (Test-Path $p)){ $v=(& $p -NoProfile -NoLogo -Command '$PSVersionTable.PSVersion.Major'); if($v -and [int]$v -ge 7){ Write-Output $p; break } } }" 2^>nul`) DO SET "PWSH_PATH=%%i"
-EXIT /B
-
-:FIND_OTHER_INSTANCES
-REM Sets OTHER_INSTANCES to a comma-separated list of OTHER cmd.exe PIDs whose command
-REM line references script.bat. Empty when this is the only instance.
-REM
-REM Self-exclusion MUST cover the probe's whole ANCESTOR CHAIN, not just its parent:
-REM FOR /F executes the backquoted command through an ephemeral child cmd.exe, so the
-REM chain is: this batch's cmd -> FOR /F child cmd -> powershell. Excluding only the
-REM powershell's parent (the FOR /F child) left the batch's own cmd "visible" and the
-REM first version of this guard aborted every run by detecting ITSELF. INSTANCE_ID is
-REM excluded too as a belt-and-suspenders (covers an ancestor walk cut short).
-REM Process-based detection (instead of a lock file) self-heals after crashes: a dead
-REM instance simply stops matching, so nothing stale ever blocks the next run.
-REM Same escaping rules as :FIND_PWSH: single quotes only, no pipes, no ^ escapes,
-REM no %% and no ^^! inside the PowerShell code.
-SET "OTHER_INSTANCES="
-FOR /F "usebackq delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; $skip='%INSTANCE_ID%'; $all=@(Get-CimInstance Win32_Process); $byId=@{}; foreach($p in $all){ $byId[[int]$p.ProcessId]=$p }; $anc=@(); $cur=[int]$PID; for($i=0; $i -lt 10; $i++){ $anc += $cur; $proc=$byId[$cur]; if(-not $proc){ break }; $cur=[int]$proc.ParentProcessId; if($cur -le 0){ break } }; $hits=@(); foreach($p in $all){ if($p.Name -eq 'cmd.exe' -and ($anc -notcontains [int]$p.ProcessId) -and ([string]$p.ProcessId -ne $skip) -and $p.CommandLine -match 'script\.bat'){ $hits += [int]$p.ProcessId } }; if($hits.Count -gt 0){ Write-Output ($hits -join ',') }" 2^>nul`) DO SET "OTHER_INSTANCES=%%i"
-EXIT /B
-
-:INIT_LOG
-REM Append a session banner to %LOG_FILE% (creates the file if it does not exist).
-REM Append mode means elevation/PS7 relaunches continue the same maintenance.log.
-FOR /F "tokens=1-4 delims=/ " %%A IN ('DATE /T') DO SET "BANNER_DATE=%%A %%B %%C %%D"
-FOR /F "tokens=1-2 delims=/:" %%A IN ('TIME /T') DO SET "BANNER_TIME=%%A:%%B"
-(
-    ECHO.
-    ECHO ================================================
-    ECHO  Windows Maintenance Automation - Launcher
-    ECHO  Session: %COMPUTERNAME% \ %USERNAME%
-    ECHO  Date: %BANNER_DATE%  Time: %BANNER_TIME%
-    ECHO  Instance: cmd PID %INSTANCE_ID%
-    ECHO  Script: %SCRIPT_PATH%
-    ECHO ================================================
-) >> "%LOG_FILE%" 2>nul
-EXIT /B
-
-:MIGRATE_LOG
-REM Move maintenance.log from next-to-script.bat into the extracted repo's
-REM temp_files\logs and repoint LOG_FILE so the rest of the launcher (and then the
-REM orchestrator) keep writing to the same file in its permanent location.
-SET "MAINT_LOG_DEST_DIR=%EXTRACTED_PATH%\temp_files\logs"
-IF NOT EXIST "%MAINT_LOG_DEST_DIR%" MKDIR "%MAINT_LOG_DEST_DIR%" >nul 2>&1
-SET "MAINT_LOG_DEST=%MAINT_LOG_DEST_DIR%\maintenance.log"
-IF EXIST "%LOG_FILE%" MOVE /Y "%LOG_FILE%" "%MAINT_LOG_DEST%" >nul 2>&1
-REM Repoint LOG_FILE only when the file actually arrived. Repointing after a failed
-REM MOVE (file locked by another instance, or already moved away) used to aim every
-REM later launcher line at a nonexistent path, and the old IF EXIST write guard then
-REM silently dropped them - the log looked like the run "skipped" whole phases.
-IF EXIST "%MAINT_LOG_DEST%" (
-    SET "LOG_FILE=%MAINT_LOG_DEST%"
-    CALL :LOG_MESSAGE "maintenance.log migrated to: !LOG_FILE!" "INFO" "LAUNCHER"
-) ELSE (
-    CALL :LOG_MESSAGE "maintenance.log migration to %MAINT_LOG_DEST% failed (file locked or already moved) - continuing at %LOG_FILE%" "WARN" "LAUNCHER"
+:REFRESH_PATH_FROM_REGISTRY
+REM Refresh PATH environment variable from system registry
+FOR /F "tokens=2*" %%i IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul') DO (
+    SET "SYSTEM_PATH=%%j"
+)
+FOR /F "tokens=2*" %%i IN ('REG QUERY "HKCU\Environment" /v PATH 2^>nul') DO (
+    SET "USER_PATH=%%j"
+)
+REM Combine system and user PATH
+IF DEFINED SYSTEM_PATH IF DEFINED USER_PATH (
+    SET "PATH=%SYSTEM_PATH%;%USER_PATH%"
+) ELSE IF DEFINED SYSTEM_PATH (
+    SET "PATH=%SYSTEM_PATH%"
+) ELSE IF DEFINED USER_PATH (
+    SET "PATH=%USER_PATH%"
 )
 EXIT /B
 
@@ -150,55 +59,32 @@ EXIT /B
 REM -----------------------------------------------------------------------------
 REM Self-Discovery Environment Setup
 REM -----------------------------------------------------------------------------
-REM Path detection FIRST - needed to place maintenance.log next to script.bat.
+CALL :LOG_MESSAGE "Starting Windows Maintenance Automation Launcher v2.0" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Environment: %USERNAME%@%COMPUTERNAME%" "INFO" "LAUNCHER"
+
+REM Enhanced path detection - works from any location
 SET "SCRIPT_PATH=%~f0"
 SET "SCRIPT_DIR=%~dp0"
 SET "SCRIPT_NAME=%~nx0"
 SET "WORKING_DIR=%SCRIPT_DIR%"
 
-REM Store original script directory BEFORE any updates (log location + report copy target)
+REM v3.1 FIX: Store original script directory BEFORE any updates (used for log file location)
 SET "ORIGINAL_SCRIPT_DIR=%SCRIPT_DIR%"
-
-REM Instance identity for the [PID:n] tag on every log line and for the
-REM single-instance guard below.
-REM GOTCHA: FOR /F runs its backquoted command through a CHILD cmd.exe, so the
-REM probing powershell's DIRECT parent is that ephemeral child - NOT the cmd
-REM running this batch. (Assuming parent == our PID made the first guard version
-REM detect its own launcher cmd as a foreign instance and abort every run.)
-REM So instead: walk the ancestor chain upward and take the first cmd.exe whose
-REM command line references script.bat (falling back to the first cmd.exe ancestor
-REM for a batch started by typing into an interactive cmd window).
-REM %RANDOM% fallback if the probe fails so interleaved instances still get
-REM distinct tags.
-SET "INSTANCE_ID=R%RANDOM%"
-FOR /F "usebackq delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; $all=@(Get-CimInstance Win32_Process); $byId=@{}; foreach($p in $all){ $byId[[int]$p.ProcessId]=$p }; $cur=[int]$PID; $best=''; $firstCmd=''; for($i=0; $i -lt 10; $i++){ $proc=$byId[$cur]; if(-not $proc){ break }; $par=[int]$proc.ParentProcessId; $pp=$byId[$par]; if(-not $pp){ break }; if($pp.Name -eq 'cmd.exe'){ if($firstCmd -eq ''){ $firstCmd=$par }; if($pp.CommandLine -match 'script\.bat'){ $best=$par; break } }; $cur=$par }; if($best -ne ''){ Write-Output $best } elseif($firstCmd -ne ''){ Write-Output $firstCmd }" 2^>nul`) DO SET "INSTANCE_ID=%%i"
-
-REM -----------------------------------------------------------------------------
-REM Unified maintenance.log - created next to script.bat immediately so the whole run
-REM is captured from launch. After extraction it is migrated into temp_files\logs
-REM (see :MIGRATE_LOG) and both the launcher and orchestrator keep appending to it.
-REM -----------------------------------------------------------------------------
-SET "LOG_FILE=%ORIGINAL_SCRIPT_DIR%maintenance.log"
-CALL :INIT_LOG
-
-CALL :LOG_MESSAGE "Starting Windows Maintenance Automation Launcher v2.0" "INFO" "LAUNCHER"
-CALL :LOG_MESSAGE "Environment: %USERNAME%@%COMPUTERNAME%" "INFO" "LAUNCHER"
 CALL :LOG_MESSAGE "Original script directory stored: %ORIGINAL_SCRIPT_DIR%" "DEBUG" "LAUNCHER"
-CALL :LOG_MESSAGE "maintenance.log created next to script.bat: %LOG_FILE%" "INFO" "LAUNCHER"
 
 REM Robust Script Path Detection for Scheduled Tasks (use the exact running script path)
 SET "SCHEDULED_TASK_SCRIPT_PATH="
 IF EXIST "%SCRIPT_PATH%" (
     SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
-    CALL :LOG_MESSAGE "Scheduled tasks will use current script path: !SCHEDULED_TASK_SCRIPT_PATH!" "DEBUG" "LAUNCHER"
+    CALL :LOG_MESSAGE "Scheduled tasks will use current script path: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
 )
 IF NOT DEFINED SCHEDULED_TASK_SCRIPT_PATH IF EXIST "%SCRIPT_DIR%script.bat" (
     SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_DIR%script.bat"
-    CALL :LOG_MESSAGE "Scheduled tasks will use directory script path: !SCHEDULED_TASK_SCRIPT_PATH!" "DEBUG" "LAUNCHER"
+    CALL :LOG_MESSAGE "Scheduled tasks will use directory script path: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
 )
 IF NOT DEFINED SCHEDULED_TASK_SCRIPT_PATH (
     SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
-    CALL :LOG_MESSAGE "Using fallback script path for scheduled tasks: !SCHEDULED_TASK_SCRIPT_PATH!" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "Using fallback script path for scheduled tasks: %SCHEDULED_TASK_SCRIPT_PATH%" "WARN" "LAUNCHER"
 )
 
 REM Detect if running from a network location
@@ -210,9 +96,36 @@ IF "%SCRIPT_PATH:~0,2%"=="\\" (
     CALL :LOG_MESSAGE "Running from local location: %SCRIPT_PATH%" "INFO" "LAUNCHER"
 )
 
-REM Environment variables for PowerShell orchestrator (maintenance.log already open above).
-REM (WORKING_DIRECTORY removed - it was assigned here and again after extraction but read by
-REM  nothing; the orchestrator derives its own root from $PSScriptRoot.)
+REM ============================================================================
+REM CRITICAL FIX: Use bootstrap log in TEMP until repository is extracted
+REM This ensures all logs end up in ONE location: extracted_repo\temp_files\logs
+REM ============================================================================
+SET "BOOTSTRAP_LOG=%TEMP%\maintenance_bootstrap_%RANDOM%.log"
+SET "LOG_FILE=%BOOTSTRAP_LOG%"
+
+REM Initialize bootstrap log with banner BEFORE any LOG_MESSAGE calls
+FOR /F "tokens=1-4 delims=/ " %%A IN ('DATE /T') DO SET "BANNER_DATE=%%A %%B %%C %%D"
+FOR /F "tokens=1-2 delims=/:" %%A IN ('TIME /T') DO SET "BANNER_TIME=%%A:%%B"
+
+(
+    ECHO ================================================
+    ECHO  Windows Maintenance Automation Launcher v2.0
+    ECHO ================================================
+    ECHO.
+    ECHO  Computer: %COMPUTERNAME%
+    ECHO  User: %USERNAME%
+    ECHO  Date: %BANNER_DATE%
+    ECHO  Time: %BANNER_TIME%
+    ECHO  Bootstrap Phase: Using temporary log until repository extraction
+    ECHO.
+    ECHO ================================================
+    ECHO.
+) > "%LOG_FILE%"
+
+CALL :LOG_MESSAGE "Bootstrap log initialized: %BOOTSTRAP_LOG% (will be consolidated after extraction)" "DEBUG" "LAUNCHER"
+
+REM Environment variables for PowerShell orchestrator
+SET "WORKING_DIRECTORY=%WORKING_DIR%"
 SET "SCRIPT_LOG_FILE=%LOG_FILE%"
 
 REM Repository configuration for auto-updates
@@ -241,44 +154,16 @@ CALL :LOG_MESSAGE "Admin check results: NET=%NET_ADMIN_CHECK%, PS=%PS_ADMIN_CHEC
 
 IF "%IS_ADMIN%"=="NO" (
     CALL :LOG_MESSAGE "Administrator privileges required. Attempting elevation..." "WARN" "LAUNCHER"
-    powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\" %*' -Verb RunAs -WindowStyle Normal"
+    powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs -WindowStyle Normal"
     IF !ERRORLEVEL! NEQ 0 (
         CALL :LOG_MESSAGE "Elevation failed or was cancelled by user" "ERROR" "LAUNCHER"
-        TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
+        PAUSE
         EXIT /B 1
     )
     exit
 )
 
 CALL :LOG_MESSAGE "Administrator privileges confirmed" "SUCCESS" "LAUNCHER"
-
-REM -----------------------------------------------------------------------------
-REM Single-Instance Guard
-REM Concurrent launcher instances are mutually DESTRUCTIVE: every instance deletes
-REM and re-extracts the SAME %WORKING_DIR%script_mentenanta-master folder, downloads
-REM to the SAME update.zip, and moves the SAME maintenance.log. A second instance
-REM therefore makes the first one fail mid-run with "No valid PowerShell
-REM orchestrator found" / "config\lists directory not found" while both logs
-REM interleave with silent gaps (observed 2026-07-19). Only ONE instance may pass.
-REM Placed AFTER elevation so the un-elevated parent (which exits within ~1s of
-REM spawning the elevated child) is not counted against its own child.
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Checking for other running launcher instances..." "INFO" "LAUNCHER"
-CALL :FIND_OTHER_INSTANCES
-IF DEFINED OTHER_INSTANCES (
-    REM One retry: an elevation parent or a just-finished run may still be exiting.
-    CALL :LOG_MESSAGE "Other launcher cmd process(es) detected: !OTHER_INSTANCES! - rechecking in 8s..." "WARN" "LAUNCHER"
-    TIMEOUT /T 8 >nul 2>&1
-    CALL :FIND_OTHER_INSTANCES
-)
-IF DEFINED OTHER_INSTANCES (
-    CALL :LOG_MESSAGE "Another script.bat instance is still running (cmd PID(s): !OTHER_INSTANCES!)" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Concurrent runs delete each other's downloaded/extracted files and move the shared log - aborting THIS instance (PID %INSTANCE_ID%)." "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Let the other window finish (or close it), then run script.bat again." "ERROR" "LAUNCHER"
-    TIMEOUT /T 20 >nul 2>&1
-    EXIT /B 9
-)
-CALL :LOG_MESSAGE "No other launcher instances running - continuing" "SUCCESS" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
 REM Startup Task Cleanup and Pending Restart Handling (Always check first)
@@ -308,11 +193,17 @@ SET "RESTART_SIGNALS_WU="
 
 REM FIX: Reboot guard functionality removed per user request
 
-REM PSWindowsUpdate-based probe removed: on the fresh machines this launcher targets,
-REM PSWindowsUpdate is not installed yet at this point (it is installed later, in
-REM Dependency Management), so the probe always fell through to "not available" and
-REM cost 2-15s doing nothing. The registry markers below are already the authoritative
-REM signals per this script's own design - detect from them directly.
+REM Prefer Windows Update reboot status when PSWindowsUpdate is available
+powershell -ExecutionPolicy Bypass -Command "try { if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Import-Module PSWindowsUpdate -Force; if (Get-Command Get-WURebootStatus -ErrorAction SilentlyContinue) { $status = Get-WURebootStatus -Silent -ErrorAction SilentlyContinue; if ($status -and $status.RebootRequired) { Write-Host 'WU_REBOOT_REQUIRED'; exit 1 } else { Write-Host 'WU_REBOOT_NOT_REQUIRED'; exit 0 } } else { Write-Host 'WU_REBOOT_CMD_MISSING'; exit 2 } } else { Write-Host 'PSWINDOWSUPDATE_NOT_AVAILABLE'; exit 3 } } catch { Write-Host 'UPDATE_CHECK_FAILED'; exit 4 }" >nul 2>&1
+IF !ERRORLEVEL! EQU 1 (
+    SET "RESTART_NEEDED=YES"
+    IF NOT DEFINED RESTART_SIGNALS (SET "RESTART_SIGNALS=PSWindowsUpdate-RebootRequired") ELSE (SET "RESTART_SIGNALS=!RESTART_SIGNALS!,PSWindowsUpdate-RebootRequired")
+    SET "RESTART_NEEDED_WU=YES"
+    IF NOT DEFINED RESTART_SIGNALS_WU (SET "RESTART_SIGNALS_WU=PSWindowsUpdate-RebootRequired") ELSE (SET "RESTART_SIGNALS_WU=!RESTART_SIGNALS_WU!,PSWindowsUpdate-RebootRequired")
+)
+IF !ERRORLEVEL! EQU 2 CALL :LOG_MESSAGE "PSWindowsUpdate Get-WURebootStatus not available. Continuing with registry reboot signals." "INFO" "LAUNCHER"
+IF !ERRORLEVEL! EQU 3 CALL :LOG_MESSAGE "PSWindowsUpdate not available. Continuing with registry reboot signals." "INFO" "LAUNCHER"
+IF !ERRORLEVEL! EQU 4 CALL :LOG_MESSAGE "PSWindowsUpdate reboot check failed. Continuing with registry reboot signals." "WARN" "LAUNCHER"
 
 REM Windows Update-specific registry checks (authoritative markers only)
 REM -----------------------------------------------------------------------
@@ -400,11 +291,15 @@ IF /I "%RESTART_NEEDED_WU%"=="YES" (
 
 REM No pending restart; continue normal execution
 
-REM Clean up any legacy restart_flag.tmp left by older versions that self-relaunched for
-REM PS7 detection. That relaunch (and its loop) has been removed, so the flag is now just
-REM stale state to sweep away in both possible locations.
-DEL "%ORIGINAL_SCRIPT_DIR%restart_flag.tmp" >nul 2>&1
-DEL "%WORKING_DIR%restart_flag.tmp" >nul 2>&1
+REM Check for PowerShell restart flag
+IF EXIST "%WORKING_DIR%restart_flag.tmp" (
+    CALL :LOG_MESSAGE "Detected PowerShell 7 installation restart flag - cleaning up..." "INFO" "LAUNCHER"
+    FOR /F "tokens=*" %%i IN ('TYPE "%WORKING_DIR%restart_flag.tmp" 2^>nul') DO (
+        CALL :LOG_MESSAGE "Restart context: %%i" "DEBUG" "LAUNCHER"
+    )
+    DEL "%WORKING_DIR%restart_flag.tmp" >nul 2>&1
+    CALL :LOG_MESSAGE "Script restarted after PowerShell 7 installation - continuing with fresh environment" "SUCCESS" "LAUNCHER"
+)
 
 REM Create/Verify monthly maintenance scheduled task before continuing
 SET "TASK_NAME=WindowsMaintenanceAutomation"
@@ -456,7 +351,7 @@ CALL :LOG_MESSAGE "PowerShell version: %PS_VERSION%" "INFO" "LAUNCHER"
 IF %PS_VERSION% LSS 5 (
     CALL :LOG_MESSAGE "PowerShell 5.1 or higher required. Current: %PS_VERSION%" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "Please install Windows PowerShell 5.1 or PowerShell 7+" "ERROR" "LAUNCHER"
-    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
+    PAUSE
     EXIT /B 2
 )
 
@@ -467,23 +362,10 @@ REM Repository Download and Extraction (Moved before structure discovery)
 REM -----------------------------------------------------------------------------
 :DOWNLOAD_REPOSITORY
 CALL :LOG_MESSAGE "Downloading latest repository from GitHub..." "INFO" "LAUNCHER"
-CALL :LOG_MESSAGE "Download phase state: WORKING_DIR=%WORKING_DIR% ZIP=%ZIP_FILE% EXTRACT=%WORKING_DIR%%EXTRACT_FOLDER%" "DEBUG" "LAUNCHER"
 
-REM Clean up leftovers from a previous run. If the extracted folder cannot be fully
-REM removed (files held open by another process), abort NOW instead of extracting
-REM into a half-deleted tree: ZipFile.ExtractToDirectory fails on existing files and
-REM the run would otherwise die much later with a confusing "orchestrator not found".
+REM Clean up existing files
 IF EXIST "%ZIP_FILE%" DEL /Q "%ZIP_FILE%" >nul 2>&1
-IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" (
-    CALL :LOG_MESSAGE "Removing leftover extracted folder from a previous run: %WORKING_DIR%%EXTRACT_FOLDER%" "DEBUG" "LAUNCHER"
-    RMDIR /S /Q "%WORKING_DIR%%EXTRACT_FOLDER%" >nul 2>&1
-)
-IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" (
-    CALL :LOG_MESSAGE "Could not remove previous extracted folder - files are in use (a previous run's window still open? antivirus scan?)" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Close anything using %WORKING_DIR%%EXTRACT_FOLDER%, then run script.bat again." "ERROR" "LAUNCHER"
-    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
-    EXIT /B 3
-)
+IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" RMDIR /S /Q "%WORKING_DIR%%EXTRACT_FOLDER%" >nul 2>&1
 
 REM Download repository
 CALL :LOG_MESSAGE "Downloading from: %REPO_URL%" "DEBUG" "LAUNCHER"
@@ -491,13 +373,13 @@ powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'Silent
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository download failed. Check internet connection." "ERROR" "LAUNCHER"
-    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
+    PAUSE
     EXIT /B 3
 )
 
 IF NOT EXIST "%ZIP_FILE%" (
     CALL :LOG_MESSAGE "Download verification failed - ZIP file not found" "ERROR" "LAUNCHER"
-    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
+    PAUSE
     EXIT /B 3
 )
 
@@ -509,7 +391,7 @@ powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository extraction failed" "ERROR" "LAUNCHER"
-    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
+    PAUSE
     EXIT /B 3
 )
 
@@ -518,37 +400,42 @@ SET "EXTRACTED_PATH=%WORKING_DIR%%EXTRACT_FOLDER%"
 IF EXIST "%EXTRACTED_PATH%" (
     CALL :LOG_MESSAGE "Repository extracted to: %EXTRACTED_PATH%" "SUCCESS" "LAUNCHER"
     
-    REM ---------------------------------------------------------------------------------
-    REM Self-update: DEFERRED ON PURPOSE - do NOT overwrite script.bat while it is running.
-    REM
-    REM cmd.exe streams a .bat file from disk by BYTE OFFSET as it executes. Replacing the
-    REM file mid-run makes execution resume at that same offset inside the NEW content, so
-    REM it jumps into the middle of unrelated code. Observed symptoms: the launcher skipped
-    REM the whole PS7-detection section, logged mutually exclusive IF/ELSE branches together,
-    REM and then launched the orchestrator with an EMPTY PS_EXECUTABLE (the "crash").
-    REM
-    REM The orchestrator (a separate pwsh process that starts after this launcher exits)
-    REM performs the copy instead - see PENDING_SCRIPT_UPDATE below.
-    REM ---------------------------------------------------------------------------------
+    REM Replace script.bat with the one from extracted folder
     IF EXIST "%EXTRACTED_PATH%\script.bat" (
-        SET "PENDING_SCRIPT_UPDATE=%EXTRACTED_PATH%\script.bat"
-        CALL :LOG_MESSAGE "script.bat self-update deferred to the orchestrator (a running .bat cannot safely overwrite itself)" "INFO" "LAUNCHER"
+        CALL :LOG_MESSAGE "Updating script.bat from extracted repository" "INFO" "LAUNCHER"
+        
+        REM Use ORIGINAL_SCRIPT_DIR to ensure we overwrite the correct script.bat location
+        SET "ORIGINAL_SCRIPT_BAT=%ORIGINAL_SCRIPT_DIR%script.bat"
+        SET "BACKUP_SCRIPT=%ORIGINAL_SCRIPT_DIR:~0,-1%.bat.backup"
+        
+        IF EXIST "%ORIGINAL_SCRIPT_BAT%" (
+            COPY /Y "%ORIGINAL_SCRIPT_BAT%" "%BACKUP_SCRIPT%" >nul 2>&1
+            CALL :LOG_MESSAGE "Original script.bat backed up to: %BACKUP_SCRIPT%" "DEBUG" "LAUNCHER"
+        )
+        
+        REM Copy extracted script.bat to original location
+        COPY /Y "%EXTRACTED_PATH%\script.bat" "%ORIGINAL_SCRIPT_BAT%" >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "Successfully replaced script.bat with version from repository at: %ORIGINAL_SCRIPT_BAT%" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Failed to replace script.bat at %ORIGINAL_SCRIPT_BAT% - continuing with current version" "WARN" "LAUNCHER"
+        )
     ) ELSE (
         CALL :LOG_MESSAGE "No script.bat found in extracted repository" "WARN" "LAUNCHER"
     )
     
     REM Update working directory to extracted folder for proper module loading
     SET "WORKING_DIR=%EXTRACTED_PATH%\"
-    CALL :LOG_MESSAGE "Updated working directory to: !WORKING_DIR!" "INFO" "LAUNCHER"
-
-    REM Migrate maintenance.log from next-to-script.bat into temp_files\logs and keep
-    REM writing there. The orchestrator appends to this same file (via MAINTENANCE_LOG).
-    CALL :MIGRATE_LOG
-    REM !LOG_FILE! (delayed) - %LOG_FILE% would capture the stale PRE-migration path, and the
-    REM orchestrator would then open/append to the wrong maintenance.log.
-    SET "SCRIPT_LOG_FILE=!LOG_FILE!"
-    SET "MAINTENANCE_LOG=!LOG_FILE!"
-    CALL :LOG_MESSAGE "Orchestrator will append to: !MAINTENANCE_LOG!" "DEBUG" "LAUNCHER"
+    SET "WORKING_DIRECTORY=%WORKING_DIR%"
+    CALL :LOG_MESSAGE "Updated working directory to: %WORKING_DIR%" "INFO" "LAUNCHER"
+    
+    REM Keep bootstrap log alive - orchestrator will inject it into maintenance.log
+    REM via $env:BOOTSTRAP_LOG (inherited by the child pwsh process)
+    CALL :LOG_MESSAGE "Bootstrap log ready for orchestrator injection: %BOOTSTRAP_LOG%" "DEBUG" "LAUNCHER"
+    
+    REM Update environment variable for PowerShell orchestrator
+    SET "SCRIPT_LOG_FILE=%WORKING_DIR%temp_files\logs\maintenance.log"
+    CALL :LOG_MESSAGE "SCRIPT_LOG_FILE set for orchestrator: %SCRIPT_LOG_FILE%" "DEBUG" "LAUNCHER"
     
     REM Set orchestrator path within the extracted folder
     IF EXIST "%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1" (
@@ -559,12 +446,12 @@ IF EXIST "%EXTRACTED_PATH%" (
         CALL :LOG_MESSAGE "Using extracted legacy orchestrator" "INFO" "LAUNCHER"
     ) ELSE (
         CALL :LOG_MESSAGE "No valid orchestrator found in extracted files" "ERROR" "LAUNCHER"
-        TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
+        PAUSE
         EXIT /B 3
     )
 ) ELSE (
     CALL :LOG_MESSAGE "Repository extraction verification failed" "ERROR" "LAUNCHER"
-    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
+    PAUSE
     EXIT /B 3
 )
 
@@ -575,7 +462,6 @@ REM ----------------------------------------------------------------------------
 REM Project Structure Discovery and Validation (Moved after extraction)
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Discovering project structure..." "INFO" "LAUNCHER"
-CALL :LOG_MESSAGE "Structure scan root: %WORKING_DIR%" "DEBUG" "LAUNCHER"
 
 REM Check for required components with detailed verification
 SET "STRUCTURE_VALID=YES"
@@ -585,74 +471,74 @@ SET "COMPONENTS_FOUND=0"
 REM Look for MaintenanceOrchestrator.ps1
 IF EXIST "%WORKING_DIR%MaintenanceOrchestrator.ps1" (
     SET "ORCHESTRATOR_PATH=%WORKING_DIR%MaintenanceOrchestrator.ps1"
-    CALL :LOG_MESSAGE "[OK] Found orchestrator: MaintenanceOrchestrator.ps1" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "✓ Found orchestrator: MaintenanceOrchestrator.ps1" "SUCCESS" "LAUNCHER"
     SET /A COMPONENTS_FOUND+=1
 ) ELSE IF EXIST "%WORKING_DIR%script.ps1" (
     SET "ORCHESTRATOR_PATH=%WORKING_DIR%script.ps1"
-    CALL :LOG_MESSAGE "[OK] Found legacy orchestrator: script.ps1" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "✓ Found legacy orchestrator: script.ps1" "INFO" "LAUNCHER"
     SET /A COMPONENTS_FOUND+=1
 ) ELSE (
-    CALL :LOG_MESSAGE "[X] No PowerShell orchestrator found in current directory" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "✗ No PowerShell orchestrator found in current directory" "WARN" "LAUNCHER"
     SET "STRUCTURE_VALID=NO"
 )
 
 REM Check for config directory and its contents (FIX #7: Check new subdirectory structure)
 IF EXIST "%WORKING_DIR%config" (
-    CALL :LOG_MESSAGE "[OK] Found configuration directory" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "✓ Found configuration directory" "SUCCESS" "LAUNCHER"
     SET /A COMPONENTS_FOUND+=1
     
     REM Check for settings subdirectory (execution configs)
     IF EXIST "%WORKING_DIR%config\settings" (
-        CALL :LOG_MESSAGE "  [OK] config\settings directory present" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "  ✓ config\settings directory present" "SUCCESS" "LAUNCHER"
         IF EXIST "%WORKING_DIR%config\settings\main-config.json" (
-            CALL :LOG_MESSAGE "    [OK] main-config.json present" "SUCCESS" "LAUNCHER"
+            CALL :LOG_MESSAGE "    ✓ main-config.json present" "SUCCESS" "LAUNCHER"
         ) ELSE (
-            CALL :LOG_MESSAGE "    [X] main-config.json missing" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "    ✗ main-config.json missing" "WARN" "LAUNCHER"
         )
     ) ELSE (
-        CALL :LOG_MESSAGE "  [X] config\settings directory not found" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  ✗ config\settings directory not found" "WARN" "LAUNCHER"
     )
     
     REM Check for lists subdirectory (data lists)
     IF EXIST "%WORKING_DIR%config\lists" (
-        CALL :LOG_MESSAGE "  [OK] config\lists directory present" "SUCCESS" "LAUNCHER"
-        IF EXIST "%WORKING_DIR%config\lists\bloatware\bloatware-list.json" (
-            CALL :LOG_MESSAGE "    [OK] bloatware-list.json present" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "  ✓ config\lists directory present" "SUCCESS" "LAUNCHER"
+        IF EXIST "%WORKING_DIR%config\lists\bloatware-list.json" (
+            CALL :LOG_MESSAGE "    ✓ bloatware-list.json present" "SUCCESS" "LAUNCHER"
         ) ELSE (
-            CALL :LOG_MESSAGE "    [X] bloatware-list.json missing" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "    ✗ bloatware-list.json missing" "WARN" "LAUNCHER"
         )
     ) ELSE (
-        CALL :LOG_MESSAGE "  [X] config\lists directory not found" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  ✗ config\lists directory not found" "WARN" "LAUNCHER"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "[X] Configuration directory not found" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "✗ Configuration directory not found" "WARN" "LAUNCHER"
     SET "STRUCTURE_VALID=NO"
 )
 
 REM Check for modules directory and core modules
 IF EXIST "%WORKING_DIR%modules" (
-    CALL :LOG_MESSAGE "[OK] Found modules directory" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "✓ Found modules directory" "SUCCESS" "LAUNCHER"
     SET /A COMPONENTS_FOUND+=1
     
     IF EXIST "%WORKING_DIR%modules\core" (
-        CALL :LOG_MESSAGE "  [OK] Core modules directory present" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "  ✓ Core modules directory present" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "  [X] Core modules directory missing" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  ✗ Core modules directory missing" "WARN" "LAUNCHER"
     )
     
     IF EXIST "%WORKING_DIR%modules\type1" (
-        CALL :LOG_MESSAGE "  [OK] Type1 modules directory present" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "  ✓ Type1 modules directory present" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "  [X] Type1 modules directory missing" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  ✗ Type1 modules directory missing" "WARN" "LAUNCHER"
     )
     
     IF EXIST "%WORKING_DIR%modules\type2" (
-        CALL :LOG_MESSAGE "  [OK] Type2 modules directory present" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "  ✓ Type2 modules directory present" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "  [X] Type2 modules directory missing" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  ✗ Type2 modules directory missing" "WARN" "LAUNCHER"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "[X] Modules directory not found" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "✗ Modules directory not found" "WARN" "LAUNCHER"
     SET "STRUCTURE_VALID=NO"
 )
 
@@ -660,7 +546,7 @@ CALL :LOG_MESSAGE "Project structure verification: %COMPONENTS_FOUND%/3 major co
 
 IF "%STRUCTURE_VALID%"=="NO" (
     CALL :LOG_MESSAGE "Project structure incomplete but repository already downloaded. Check extraction." "ERROR" "LAUNCHER"
-    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
+    PAUSE
     EXIT /B 4
 ) ELSE (
     CALL :LOG_MESSAGE "Project structure validated" "SUCCESS" "LAUNCHER"
@@ -813,10 +699,7 @@ CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
             )
         )
         
-        REM !WINGET_AVAILABLE! (delayed): WINGET_AVAILABLE is re-assigned above inside this same
-        REM block, so a %-read here resolves at parse time to the enclosing block's "NO" and this
-        REM warning fired even when winget had just been installed successfully.
-        IF "!WINGET_AVAILABLE!"=="NO" (
+        IF "%WINGET_AVAILABLE%"=="NO" (
             CALL :LOG_MESSAGE "All winget installation methods failed" "WARN" "LAUNCHER"
         )
     )
@@ -826,13 +709,43 @@ REM PowerShell 7 Detection and Installation (Moved after winget setup)
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Checking PowerShell 7 availability..." "INFO" "LAUNCHER"
 
-REM One robust locator (see :FIND_PWSH) replaces the old PATH/known-path probes, which
-REM could not see a Store/MSIX install and so reported "not found" with PS7 installed.
+REM Try multiple detection methods before deciding to install
 SET "PS7_FOUND=NO"
-CALL :FIND_PWSH
-IF DEFINED PWSH_PATH (
+
+REM Method 1: Direct pwsh.exe command
+pwsh.exe -Version >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
     SET "PS7_FOUND=YES"
-    CALL :LOG_MESSAGE "PowerShell 7 found: !PWSH_PATH! - skipping installation" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "PowerShell 7 detected via pwsh.exe command" "DEBUG" "LAUNCHER"
+)
+
+REM Method 2: Check default installation path
+IF "%PS7_FOUND%"=="NO" (
+    IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
+        "%ProgramFiles%\PowerShell\7\pwsh.exe" -Version >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            SET "PS7_FOUND=YES"
+            CALL :LOG_MESSAGE "PowerShell 7 detected at default installation path" "DEBUG" "LAUNCHER"
+        )
+    )
+)
+
+REM Method 3: Check WindowsApps for App Execution Alias
+IF "%PS7_FOUND%"=="NO" (
+    IF EXIST "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" (
+        "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" -Version >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            SET "PS7_FOUND=YES"
+            CALL :LOG_MESSAGE "PowerShell 7 detected via WindowsApps alias" "DEBUG" "LAUNCHER"
+        )
+    )
+)
+
+REM Final check - re-verify PowerShell 7 availability before installation attempts
+pwsh.exe -Version >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    SET "PS7_FOUND=YES"
+    CALL :LOG_MESSAGE "PowerShell 7 detected - skipping installation" "SUCCESS" "LAUNCHER"
 )
 
 IF "%PS7_FOUND%"=="NO" (
@@ -843,10 +756,7 @@ IF "%PS7_FOUND%"=="NO" (
     REM 1) Try installing PowerShell via winget (if available)
     IF "%WINGET_AVAILABLE%"=="YES" (
         CALL :LOG_MESSAGE "Installing PowerShell 7 via winget..." "INFO" "LAUNCHER"
-        REM --source winget --exact is REQUIRED: without it winget may resolve to the
-        REM msstore package, which installs an MSIX into WindowsApps instead of the MSI in
-        REM "%ProgramFiles%\PowerShell\7" - and then none of the detection paths find pwsh.exe.
-        "%WINGET_EXE%" install --id Microsoft.PowerShell --source winget --exact --silent --accept-package-agreements --accept-source-agreements
+        "%WINGET_EXE%" install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "PowerShell 7 installed successfully via winget" "SUCCESS" "LAUNCHER"
             SET "INSTALL_STATUS=SUCCESS"
@@ -854,7 +764,7 @@ IF "%PS7_FOUND%"=="NO" (
             
             REM Refresh PATH environment to pick up newly installed PowerShell
             CALL :LOG_MESSAGE "Refreshing PATH environment after PowerShell 7 installation..." "DEBUG" "LAUNCHER"
-            CALL :REFRESH_TOOL_PATHS
+            CALL :REFRESH_PATH_FROM_REGISTRY
         ) ELSE (
             CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "WARN" "LAUNCHER"
         )
@@ -863,19 +773,15 @@ IF "%PS7_FOUND%"=="NO" (
     )
 
     REM 2) Try Chocolatey (prioritize existing installation or install it first)
-    IF NOT "!INSTALL_STATUS!"=="SUCCESS" (
-        REM Check if Chocolatey is available.
-        REM !CHOCO_EXE! (delayed) is REQUIRED: CHOCO_EXE is assigned inside this same block, so a
-        REM %CHOCO_EXE% read resolves at PARSE time - before the SET runs - and expands to EMPTY.
-        REM That turned every probe into `"" --version`, which always fails, so this whole
-        REM Chocolatey path was dead and always reported "Chocolatey not available".
+    IF NOT "%INSTALL_STATUS%"=="SUCCESS" (
+        REM Check if Chocolatey is available
         SET "CHOCO_EXE=choco"
         IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
-
-        "!CHOCO_EXE!" --version >nul 2>&1
+        
+        "%CHOCO_EXE%" --version >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "Chocolatey found - installing PowerShell 7..." "INFO" "LAUNCHER"
-            "!CHOCO_EXE!" install powershell-core -y --no-progress
+            "%CHOCO_EXE%" install powershell-core -y --no-progress
             IF !ERRORLEVEL! EQU 0 (
                 CALL :LOG_MESSAGE "PowerShell 7 installed successfully via Chocolatey" "SUCCESS" "LAUNCHER"
                 SET "INSTALL_STATUS=SUCCESS"
@@ -883,7 +789,7 @@ IF "%PS7_FOUND%"=="NO" (
                 
                 REM Refresh PATH after installation
                 CALL :LOG_MESSAGE "Refreshing PATH after PowerShell 7 installation..." "DEBUG" "LAUNCHER"
-                CALL :REFRESH_TOOL_PATHS
+                CALL :REFRESH_PATH_FROM_REGISTRY
             ) ELSE (
                 CALL :LOG_MESSAGE "Chocolatey failed to install PowerShell 7" "WARN" "LAUNCHER"
             )
@@ -901,7 +807,7 @@ IF "%PS7_FOUND%"=="NO" (
                 IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
                 
                 CALL :LOG_MESSAGE "Installing PowerShell 7 via newly installed Chocolatey..." "INFO" "LAUNCHER"
-                "!CHOCO_EXE!" install powershell-core -y --no-progress
+                "%CHOCO_EXE%" install powershell-core -y --no-progress
                 IF !ERRORLEVEL! EQU 0 (
                     CALL :LOG_MESSAGE "PowerShell 7 installed successfully via newly installed Chocolatey" "SUCCESS" "LAUNCHER"
                     SET "INSTALL_STATUS=SUCCESS"
@@ -909,7 +815,7 @@ IF "%PS7_FOUND%"=="NO" (
                     
                     REM Refresh PATH after installation
                     CALL :LOG_MESSAGE "Refreshing PATH after PowerShell 7 installation..." "DEBUG" "LAUNCHER"
-                    CALL :REFRESH_TOOL_PATHS
+                    CALL :REFRESH_PATH_FROM_REGISTRY
                 ) ELSE (
                     CALL :LOG_MESSAGE "PowerShell 7 installation failed even with fresh Chocolatey" "WARN" "LAUNCHER"
                 )
@@ -920,7 +826,7 @@ IF "%PS7_FOUND%"=="NO" (
     )
 
     REM 3) MSI fallback from GitHub Releases (latest stable PowerShell)
-    IF NOT "!INSTALL_STATUS!"=="SUCCESS" (
+    IF NOT "%INSTALL_STATUS%"=="SUCCESS" (
         CALL :LOG_MESSAGE "Attempting PowerShell 7 MSI fallback from GitHub Releases..." "INFO" "LAUNCHER"
         DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
         powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; $headers=@{ 'User-Agent'='WinMaintLauncher' }; $arch = if([Environment]::Is64BitOperatingSystem){ 'x64' } else { 'x86' }; $rel = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -match ('win-' + $arch + '\\.msi$') } | Select-Object -First 1; if(-not $asset){ Write-Host 'ASSET_NOT_FOUND'; exit 2 }; $url = $asset.browser_download_url; Invoke-WebRequest -Headers $headers -Uri $url -OutFile '%WORKING_DIR%pwsh.msi'; Write-Host 'MSI_DOWNLOADED' } catch { Write-Host 'MSI_DOWNLOAD_FAILED'; exit 1 }" >nul 2>&1
@@ -939,30 +845,19 @@ IF "%PS7_FOUND%"=="NO" (
         )
     )
 
-    REM Post-install verification: re-run the full locator (handles MSI, Store/MSIX, alias,
-    REM Chocolatey and registry installs). If it resolves we continue in THIS process - no
-    REM relaunch, which also avoids a second download/extract cycle.
-    IF "!INSTALL_STATUS!"=="SUCCESS" (
-        CALL :FIND_PWSH
-        IF DEFINED PWSH_PATH (
-            SET "PS7_FOUND=YES"
-            CALL :LOG_MESSAGE "PowerShell 7 installed and reachable: !PWSH_PATH! - continuing" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            REM NO self-relaunch here. The old code re-launched script.bat in a new window to
-            REM "refresh the environment", which caused an INFINITE new-window loop whenever
-            REM PS7 could not be detected (each window spawned another every ~3s). It also
-            REM could never have helped: :FIND_PWSH already resolves pwsh by ABSOLUTE install
-            REM path (Program Files\PowerShell, WindowsApps alias, Chocolatey, MSIX
-            REM InstallLocation) - not just PATH - so a fresh session adds nothing. If pwsh
-            REM still is not found after a "successful" install, fail cleanly, ONCE.
-            CALL :LOG_MESSAGE "PowerShell 7 install reported success but pwsh.exe could not be located - aborting (no relaunch)." "ERROR" "LAUNCHER"
-            CALL :LOG_MESSAGE "Install PowerShell 7 manually, then re-run this script:" "ERROR" "LAUNCHER"
-            CALL :LOG_MESSAGE "  winget install --id Microsoft.PowerShell --source winget --exact" "ERROR" "LAUNCHER"
-            CALL :LOG_MESSAGE "  (if winget is blocked: reg add HKLM\SOFTWARE\Policies\Microsoft\Windows\AppInstaller /v EnableAppInstaller /t REG_DWORD /d 1 /f)" "ERROR" "LAUNCHER"
-            CALL :LOG_MESSAGE "  or download the MSI from https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
-            TIMEOUT /T 30 >nul 2>&1
-            EXIT /B 1
-        )
+    REM Post-install verification and restart logic
+    IF "%INSTALL_STATUS%"=="SUCCESS" (
+        CALL :LOG_MESSAGE "Restarting script with fresh environment to detect PowerShell 7..." "INFO" "LAUNCHER"
+        
+        REM Create restart flag with timestamp to prevent infinite loops
+        ECHO POWERSHELL_RESTART_%DATE:~-4,4%%DATE:~-10,2%%DATE:~-7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2% > "%WORKING_DIR%restart_flag.tmp"
+        
+        REM Restart the script with a fresh environment (give Windows a moment to update PATH)
+        TIMEOUT /T 3 /NOBREAK >nul 2>&1
+        START "" /WAIT cmd.exe /C ""%SCRIPT_PATH%" %*"
+        
+        REM Exit current instance after new instance completes
+        EXIT /B !ERRORLEVEL!
     ) ELSE (
         CALL :LOG_MESSAGE "All automated installation methods for PowerShell 7 failed." "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE "Troubleshooting tips:" "ERROR" "LAUNCHER"
@@ -973,7 +868,7 @@ IF "%PS7_FOUND%"=="NO" (
     )
 ) ELSE (
     FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-    CALL :LOG_MESSAGE "PowerShell 7 available: !PS7_VERSION!" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "PowerShell 7 available: %PS7_VERSION%" "SUCCESS" "LAUNCHER"
 )
 
 REM -----------------------------------------------------------------------------
@@ -999,79 +894,320 @@ REM ----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Setting up Windows Defender exclusions..." "INFO" "LAUNCHER"
 powershell -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }"
 
-REM NOTE: winget/Chocolatey re-verification and the monthly/startup scheduled-task
-REM status pass used to be repeated here - both were exact duplicates of the checks
-REM already done in Dependency Management (winget) and at script start / :MAIN_SCRIPT
-REM (scheduled tasks). Removed; nothing downstream reads WINGET_VERSION/CHOCO_VERSION.
+REM Package Manager Dependencies
+CALL :LOG_MESSAGE "Verifying package managers..." "INFO" "LAUNCHER"
+
+REM Winget
+winget --version >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    FOR /F "tokens=*" %%i IN ('winget --version 2^>nul') DO SET WINGET_VERSION=%%i
+    CALL :LOG_MESSAGE "Winget available: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
+) ELSE (
+    REM Check typical location for App Execution Aliases
+    IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
+        FOR /F "tokens=*" %%i IN ('"%LocalAppData%\Microsoft\WindowsApps\winget.exe" --version 2^>nul') DO SET WINGET_VERSION=%%i
+        IF DEFINED WINGET_VERSION (
+            CALL :LOG_MESSAGE "Winget available via WindowsApps path: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "Winget appears installed but not yet ready (App Execution Alias may require session refresh)" "INFO" "LAUNCHER"
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "Winget not available - some features may be limited" "INFO" "LAUNCHER"
+    )
+)
+
+REM Chocolatey  
+choco --version >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    FOR /F "tokens=*" %%i IN ('choco --version 2^>nul') DO SET CHOCO_VERSION=%%i
+    CALL :LOG_MESSAGE "Chocolatey available: %CHOCO_VERSION%" "SUCCESS" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "Chocolatey not available - will be installed if needed" "INFO" "LAUNCHER"
+)
+
+CALL :LOG_MESSAGE "Dependency verification completed" "SUCCESS" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
-REM PowerShell Executable Selection (before system operations)
+REM Modular Task Scheduler Management
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Managing scheduled tasks..." "INFO" "LAUNCHER"
+
+SET "TASK_NAME=WindowsMaintenanceAutomation"
+SET "STARTUP_TASK_NAME=WindowsMaintenanceStartup"
+
+REM Report monthly task status only (creation handled earlier)
+schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_MESSAGE "Monthly scheduled task present: %TASK_NAME%" "SUCCESS" "LAUNCHER"
+    FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /R /C:"Task To Run" /C:"Next Run Time"') DO (
+        CALL :LOG_MESSAGE "Monthly task detail: %%i" "INFO" "LAUNCHER"
+    )
+) ELSE (
+    CALL :LOG_MESSAGE "Monthly scheduled task not found (was expected to exist)." "WARN" "LAUNCHER"
+)
+
+REM Clean up startup task if it still exists (e.g., after reboot resume)
+schtasks /Query /TN "%STARTUP_TASK_NAME%" >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_MESSAGE "Cleaning up startup task: %STARTUP_TASK_NAME%" "INFO" "LAUNCHER"
+    schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
+)
+
+REM -----------------------------------------------------------------------------
+REM PowerShell Executable Detection (before system operations)
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Detecting PowerShell executable for system operations..." "INFO" "LAUNCHER"
 
 SET "PS_EXECUTABLE="
 SET "AUTO_NONINTERACTIVE=NO"
 
-REM Single source of truth: :FIND_PWSH validates every candidate by running it, so anything
-REM it returns is a working PowerShell 7+. This replaces six brittle probes (default path /
-REM PATH / extra paths / where / registry / PATH scan) that could not see a Store-MSIX
-REM install and aborted the run with "PowerShell 7+ not found" while PS7 was installed.
-REM
-REM PWSH_PATH is REUSED here rather than re-probed: it was already resolved either by the
-REM initial availability check above, or (if PS7 had to be installed) by the post-install
-REM verification's own :FIND_PWSH call - both set PWSH_PATH in this same environment (CALL
-REM does not create a new variable scope). Re-running the full probe a third time here
-REM cost 3-8s for a result we already have. Only fall back to a fresh probe if PWSH_PATH is
-REM somehow still empty (e.g. a code path above that didn't resolve one).
-IF DEFINED PWSH_PATH (
-    SET "PS_EXECUTABLE=!PWSH_PATH!"
-    SET "AUTO_NONINTERACTIVE=YES"
-    CALL :LOG_MESSAGE "Using PowerShell 7+ (already resolved): !PWSH_PATH!" "SUCCESS" "LAUNCHER"
-) ELSE (
-    REM PWSH_PATH still unresolved - refresh PATH and probe once more (handles a stale
-    REM WindowsApps alias immediately after install)
-    CALL :LOG_MESSAGE "PowerShell 7+ not resolved yet, refreshing PATH and retrying..." "WARN" "LAUNCHER"
-    CALL :REFRESH_TOOL_PATHS
-    CALL :FIND_PWSH
-
-    IF DEFINED PWSH_PATH (
-        SET "PS_EXECUTABLE=!PWSH_PATH!"
-        SET "AUTO_NONINTERACTIVE=YES"
-        CALL :LOG_MESSAGE "Using PowerShell 7+ (found after PATH refresh): !PWSH_PATH!" "SUCCESS" "LAUNCHER"
-    ) ELSE (
-        REM Final fallback: check known installation path directly
-        IF EXIST "C:\Program Files\PowerShell\7\pwsh.exe" (
-            SET "PS_EXECUTABLE=C:\Program Files\PowerShell\7\pwsh.exe"
-            SET "AUTO_NONINTERACTIVE=YES"
-            CALL :LOG_MESSAGE "Using PowerShell 7+ (direct path fallback): !PS_EXECUTABLE!" "SUCCESS" "LAUNCHER"
+REM Check PowerShell 7+ first (primary installation path)
+SET "PS7_ABSOLUTE=%ProgramFiles%\PowerShell\7\pwsh.exe"
+CALL :LOG_MESSAGE "Checking for PowerShell 7+ at: %PS7_ABSOLUTE%" "DEBUG" "LAUNCHER"
+IF EXIST "%PS7_ABSOLUTE%" (
+    CALL :LOG_MESSAGE "PowerShell 7 found at default installation path: %PS7_ABSOLUTE%" "DEBUG" "LAUNCHER"
+    
+    REM Test if the executable actually works with multiple methods
+    "%PS7_ABSOLUTE%" -Command "exit 0" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        REM Method 1: Try version table using temp file to avoid quoting issues
+        "%PS7_ABSOLUTE%" -Command "$PSVersionTable.PSVersion.Major" 2>nul > "%TEMP%\ps_major.tmp"
+        FOR /F "tokens=*" %%i IN ('TYPE "%TEMP%\ps_major.tmp" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+        DEL "%TEMP%\ps_major.tmp" 2>nul
+        
+        REM Method 2: Fallback to simpler version check if first method fails
+        IF "!PS_MAJOR_VERSION!"=="" (
+            "%PS7_ABSOLUTE%" -Command "$Host.Version.Major" 2>nul > "%TEMP%\ps_major2.tmp"
+            FOR /F "tokens=1 delims=." %%i IN ('TYPE "%TEMP%\ps_major2.tmp" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+            DEL "%TEMP%\ps_major2.tmp" 2>nul
+        )
+        
+        REM Method 3: Last resort - parse pwsh.exe -Version output
+        IF "!PS_MAJOR_VERSION!"=="" (
+            FOR /F "tokens=2 delims= " %%i IN ('"%PS7_ABSOLUTE%" -Version 2^>nul ^| findstr "PowerShell"') DO (
+                FOR /F "tokens=1 delims=." %%j IN ("%%i") DO SET PS_MAJOR_VERSION=%%j
+            )
+        )
+        
+        CALL :LOG_MESSAGE "PowerShell version test result: !PS_MAJOR_VERSION!" "DEBUG" "LAUNCHER"
+        
+        REM Accept version 7 or higher, with extra validation
+        IF DEFINED PS_MAJOR_VERSION (
+            IF !PS_MAJOR_VERSION! GEQ 7 (
+                SET "PS_EXECUTABLE=%PS7_ABSOLUTE%"
+                SET "AUTO_NONINTERACTIVE=YES"
+                
+                REM Get full version string for logging (robust method for paths with spaces)
+                SET PS_VERSION_STRING=
+                "%PS7_ABSOLUTE%" -Command "$PSVersionTable.PSVersion.ToString()" 2>nul > "%TEMP%\ps_version.tmp"
+                FOR /F "tokens=*" %%i IN ('TYPE "%TEMP%\ps_version.tmp" 2^>nul') DO SET PS_VERSION_STRING=%%i
+                DEL "%TEMP%\ps_version.tmp" 2>nul
+                
+                IF "!PS_VERSION_STRING!"=="" (
+                    "%PS7_ABSOLUTE%" -Version 2>nul > "%TEMP%\ps_version.tmp"
+                    FOR /F "tokens=2" %%i IN ('TYPE "%TEMP%\ps_version.tmp" 2^>nul') DO SET PS_VERSION_STRING=%%i
+                    DEL "%TEMP%\ps_version.tmp" 2>nul
+                )
+                IF "!PS_VERSION_STRING!"=="" SET "PS_VERSION_STRING=7.x.x"
+                
+                CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected at default path - will use for system operations" "SUCCESS" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "PowerShell found at default path but version !PS_MAJOR_VERSION! < 7" "WARN" "LAUNCHER"
+            )
         ) ELSE (
-            CALL :LOG_MESSAGE "CRITICAL: no usable PowerShell 7+ found after install attempts" "ERROR" "LAUNCHER"
-            CALL :LOG_MESSAGE "The orchestrator requires PS7+; Windows PowerShell 5.1 cannot run it." "ERROR" "LAUNCHER"
-            CALL :LOG_MESSAGE "Install manually: winget install --id Microsoft.PowerShell --source winget" "ERROR" "LAUNCHER"
-            CALL :LOG_MESSAGE "  or download from https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
-            REM No PAUSE here: a PAUSE blocks an unattended/scheduled run forever. Short timeout so
-            REM an interactive user can read the error, then exit with a failure code.
-            TIMEOUT /T 20 >nul 2>&1
-            EXIT /B 1
+            CALL :LOG_MESSAGE "Could not determine PowerShell version, but executable exists and responds" "WARN" "LAUNCHER"
+            REM If we can't determine version but executable works, assume it's PS7+ since it's in the PS7 directory
+            SET "PS_EXECUTABLE=%PS7_ABSOLUTE%"
+            SET "AUTO_NONINTERACTIVE=YES"
+            SET "PS_VERSION_STRING=7.x.x (version detection failed)"
+            CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected - assuming PS7+ since found in PS7 directory" "SUCCESS" "LAUNCHER"
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "PowerShell executable at default path is not functional" "WARN" "LAUNCHER"
+    )
+) ELSE (
+    CALL :LOG_MESSAGE "PowerShell 7 not found at default installation path: %PS7_ABSOLUTE%" "DEBUG" "LAUNCHER"
+)
+IF "%PS_EXECUTABLE%"=="" (
+    REM Fallback Method 1: Try pwsh.exe from PATH with multiple validation approaches
+    CALL :LOG_MESSAGE "Trying pwsh.exe from PATH..." "DEBUG" "LAUNCHER"
+    
+    REM Test 1: Simple version check
+    pwsh.exe -Version >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "pwsh.exe responds to -Version command" "DEBUG" "LAUNCHER"
+        FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+        IF DEFINED PS_MAJOR_VERSION IF !PS_MAJOR_VERSION! GEQ 7 (
+            SET "PS_EXECUTABLE=pwsh.exe"
+            SET "AUTO_NONINTERACTIVE=YES"
+            FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%i
+            CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected via PATH - will use for system operations" "SUCCESS" "LAUNCHER"
+        ) ELSE (
+            CALL :LOG_MESSAGE "PowerShell version !PS_MAJOR_VERSION! detected but version 7+ required" "WARN" "LAUNCHER"
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "pwsh.exe -Version failed, trying alternative detection..." "DEBUG" "LAUNCHER"
+        
+        REM Test 2: Alternative command test
+        pwsh.exe -Command "exit 0" >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            CALL :LOG_MESSAGE "pwsh.exe responds to basic command" "DEBUG" "LAUNCHER"
+            FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+            IF DEFINED PS_MAJOR_VERSION IF !PS_MAJOR_VERSION! GEQ 7 (
+                SET "PS_EXECUTABLE=pwsh.exe"
+                SET "AUTO_NONINTERACTIVE=YES"
+                FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%i
+                CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! detected via alternative method - will use for system operations" "SUCCESS" "LAUNCHER"
+            )
         )
     )
+)
+
+REM Fallback Method 2: Check additional common installation paths
+IF "%PS_EXECUTABLE%"=="" (
+    CALL :LOG_MESSAGE "Checking additional PowerShell 7 installation paths..." "DEBUG" "LAUNCHER"
+    
+    REM Check common installation paths
+    SET "PS7_PATHS[0]=%ProgramFiles%\PowerShell\7\pwsh.exe"
+    SET "PS7_PATHS[1]=%ProgramFiles(x86)%\PowerShell\7\pwsh.exe"
+    SET "PS7_PATHS[2]=%LocalAppData%\Microsoft\powershell\7\pwsh.exe"
+    SET "PS7_PATHS[3]=%ProgramData%\chocolatey\lib\powershell-core\tools\pwsh.exe"
+    
+    FOR %%P IN (0 1 2 3) DO (
+        IF "%PS_EXECUTABLE%"=="" (
+            CALL SET "TEST_PATH=%%PS7_PATHS[%%P]%%"
+            IF EXIST "!TEST_PATH!" (
+                CALL :LOG_MESSAGE "Testing PowerShell at: !TEST_PATH!" "DEBUG" "LAUNCHER"
+                FOR /F "tokens=*" %%i IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+                IF DEFINED PS_MAJOR_VERSION IF !PS_MAJOR_VERSION! GEQ 7 (
+                    SET "PS_EXECUTABLE=!TEST_PATH!"
+                    SET "AUTO_NONINTERACTIVE=YES"
+                    FOR /F "tokens=*" %%i IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%i
+                    CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! found at: !TEST_PATH!" "SUCCESS" "LAUNCHER"
+                )
+            )
+        )
+    )
+)
+
+REM Fallback Method 3: Use Windows 'where' command to locate pwsh.exe
+IF "%PS_EXECUTABLE%"=="" (
+    CALL :LOG_MESSAGE "Using 'where' command to locate pwsh.exe..." "DEBUG" "LAUNCHER"
+    FOR /F "tokens=*" %%i IN ('where pwsh.exe 2^>nul') DO (
+        IF "%PS_EXECUTABLE%"=="" (
+            SET "TEST_PATH=%%i"
+            IF EXIST "!TEST_PATH!" (
+                CALL :LOG_MESSAGE "Testing PowerShell found by 'where': !TEST_PATH!" "DEBUG" "LAUNCHER"
+                FOR /F "tokens=*" %%j IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%j
+                IF DEFINED PS_MAJOR_VERSION IF !PS_MAJOR_VERSION! GEQ 7 (
+                    SET "PS_EXECUTABLE=!TEST_PATH!"
+                    SET "AUTO_NONINTERACTIVE=YES"
+                    FOR /F "tokens=*" %%k IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%k
+                    CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! located via 'where' command" "SUCCESS" "LAUNCHER"
+                )
+            )
+        )
+    )
+)
+
+REM Fallback Method 4: Registry-based PowerShell 7 detection
+IF "%PS_EXECUTABLE%"=="" (
+    CALL :LOG_MESSAGE "Attempting registry-based PowerShell 7 detection..." "DEBUG" "LAUNCHER"
+    
+    REM Check for PowerShell 7 installation via registry
+    REG QUERY "HKLM\SOFTWARE\Microsoft\PowerShell\7" /v "InstallLocation" >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        FOR /F "tokens=3*" %%a IN ('REG QUERY "HKLM\SOFTWARE\Microsoft\PowerShell\7" /v "InstallLocation" 2^>nul ^| findstr InstallLocation') DO (
+            SET "REG_PS7_PATH=%%b"
+            IF DEFINED REG_PS7_PATH (
+                SET "TEST_PATH=!REG_PS7_PATH!\pwsh.exe"
+                IF EXIST "!TEST_PATH!" (
+                    CALL :LOG_MESSAGE "Testing PowerShell from registry: !TEST_PATH!" "DEBUG" "LAUNCHER"
+                    "!TEST_PATH!" -Command "exit 0" >nul 2>&1
+                    IF !ERRORLEVEL! EQU 0 (
+                        FOR /F "tokens=*" %%i IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+                        IF DEFINED PS_MAJOR_VERSION IF !PS_MAJOR_VERSION! GEQ 7 (
+                            SET "PS_EXECUTABLE=!TEST_PATH!"
+                            SET "AUTO_NONINTERACTIVE=YES"
+                            FOR /F "tokens=*" %%j IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%j
+                            CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! found via registry detection" "SUCCESS" "LAUNCHER"
+                        )
+                    )
+                )
+            )
+        )
+    )
+)
+
+REM Fallback Method 5: Environment PATH analysis for pwsh
+IF "%PS_EXECUTABLE%"=="" (
+    CALL :LOG_MESSAGE "Analyzing PATH environment for PowerShell executables..." "DEBUG" "LAUNCHER"
+    
+    REM Split PATH and check each directory for pwsh.exe
+    FOR %%P IN ("%PATH:;=" "%") DO (
+        IF "%PS_EXECUTABLE%"=="" (
+            SET "TEST_PATH=%%~P\pwsh.exe"
+            REM Remove quotes if present
+            SET "TEST_PATH=!TEST_PATH:"=!"
+            IF EXIST "!TEST_PATH!" (
+                CALL :LOG_MESSAGE "Testing PowerShell in PATH: !TEST_PATH!" "DEBUG" "LAUNCHER"
+                "!TEST_PATH!" -Command "exit 0" >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 (
+                    FOR /F "tokens=*" %%i IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_MAJOR_VERSION=%%i
+                    IF DEFINED PS_MAJOR_VERSION IF !PS_MAJOR_VERSION! GEQ 7 (
+                        SET "PS_EXECUTABLE=!TEST_PATH!"
+                        SET "AUTO_NONINTERACTIVE=YES"
+                        FOR /F "tokens=*" %%j IN ('"!TEST_PATH!" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS_VERSION_STRING=%%j
+                        CALL :LOG_MESSAGE "PowerShell !PS_VERSION_STRING! found in PATH analysis" "SUCCESS" "LAUNCHER"
+                    )
+                )
+            )
+        )
+    )
+)
+
+REM CRITICAL: The orchestrator requires PowerShell 7+ (pwsh.exe). Do NOT fall back to Windows PowerShell 5.1.
+IF "%PS_EXECUTABLE%"=="" (
+    CALL :LOG_MESSAGE "CRITICAL: PowerShell 7+ (pwsh.exe) not found - a compatible pwsh.exe is required for the orchestrator" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Windows PowerShell 5.1 cannot be used for full orchestrator execution" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please install PowerShell 7+ using one of these methods:" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  1. winget: winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  2. Manual: https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  3. Chocolatey: choco install powershell-core" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "After installation, restart this script to continue." "ERROR" "LAUNCHER"
+    PAUSE
+    EXIT /B 1
+)
+
+IF "%PS_EXECUTABLE%"=="" (
+    CALL :LOG_MESSAGE "CRITICAL: No suitable PowerShell found after exhaustive detection attempts" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Detection methods attempted:" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  1. Default installation path: %ProgramFiles%\PowerShell\7\pwsh.exe" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  2. PATH environment variable lookup for pwsh.exe" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  3. Alternative installation paths (x86, LocalAppData, Chocolatey)" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  4. Windows 'where' command search" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  5. Registry-based PowerShell 7 detection" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  6. Manual PATH directory analysis" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "PowerShell 7+ is required for this maintenance system." "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please install PowerShell 7+ from: https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Or install via winget: winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "If PowerShell 7+ is installed, please check:" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  - Installation completed successfully" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  - pwsh.exe is in PATH or default location" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  - No execution policy restrictions" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  - Antivirus/security software not blocking execution" "ERROR" "LAUNCHER"
+    PAUSE
+    EXIT /B 1
 )
 
 REM -----------------------------------------------------------------------------
 REM System Restore Point Creation (before orchestrator execution)
 REM Includes: Availability check, space allocation (minimum 10GB), and creation
-REM DEFENSIVE: Verify PS_EXECUTABLE is actually set and accessible before using it
 REM -----------------------------------------------------------------------------
-IF NOT DEFINED PS_EXECUTABLE (
-    CALL :LOG_MESSAGE "System Protection check failed (PowerShell not available) - skipping restore point" "WARN" "LAUNCHER"
-    GOTO SKIP_RESTORE_POINT
-)
-
-IF NOT EXIST "%PS_EXECUTABLE%" (
-    CALL :LOG_MESSAGE "System Protection check failed (PowerShell executable not found) - skipping restore point" "WARN" "LAUNCHER"
-    GOTO SKIP_RESTORE_POINT
-)
-
 CALL :LOG_MESSAGE "Checking System Protection status..." "INFO" "LAUNCHER"
 
 SET "SYS_DRIVE=%SystemDrive%"
@@ -1080,14 +1216,14 @@ SET "SR_VERIFY_STATUS=UNKNOWN"
 SET "MIN_RESTORE_SPACE_GB=10"
 
 REM Simple check for System Protection availability
-FOR /F "usebackq tokens=* delims=" %%i IN (`"%PS_EXECUTABLE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Stop'; if (Get-Command 'Get-ComputerRestorePoint' -ErrorAction SilentlyContinue) { try { $rp = Get-ComputerRestorePoint -ErrorAction SilentlyContinue; Write-Host 'SR_AVAILABLE' } catch { Write-Host 'SR_ERROR' } } else { Write-Host 'SR_NOT_SUPPORTED' } } catch { Write-Host 'SR_FAILED' }" 2^>nul`) DO SET "SR_CHECK=%%i"
+FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Stop'; if (Get-Command 'Get-ComputerRestorePoint' -ErrorAction SilentlyContinue) { try { $rp = Get-ComputerRestorePoint -ErrorAction SilentlyContinue; Write-Host 'SR_AVAILABLE' } catch { Write-Host 'SR_ERROR' } } else { Write-Host 'SR_NOT_SUPPORTED' } } catch { Write-Host 'SR_FAILED' }" 2^>nul`) DO SET "SR_CHECK=%%i"
 
 REM Check and allocate System Restore Point space (minimum 10GB)
 IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
     CALL :LOG_MESSAGE "Checking System Protection disk space allocation..." "INFO" "LAUNCHER"
     
     REM Use vssadmin to check current shadow storage allocation (modern method)
-    FOR /F "usebackq tokens=* delims=" %%i IN (`"%PS_EXECUTABLE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $vssOutput = & vssadmin list shadowstorage 2>&1 | Out-String; if ($vssOutput -match 'Maximum Shadow Copy Storage space.*?([0-9.]+)\s*(GB|MB|TB)') { $size = [decimal]$matches[1]; $unit = $matches[2]; $sizeGB = switch ($unit) { 'TB' { $size * 1024 } 'GB' { $size } 'MB' { $size / 1024 } default { 0 } }; Write-Host ('CURRENT:' + [math]::Round($sizeGB, 2)) } elseif ($vssOutput -match 'UNBOUNDED|No.*found') { Write-Host 'UNBOUNDED' } else { Write-Host 'NO_CONFIG' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_SPACE_CHECK=%%i"
+    FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $vssOutput = & vssadmin list shadowstorage 2>&1 | Out-String; if ($vssOutput -match 'Maximum Shadow Copy Storage space.*?([0-9.]+)\s*(GB|MB|TB)') { $size = [decimal]$matches[1]; $unit = $matches[2]; $sizeGB = switch ($unit) { 'TB' { $size * 1024 } 'GB' { $size } 'MB' { $size / 1024 } default { 0 } }; Write-Host ('CURRENT:' + [math]::Round($sizeGB, 2)) } elseif ($vssOutput -match 'UNBOUNDED|No.*found') { Write-Host 'UNBOUNDED' } else { Write-Host 'NO_CONFIG' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_SPACE_CHECK=%%i"
     
     REM Parse current allocation
     IF "!SR_SPACE_CHECK:~0,8!"=="CURRENT:" (
@@ -1150,30 +1286,6 @@ IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
     GOTO :SKIP_RESTORE_POINT
 )
 
-REM Only create a new restore point if the most recent existing one is older than the
-REM threshold - Checkpoint-Computer is throttled by Windows to one per ~24h by default
-REM anyway, and there is no value in re-running the (slow, WinPS-compat-routed) creation
-REM flow when a recent enough snapshot already exists.
-SET "MIN_RESTORE_AGE_HOURS=96"
-SET "RP_AGE_CHECK=RP_NONE"
-FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $rps = @(Get-ComputerRestorePoint -ErrorAction Stop); if ($rps.Count -eq 0) { Write-Host 'RP_NONE' } else { $latest = $rps | Sort-Object -Property CreationTime -Descending | Select-Object -First 1; $ct = $latest.CreationTime; if ($ct -isnot [datetime]) { $ct = [System.Management.ManagementDateTimeConverter]::ToDateTime($ct) }; $ageH = [math]::Round(((Get-Date) - $ct).TotalHours, 1); Write-Host ('RP_AGE:' + $ageH) } } catch { Write-Host 'RP_CHECK_FAILED' }" 2^>nul`) DO SET "RP_AGE_CHECK=%%i"
-
-SET "SKIP_RP_CREATE=NO"
-IF "!RP_AGE_CHECK:~0,7!"=="RP_AGE:" (
-    SET "RP_AGE_HOURS=!RP_AGE_CHECK:~7!"
-    FOR /F "tokens=1 delims=." %%a IN ("!RP_AGE_HOURS!") DO SET "RP_AGE_HOURS_INT=%%a"
-    IF !RP_AGE_HOURS_INT! LSS !MIN_RESTORE_AGE_HOURS! (
-        CALL :LOG_MESSAGE "Most recent restore point is !RP_AGE_HOURS! hour(s) old (below !MIN_RESTORE_AGE_HOURS!h threshold) - skipping creation" "INFO" "LAUNCHER"
-        SET "SKIP_RP_CREATE=YES"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Most recent restore point is !RP_AGE_HOURS! hour(s) old (>= !MIN_RESTORE_AGE_HOURS!h threshold) - creating a new one" "INFO" "LAUNCHER"
-    )
-) ELSE (
-    CALL :LOG_MESSAGE "No prior restore point found or age check inconclusive (!RP_AGE_CHECK!) - creating one" "INFO" "LAUNCHER"
-)
-
-IF /I "!SKIP_RP_CREATE!"=="YES" GOTO :SKIP_RESTORE_POINT
-
 CALL :LOG_MESSAGE "Creating system restore point before execution..." "INFO" "LAUNCHER"
 
 FOR /F "usebackq tokens=*" %%i IN (`%PS_EXECUTABLE% -NoProfile -Command "[guid]::NewGuid().ToString().Substring(0,8)" 2^>nul`) DO SET "RESTORE_GUID=%%i"
@@ -1223,26 +1335,16 @@ CALL :LOG_MESSAGE "AUTO_NONINTERACTIVE flag: %AUTO_NONINTERACTIVE%" "DEBUG" "LAU
 
 IF "%ORCHESTRATOR_PATH%"=="" (
     CALL :LOG_MESSAGE "No valid PowerShell orchestrator found" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Diagnostics: WORKING_DIR=%WORKING_DIR%" "ERROR" "LAUNCHER"
-    IF NOT EXIST "%WORKING_DIR%" (
-        CALL :LOG_MESSAGE "Diagnostics: the working directory NO LONGER EXISTS - it was deleted after extraction (another script.bat instance, or a still-running previous session's cleanup)" "ERROR" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Diagnostics: working directory exists but MaintenanceOrchestrator.ps1 was never resolved in it" "ERROR" "LAUNCHER"
-    )
-    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
+    PAUSE
     EXIT /B 4
 )
 
 CALL :LOG_MESSAGE "Orchestrator path: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
 
-REM Verify orchestrator file exists (it was validated at extraction time, but another
-REM process may have deleted the tree since - report WHICH situation this is)
+REM Verify orchestrator file exists
 IF NOT EXIST "%ORCHESTRATOR_PATH%" (
     CALL :LOG_MESSAGE "Orchestrator file not found: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
-    IF NOT EXIST "%WORKING_DIR%" (
-        CALL :LOG_MESSAGE "Diagnostics: the extracted folder was DELETED between extraction and launch (another script.bat instance, or a previous session's cleanup)" "ERROR" "LAUNCHER"
-    )
-    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
+    PAUSE
     EXIT /B 4
 )
 
@@ -1251,6 +1353,19 @@ REM Use AUTO_NONINTERACTIVE as a reliable marker that PS 7+ was detected above
 REM [REMOVED: Legacy PowerShell 7+ orchestrator check. Now handled by consolidated detection above.]
 
 CALL :LOG_MESSAGE "Using PowerShell 7+ for orchestrator execution" "SUCCESS" "LAUNCHER"
+
+REM Parse command line arguments for the orchestrator
+SET "PS_ARGS="
+IF "%1"=="-NonInteractive" SET "PS_ARGS=%PS_ARGS% -NonInteractive"
+IF "%AUTO_NONINTERACTIVE%"=="YES" (
+    IF NOT "%1"=="-NonInteractive" (
+        SET "PS_ARGS=%PS_ARGS% -NonInteractive"
+        CALL :LOG_MESSAGE "Auto-enabling non-interactive mode due to PowerShell 7+ availability" "INFO" "LAUNCHER"
+    )
+)
+IF "%1"=="-TaskNumbers" SET "PS_ARGS=%PS_ARGS% -TaskNumbers %2"
+
+CALL :LOG_MESSAGE "Launching orchestrator with arguments: %PS_ARGS%" "INFO" "LAUNCHER"
 
 REM Setup complete - transitioning to dedicated PowerShell 7 window for better performance and UI
 CALL :LOG_MESSAGE "Setup phase completed - launching dedicated PowerShell 7+ window" "INFO" "LAUNCHER"
@@ -1264,33 +1379,30 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     SET "PS_ARGS=-ExecutionPolicy Bypass -NoExit -Command "
     SET "PS_ARGS=!PS_ARGS!& { "
     SET "PS_ARGS=!PS_ARGS!Set-Location '%WORKING_DIR%'; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host 'Windows Maintenance Automation - PowerShell 7+ Mode' -ForegroundColor Green; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host 'Working Directory: %WORKING_DIR%' -ForegroundColor Cyan; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host 'Launching MaintenanceOrchestrator...' -ForegroundColor Yellow; "
+    SET "PS_ARGS=!PS_ARGS!Write-Host '🚀 Windows Maintenance Automation - PowerShell 7+ Mode' -ForegroundColor Green; "
+    SET "PS_ARGS=!PS_ARGS!Write-Host '📁 Working Directory: %WORKING_DIR%' -ForegroundColor Cyan; "
+    SET "PS_ARGS=!PS_ARGS!Write-Host '🔧 Launching MaintenanceOrchestrator...' -ForegroundColor Yellow; "
     SET "PS_ARGS=!PS_ARGS!Write-Host ''; "
     
     REM Check for command line arguments to pass through
     IF "%1"=="-NonInteractive" (
         SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%' -NonInteractive; "
-    ) ELSE IF "%1"=="-TaskNumbers" (
-        SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%' -NonInteractive -TaskNumbers '%~2'; "
-        CALL :LOG_MESSAGE "Forwarding task selection to orchestrator: %~2" "INFO" "LAUNCHER"
     ) ELSE (
         SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%'; "
     )
     
     SET "PS_ARGS=!PS_ARGS!Write-Host ''; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host 'Maintenance session completed. You can close this window or run additional commands.' -ForegroundColor Green; "
+    SET "PS_ARGS=!PS_ARGS!Write-Host '✅ Maintenance session completed. You can close this window or run additional commands.' -ForegroundColor Green; "
     SET "PS_ARGS=!PS_ARGS!}"
     
-    REM Write all remaining launcher lines BEFORE START so maintenance.log is complete
-    REM (the orchestrator opens the same file in append mode via MAINTENANCE_LOG).
+    REM Write all remaining launcher messages BEFORE START so the bootstrap log
+    REM is complete by the time the orchestrator reads and deletes it.
     CALL :LOG_MESSAGE "Launching: \"%PS_EXECUTABLE%\" !PS_ARGS!" "DEBUG" "LAUNCHER"
     CALL :LOG_MESSAGE "PowerShell 7+ window launching - batch launcher exiting" "SUCCESS" "LAUNCHER"
     CALL :LOG_MESSAGE "All further operations will run in the dedicated PowerShell window" "INFO" "LAUNCHER"
-    CALL :LOG_MESSAGE "=== LAUNCHER HANDING OFF TO ORCHESTRATOR ===" "INFO" "LAUNCHER"
-
-    REM Stop launcher file writes so nothing races the orchestrator appending to the same log
+    CALL :LOG_MESSAGE "=== END OF LAUNCHER LOG ===" "INFO" "LAUNCHER"
+    
+    REM Clear LOG_FILE now so no stray write can race with the orchestrator's delete
     SET "LOG_FILE="
     
     START "Windows Maintenance Automation - PowerShell 7" "%PS_EXECUTABLE%" !PS_ARGS!
@@ -1305,15 +1417,81 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     CALL :LOG_MESSAGE "Please install PowerShell 7+ and restart this script:" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
-    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
+    PAUSE
     EXIT /B 1
 )
 
 REM Batch script execution completed - PowerShell 7+ window is now handling all operations
 CALL :LOG_MESSAGE "Batch launcher phase completed successfully" "SUCCESS" "LAUNCHER"
+GOTO :FINAL_CLEANUP
+
+REM -----------------------------------------------------------------------------
+REM Post-Orchestrator Execution Logic: Interactive Menu with Countdown
+REM -----------------------------------------------------------------------------
+:POST_ORCHESTRATOR_MENU
+ECHO.
+ECHO ===============================
+ECHO  Select Task Execution (20s):
+ECHO ===============================
+ECHO 1. Execute all tasks unattended
+ECHO 2. Execute only specific task numbers
+ECHO.
+ECHO Waiting for selection... (defaults to option 1 after 20 seconds)
+CHOICE /C 12 /N /T 20 /D 1 /M "Select option (1-2): "
+SET "NORMAL_CHOICE=%ERRORLEVEL%"
+IF "%NORMAL_CHOICE%"=="2" GOTO :NORMAL_INSERTED
+REM Default or Option 1 selected
+GOTO :EXECUTE_ALL
+
+:NORMAL_INSERTED
+ECHO.
+SET /P TASKNUMS="Enter task numbers (comma-separated, e.g., 1,3,5): "
+IF "%TASKNUMS%"=="" (
+    ECHO No task numbers entered. Executing all tasks...
+    GOTO :EXECUTE_ALL
+)
+GOTO :EXECUTE_INSERTED
+
+:EXECUTE_ALL
+CALL :LOG_MESSAGE "Executing all tasks unattended..." "INFO" "LAUNCHER"
+CD /D "%WORKING_DIR%"
+"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
+SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
+GOTO :FINAL_CLEANUP
+
+:EXECUTE_INSERTED
+CALL :LOG_MESSAGE "Executing selected tasks: %TASKNUMS%..." "INFO" "LAUNCHER"
+CD /D "%WORKING_DIR%"
+"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -TaskNumbers "%TASKNUMS%"
+SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
+GOTO :FINAL_CLEANUP
+
+:FINAL_CLEANUP
+REM -----------------------------------------------------------------------------
+REM Post-Execution Cleanup and Reporting
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "PowerShell orchestrator final execution completed with exit code: %FINAL_EXIT_CODE%" "INFO" "LAUNCHER"
+
+CALL :LOG_MESSAGE "All logs consolidated in single location: %WORKING_DIR%temp_files\logs\maintenance.log" "SUCCESS" "LAUNCHER"
+
+IF %FINAL_EXIT_CODE% EQU 0 (
+    CALL :LOG_MESSAGE "Maintenance execution completed successfully" "SUCCESS" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "Maintenance execution completed with errors (exit code: %FINAL_EXIT_CODE%)" "WARN" "LAUNCHER"
+)
+
+REM Check for generated reports
+IF EXIST "%WORKING_DIR%temp_files\reports" (
+    FOR %%F IN ("%WORKING_DIR%temp_files\reports\*.html") DO (
+        CALL :LOG_MESSAGE "Generated report: %%~nxF" "INFO" "LAUNCHER"
+    )
+)
+
+CALL :LOG_MESSAGE "Interactive mode - press any key to close" "INFO" "LAUNCHER"
+PAUSE >nul
+EXIT /B %FINAL_EXIT_CODE%
 
 REM -----------------------------------------------------------------------------
 REM End of Script
-REM (Both branches above already EXIT /B, so nothing after this point ever runs.)
 REM -----------------------------------------------------------------------------
 ENDLOCAL
