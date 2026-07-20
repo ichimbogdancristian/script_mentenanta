@@ -1,16 +1,24 @@
-# Temporary files directory
-.gthub/
+# Temporary files / local-only directories
 temp_files/
 archive/
 tests/
 docs/
 scripts/
 
+# Self-update extraction + bootstrap download artifacts (created in the launch dir by script.bat)
+script_mentenanta-master/
+update.zip
+pwsh.msi
+*.msi
+*.msix
+*.msixbundle
+*.tmp
+
 
 # Log files
 *.log
 
-# PowerShell automatic variables
+# PowerShell format/type definition files
 *.ps1xml
 
 # Backup files

@@ -125,9 +125,14 @@ the action module switches on):
   absent. It resolves the **real** `Sysmon64.exe` (from `%windir%` or the winget `Packages`
   folder), deliberately **avoiding the winget `Links\sysmon.exe` shim** — launching that
   App-Execution-Alias with redirected stdio fail-fast crashes with `0xC0000409` (-1073740791).
-- `SoftwareManagement` detects Microsoft Store bloatware via a multi-source method:
-  Layer 1 PowerShell AppX cmdlets (PS5.1 via the compatibility layer) → Layer 2 DISM
-  provisioned packages → Layer 3 registry fallback.
+- `SoftwareManagement` detects bloatware from **four sources** — AppX (PS5.1 compat layer) →
+  provisioned packages → registry → winget `list` (parsed into Name/Id columns, never matched
+  against the raw formatted line). Every candidate is gated by `bloatware/protected-packages.json`
+  + `bloatware/dependency-matrix.json` via `Test-CanRemovePackage`: a package matching a
+  protected/depended-on entry is never queued for removal. Type2 removes each item with a layered
+  strategy (AppX → Provisioned → registry **silent-uninstall only** → winget), then installs
+  essentials and applies upgrades. Open follow-ups (WinGet.Client module, essential-app matching,
+  unused cascade config) are catalogued in [SoftwareManagement-Evaluation.md](SoftwareManagement-Evaluation.md).
 - `WindowsUpdates` detects pending updates via three layers: Layer 1 COM API
   (`Windows.Update.Session`) → Layer 2 registry pending/setup-in-progress flags → Layer 3
   event-log analysis.
@@ -150,7 +155,10 @@ report can read it live, with per-sink level gating: console defaults to INFO, f
 both overridable via the `logging` block in `main-config.json` / `Set-LogLevel`; plus
 `Write-LogException`/`Close-LogFile`/`Add-LogRaw`),
 `Get-OSContext` (Win10 vs 11 by build ≥22000, feature flags), `Get-MainConfig` / `Get-BaselineList`
-(JSON loaded with `-AsHashtable` — everything is a case-insensitive hashtable), the diff engine
+(JSON loaded with `-AsHashtable` — everything is a case-insensitive hashtable, so **iterate config
+entries with `.Values` / `.GetEnumerator()` / `.Keys`, never `.PSObject.Properties`**: on a hashtable
+the latter enumerates CLR members (`Count`/`Keys`/`Values`/…), not the JSON keys, which silently
+produces empty or garbage results — this bug had made the bloatware protection list a no-op), the diff engine
 (`Compare-ListDiff` with `Present`/`Missing`/`Changed` strategies, `Save-DiffList`, `Get-DiffList`),
 `New-ModuleResult` (the standard return schema), and shared system queries.
 

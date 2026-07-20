@@ -36,7 +36,7 @@ function Remove-BloatwareLayered {
             $pkg | ForEach-Object {
                 Remove-AppxPackageCompat -PackageFullName $_.PackageFullName -AllUsers -ErrorAction Continue
             }
-            Write-Log -Level SUCCESS -Component SOFTWARE -Message "    ✓ Layer 1: Removed AppX"
+            Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 1: Removed AppX"
             $attempts += 'AppX'
             $removed = $true
         }
@@ -53,7 +53,7 @@ function Remove-BloatwareLayered {
             $prov | ForEach-Object {
                 $null = Remove-AppxProvisionedPackageCompat -PackageName $_.PackageName -ErrorAction Continue
             }
-            Write-Log -Level SUCCESS -Component SOFTWARE -Message "    ✓ Layer 2: Removed Provisioned"
+            Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 2: Removed Provisioned"
             $attempts += 'Provisioned'
             $removed = $true
         }
@@ -62,25 +62,50 @@ function Remove-BloatwareLayered {
         Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 2 (Provisioned) skipped: $_"
     }
 
-    # Layer 3: Registry cleanup (Win32 programs)
-    try {
-        $regPaths = @(
-            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
-            "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
-        )
-        foreach ($path in $regPaths) {
-            $regItem = Get-ChildItem $path -ErrorAction SilentlyContinue |
-                Where-Object { $_.GetValue('DisplayName') -like "*$PackageName*" } |
-                Select-Object -First 1
+    # Layer 3: Registry (Win32) uninstall - ONLY if the AppX/Provisioned layers did not already
+    # remove it, and ONLY when the uninstaller can be run SILENTLY. An interactive UninstallString
+    # (e.g. a setup EXE, or MSI without /qn) would hang an unattended run forever. The old code
+    # ran unconditionally, matched a broad DisplayName wildcard (could hit an unrelated program),
+    # launched a possibly-interactive uninstaller, and leaked '-ErrorAction Continue' to cmd.exe.
+    if (-not $removed) {
+        try {
+            $regPaths = @(
+                'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
+            )
+            $regItem = @(foreach ($path in $regPaths) {
+                    Get-ChildItem $path -ErrorAction SilentlyContinue |
+                        Where-Object { $_.GetValue('DisplayName') -like "*$PackageName*" }
+                }) | Select-Object -First 1
 
             if ($regItem) {
+                $quiet = $regItem.GetValue('QuietUninstallString')
+                $normal = $regItem.GetValue('UninstallString')
+                $proc = $null
                 try {
-                    $uninstallString = $regItem.GetValue('UninstallString')
-                    if ($uninstallString) {
-                        & cmd /c $uninstallString -ErrorAction Continue
-                        Write-Log -Level SUCCESS -Component SOFTWARE -Message "    ✓ Layer 3: Executed uninstall string"
+                    if ($quiet) {
+                        # Vendor-provided silent command line - run it as-is via the shell.
+                        $proc = Start-Process -FilePath $env:ComSpec -ArgumentList '/c', $quiet `
+                            -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
+                    }
+                    elseif ($normal -match '\{[0-9A-Fa-f\-]{36}\}') {
+                        # MSI product code - force a silent, non-restarting uninstall.
+                        $guid = $Matches[0]
+                        $proc = Start-Process -FilePath 'msiexec.exe' -ArgumentList "/x$guid", '/qn', '/norestart' `
+                            -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
+                    }
+                    else {
+                        Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 3: no silent uninstall for '$PackageName' - skipping (would hang unattended)"
+                    }
+
+                    if ($proc -and $proc.ExitCode -in 0, 1605, 3010) {   # 1605 = not installed; 3010 = reboot required
+                        Write-Log -Level SUCCESS -Component SOFTWARE -Message "    Layer 3: Registry uninstall (exit $($proc.ExitCode))"
                         $attempts += 'Registry'
                         $removed = $true
+                    }
+                    elseif ($proc) {
+                        Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 3: uninstaller exit $($proc.ExitCode)"
                     }
                 }
                 catch {
@@ -88,9 +113,9 @@ function Remove-BloatwareLayered {
                 }
             }
         }
-    }
-    catch {
-        Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 3 (Registry) skipped: $_"
+        catch {
+            Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 3 (Registry) skipped: $_"
+        }
     }
 
     # Layer 4: WinGet removal (fallback)
@@ -99,7 +124,7 @@ function Remove-BloatwareLayered {
             $wingetExe = Resolve-WingetPath
             $null = & $wingetExe uninstall --id $WingetId --silent --accept-source-agreements --disable-interactivity 2>&1
             if ($LASTEXITCODE -eq 0) {
-                Write-Log -Level SUCCESS -Component SOFTWARE -Message "    ✓ Layer 4: WinGet uninstall succeeded"
+                Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 4: WinGet uninstall succeeded"
                 $attempts += 'WinGet'
                 $removed = $true
             }
@@ -110,10 +135,13 @@ function Remove-BloatwareLayered {
     }
 
     if ($removed) {
-        Write-Log -Level SUCCESS -Component SOFTWARE -Message "  Removal succeeded via: $($attempts -join ' → ')"
+        Write-Log -Level SUCCESS -Component SOFTWARE -Message "  Removal succeeded via: $($attempts -join ' -> ')"
     }
     else {
-        Write-Log -Level WARN -Component SOFTWARE -Message "  Not found (attempted: $($attempts -join ', ' | default 'none'))"
+        # NOTE: 'default' is not a PowerShell command - the old '| default ''none''' threw inside
+        # the string interpolation on every not-found package, turning a clean WARN into an ERROR.
+        $attemptedText = if ($attempts.Count -gt 0) { $attempts -join ', ' } else { 'none' }
+        Write-Log -Level WARN -Component SOFTWARE -Message "  Not found (attempted: $attemptedText)"
     }
 
     return $removed

@@ -36,13 +36,13 @@
 	<CheckRevocation/>
 	
 	<!-- Archive Directory for large log files (Wazuh optimization) -->
-	<ArchiveDirectory enabled="false"/>
+	<!-- ArchiveDirectory omitted: 'enabled' is not a valid attribute (it takes a directory name as text). The invalid attribute fail-fast crashes Sysmon 15.x (0xC0000409). Archiving stays off by default. -->
 	
 	<!-- ProcessTerminate: Set to false to reduce log volume -->
-	<ProcessTerminate onmatch="include"/>
+	<!-- (removed) ProcessTerminate is an event filter and is configured inside <EventFiltering> below; a filter element here in the global-options section is invalid. -->
 	
 	<!-- DnsLookup: DNS client resolution (Event ID 22) -->
-	<DnsLookup onmatch="exclude"/>
+	<!-- DnsLookup omitted: it is a boolean option (<DnsLookup>False</DnsLookup>), not a filter with onmatch, and requires schema >= 4.51. DNS query filtering is handled by <DnsQuery> in <EventFiltering> below. -->
 
 	<EventFiltering>
 

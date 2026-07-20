@@ -16,18 +16,21 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
 }
 
 function Test-CanRemovePackage {
-    param([string]$PackageName, [hashtable]$Protected, [hashtable]$Dependencies)
+    param([string]$PackageName, $Protected, $Dependencies)
 
     $lowerName = $PackageName.ToLowerInvariant()
 
-    # Check protected list (critical dependencies + system packages)
-    foreach ($section in $Protected.PSObject.Properties) {
-        $pkgs = $section.Value
-        foreach ($key in $pkgs.PSObject.Properties) {
-            $protected_item = $key.Value
-            if ($protected_item.protected -eq $true) {
-                if ($lowerName -eq $key.Name.ToLowerInvariant() -or
-                    $lowerName -like $key.Name.ToLowerInvariant()) {
+    # The configs are hashtables (Get-BaselineList uses -AsHashtable), so they MUST be walked
+    # via .Values / .GetEnumerator(). Iterating .PSObject.Properties on a hashtable yields the
+    # CLR members (Count/Keys/Values/...) instead of the package keys, which silently made this
+    # entire protection check a no-op (a protected app like Microsoft.WindowsStore was reported
+    # removable). The key may itself contain a wildcard (e.g. 'Microsoft.Xbox*'), so use -like
+    # with the key AS the pattern.
+    if ($Protected -is [System.Collections.IDictionary]) {
+        foreach ($section in $Protected.Values) {
+            if ($section -isnot [System.Collections.IDictionary]) { continue }
+            foreach ($entry in $section.GetEnumerator()) {
+                if ($entry.Value.protected -eq $true -and $lowerName -like $entry.Key.ToLowerInvariant()) {
                     Write-Log -Level WARN -Component SOFTWARE-AUDIT `
                         -Message "Package '$PackageName' is protected - will NOT remove"
                     return $false
@@ -36,17 +39,14 @@ function Test-CanRemovePackage {
         }
     }
 
-    # Check if other packages depend on it
-    if ($Dependencies.dependencies) {
-        foreach ($depKey in $Dependencies.dependencies.PSObject.Properties) {
-            $dep = $depKey.Value
-            if ($dep.protected -eq $true) {
-                if ($lowerName -eq $depKey.Name.ToLowerInvariant() -or
-                    $lowerName -like $depKey.Name.ToLowerInvariant()) {
-                    Write-Log -Level WARN -Component SOFTWARE-AUDIT `
-                        -Message "Package '$PackageName' has dependents - will NOT remove"
-                    return $false
-                }
+    # Packages that other packages depend on.
+    $depRoot = if ($Dependencies -is [System.Collections.IDictionary]) { $Dependencies['dependencies'] } else { $null }
+    if ($depRoot -is [System.Collections.IDictionary]) {
+        foreach ($entry in $depRoot.GetEnumerator()) {
+            if ($entry.Value.protected -eq $true -and $lowerName -like $entry.Key.ToLowerInvariant()) {
+                Write-Log -Level WARN -Component SOFTWARE-AUDIT `
+                    -Message "Package '$PackageName' has dependents - will NOT remove"
+                return $false
             }
         }
     }
@@ -146,26 +146,44 @@ function Get-BloatwareFromAllSources {
         Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "Registry query failed: $_"
     }
 
-    # Source 4: WinGet (if available)
+    # Source 4: WinGet (if available). Parse the fixed-width table into Name/Id columns and match
+    # the pattern against those - NEVER against the raw formatted line (the old code stored the
+    # whole "Name  Id  Version  Source" line as the package name, producing junk detections that
+    # Type2 could not act on). The winget Id is captured so Type2's winget-uninstall fallback works.
     if ((Test-CommandAvailable 'winget')) {
         Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning WinGet packages...'
         try {
             $wingetExe = Resolve-WingetPath
-            $wingetList = & $wingetExe list --accept-source-agreements --disable-interactivity 2>&1 |
+            $wingetRaw = & $wingetExe list --accept-source-agreements --disable-interactivity 2>&1 |
                 Where-Object { $_ -is [string] }
 
+            $wingetApps = [System.Collections.Generic.List[hashtable]]::new()
+            $inTable = $false
+            foreach ($line in $wingetRaw) {
+                if ($line -match '^-{3,}') { $inTable = $true; continue }
+                if (-not $inTable -or $line -match '^\s*$') { continue }
+                $cols = $line -split '\s{2,}'
+                if ($cols.Count -ge 2 -and $cols[0].Trim()) {
+                    $wingetApps.Add(@{ Name = $cols[0].Trim(); Id = $cols[1].Trim() })
+                }
+            }
+
             foreach ($pattern in $BloatwareConfig.patterns) {
-                foreach ($line in $wingetList) {
-                    if ($line -like $pattern) {
-                        if ((Test-CanRemovePackage -PackageName $line -Protected $Protected -Dependencies $Dependencies)) {
-                            $key = $line.ToLowerInvariant()
+                foreach ($wa in $wingetApps) {
+                    if ($wa.Name -like $pattern -or $wa.Id -like $pattern) {
+                        $target = if ($wa.Name) { $wa.Name } else { $wa.Id }
+                        if ((Test-CanRemovePackage -PackageName $target -Protected $Protected -Dependencies $Dependencies)) {
+                            $key = $target.ToLowerInvariant()
                             if ($detected.ContainsKey($key)) {
                                 $detected[$key].Sources += 'WinGet'
-                            } else {
+                                if (-not $detected[$key].WingetId) { $detected[$key].WingetId = $wa.Id }
+                            }
+                            else {
                                 $detected[$key] = @{
-                                    Name = $line
-                                    Sources = @('WinGet')
+                                    Name     = $target
+                                    Sources  = @('WinGet')
                                     Patterns = @($pattern)
+                                    WingetId = $wa.Id
                                 }
                             }
                         }
@@ -241,17 +259,16 @@ function Invoke-SoftwareManagementAudit {
             }
         }
         else {
-            # Extract all patterns from new config
+            # Extract all patterns from the new config. Walk the categories hashtable via
+            # .Values (NOT .PSObject.Properties, which yields CLR members on a hashtable and
+            # only produced patterns before by accident through the 'Values' member).
             $patterns = [System.Collections.Generic.List[string]]::new()
-            foreach ($category in $bloatConfig.categories.PSObject.Properties) {
-                foreach ($app in $category.Value.apps) {
-                    if ($app.removable -ne $false) {
-                        if ($app.appx_pattern) {
-                            $patterns.Add($app.appx_pattern)
-                        } else {
-                            $patterns.Add($app.name)
-                        }
-                    }
+            foreach ($category in $bloatConfig.categories.Values) {
+                if (-not ($category -is [System.Collections.IDictionary]) -or -not $category.apps) { continue }
+                foreach ($app in $category.apps) {
+                    if ($app.removable -eq $false) { continue }
+                    if ($app.appx_pattern) { $patterns.Add($app.appx_pattern) }
+                    elseif ($app.name) { $patterns.Add($app.name) }
                 }
             }
             $bloatConfig = @{ patterns = $patterns }
@@ -268,7 +285,7 @@ function Invoke-SoftwareManagementAudit {
                     Name        = $item.Name
                     PackageName = $item.Name
                     Sources     = $item.Sources -join ','
-                    WingetId    = ''
+                    WingetId    = ($item.WingetId ?? '')
                 })
                 $removeFound++
             }
