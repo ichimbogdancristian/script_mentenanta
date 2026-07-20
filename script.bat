@@ -58,6 +58,32 @@ IF DEFINED SYSTEM_PATH IF DEFINED USER_PATH (
 )
 EXIT /B
 
+:VERIFY_PWSH_AFTER_INSTALL
+REM After a PowerShell 7 install reports success, PATH updates can lag slightly
+REM behind the installer. Wait 5s, refresh PATH, and check for pwsh.exe, retrying
+REM up to 3 times before giving up (later detection steps may still find it).
+SET "PWSH_VERIFY_ATTEMPT=0"
+:VERIFY_PWSH_RETRY_LOOP
+SET /A PWSH_VERIFY_ATTEMPT+=1
+CALL :LOG_MESSAGE "Waiting 5 seconds before verifying PowerShell 7 is on PATH (attempt !PWSH_VERIFY_ATTEMPT!/3)..." "DEBUG" "LAUNCHER"
+TIMEOUT /T 5 /NOBREAK >nul 2>&1
+CALL :REFRESH_PATH_FROM_REGISTRY
+pwsh.exe -Version >nul 2>&1
+IF !ERRORLEVEL! EQU 0 (
+    CALL :LOG_MESSAGE "PowerShell 7 verified on PATH after install" "SUCCESS" "LAUNCHER"
+    EXIT /B 0
+)
+IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
+    "%ProgramFiles%\PowerShell\7\pwsh.exe" -Version >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "PowerShell 7 verified at default install path after install" "SUCCESS" "LAUNCHER"
+        EXIT /B 0
+    )
+)
+IF !PWSH_VERIFY_ATTEMPT! LSS 3 GOTO VERIFY_PWSH_RETRY_LOOP
+CALL :LOG_MESSAGE "PowerShell 7 not yet detected on PATH after 3 verification attempts (5s apart)" "WARN" "LAUNCHER"
+EXIT /B 1
+
 :MAIN_SCRIPT
 
 REM -----------------------------------------------------------------------------
@@ -475,74 +501,74 @@ SET "COMPONENTS_FOUND=0"
 REM Look for MaintenanceOrchestrator.ps1
 IF EXIST "%WORKING_DIR%MaintenanceOrchestrator.ps1" (
     SET "ORCHESTRATOR_PATH=%WORKING_DIR%MaintenanceOrchestrator.ps1"
-    CALL :LOG_MESSAGE "✓ Found orchestrator: MaintenanceOrchestrator.ps1" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "[OK] Found orchestrator: MaintenanceOrchestrator.ps1" "SUCCESS" "LAUNCHER"
     SET /A COMPONENTS_FOUND+=1
 ) ELSE IF EXIST "%WORKING_DIR%script.ps1" (
     SET "ORCHESTRATOR_PATH=%WORKING_DIR%script.ps1"
-    CALL :LOG_MESSAGE "✓ Found legacy orchestrator: script.ps1" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "[OK] Found legacy orchestrator: script.ps1" "INFO" "LAUNCHER"
     SET /A COMPONENTS_FOUND+=1
 ) ELSE (
-    CALL :LOG_MESSAGE "✗ No PowerShell orchestrator found in current directory" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "[X] No PowerShell orchestrator found in current directory" "WARN" "LAUNCHER"
     SET "STRUCTURE_VALID=NO"
 )
 
 REM Check for config directory and its contents (FIX #7: Check new subdirectory structure)
 IF EXIST "%WORKING_DIR%config" (
-    CALL :LOG_MESSAGE "✓ Found configuration directory" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "[OK] Found configuration directory" "SUCCESS" "LAUNCHER"
     SET /A COMPONENTS_FOUND+=1
     
     REM Check for settings subdirectory (execution configs)
     IF EXIST "%WORKING_DIR%config\settings" (
-        CALL :LOG_MESSAGE "  ✓ config\settings directory present" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [OK] config\settings directory present" "SUCCESS" "LAUNCHER"
         IF EXIST "%WORKING_DIR%config\settings\main-config.json" (
-            CALL :LOG_MESSAGE "    ✓ main-config.json present" "SUCCESS" "LAUNCHER"
+            CALL :LOG_MESSAGE "    [OK] main-config.json present" "SUCCESS" "LAUNCHER"
         ) ELSE (
-            CALL :LOG_MESSAGE "    ✗ main-config.json missing" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "    [X] main-config.json missing" "WARN" "LAUNCHER"
         )
     ) ELSE (
-        CALL :LOG_MESSAGE "  ✗ config\settings directory not found" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [X] config\settings directory not found" "WARN" "LAUNCHER"
     )
     
     REM Check for lists subdirectory (data lists)
     IF EXIST "%WORKING_DIR%config\lists" (
-        CALL :LOG_MESSAGE "  ✓ config\lists directory present" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [OK] config\lists directory present" "SUCCESS" "LAUNCHER"
         IF EXIST "%WORKING_DIR%config\lists\bloatware-list.json" (
-            CALL :LOG_MESSAGE "    ✓ bloatware-list.json present" "SUCCESS" "LAUNCHER"
+            CALL :LOG_MESSAGE "    [OK] bloatware-list.json present" "SUCCESS" "LAUNCHER"
         ) ELSE (
-            CALL :LOG_MESSAGE "    ✗ bloatware-list.json missing" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "    [X] bloatware-list.json missing" "WARN" "LAUNCHER"
         )
     ) ELSE (
-        CALL :LOG_MESSAGE "  ✗ config\lists directory not found" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [X] config\lists directory not found" "WARN" "LAUNCHER"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "✗ Configuration directory not found" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "[X] Configuration directory not found" "WARN" "LAUNCHER"
     SET "STRUCTURE_VALID=NO"
 )
 
 REM Check for modules directory and core modules
 IF EXIST "%WORKING_DIR%modules" (
-    CALL :LOG_MESSAGE "✓ Found modules directory" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "[OK] Found modules directory" "SUCCESS" "LAUNCHER"
     SET /A COMPONENTS_FOUND+=1
     
     IF EXIST "%WORKING_DIR%modules\core" (
-        CALL :LOG_MESSAGE "  ✓ Core modules directory present" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [OK] Core modules directory present" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "  ✗ Core modules directory missing" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [X] Core modules directory missing" "WARN" "LAUNCHER"
     )
     
     IF EXIST "%WORKING_DIR%modules\type1" (
-        CALL :LOG_MESSAGE "  ✓ Type1 modules directory present" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [OK] Type1 modules directory present" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "  ✗ Type1 modules directory missing" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [X] Type1 modules directory missing" "WARN" "LAUNCHER"
     )
     
     IF EXIST "%WORKING_DIR%modules\type2" (
-        CALL :LOG_MESSAGE "  ✓ Type2 modules directory present" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [OK] Type2 modules directory present" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "  ✗ Type2 modules directory missing" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [X] Type2 modules directory missing" "WARN" "LAUNCHER"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "✗ Modules directory not found" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "[X] Modules directory not found" "WARN" "LAUNCHER"
     SET "STRUCTURE_VALID=NO"
 )
 
@@ -709,6 +735,27 @@ CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
     )
 
 REM -----------------------------------------------------------------------------
+REM Winget Self-Update (refresh sources, update App Installer itself)
+REM -----------------------------------------------------------------------------
+IF "%WINGET_AVAILABLE%"=="YES" (
+    CALL :LOG_MESSAGE "Updating winget sources..." "INFO" "LAUNCHER"
+    "%WINGET_EXE%" source update >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Winget sources updated" "DEBUG" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Winget source update skipped or failed (non-fatal)" "DEBUG" "LAUNCHER"
+    )
+
+    CALL :LOG_MESSAGE "Checking for winget self-update..." "INFO" "LAUNCHER"
+    "%WINGET_EXE%" upgrade --id Microsoft.DesktopAppInstaller --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Winget (App Installer) updated to latest version" "SUCCESS" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Winget already up to date" "DEBUG" "LAUNCHER"
+    )
+)
+
+REM -----------------------------------------------------------------------------
 REM PowerShell 7 Detection and Installation (Moved after winget setup)
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Checking PowerShell 7 availability..." "INFO" "LAUNCHER"
@@ -766,9 +813,7 @@ IF "%PS7_FOUND%"=="NO" (
             SET "INSTALL_STATUS=SUCCESS"
             SET "PS7_FOUND=YES"
             
-            REM Refresh PATH environment to pick up newly installed PowerShell
-            CALL :LOG_MESSAGE "Refreshing PATH environment after PowerShell 7 installation..." "DEBUG" "LAUNCHER"
-            CALL :REFRESH_PATH_FROM_REGISTRY
+            CALL :VERIFY_PWSH_AFTER_INSTALL
         ) ELSE (
             CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "WARN" "LAUNCHER"
         )
@@ -781,7 +826,7 @@ IF "%PS7_FOUND%"=="NO" (
         REM Check if Chocolatey is available
         SET "CHOCO_EXE=choco"
         IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
-        
+
         "%CHOCO_EXE%" --version >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "Chocolatey found - installing PowerShell 7..." "INFO" "LAUNCHER"
@@ -790,41 +835,42 @@ IF "%PS7_FOUND%"=="NO" (
                 CALL :LOG_MESSAGE "PowerShell 7 installed successfully via Chocolatey" "SUCCESS" "LAUNCHER"
                 SET "INSTALL_STATUS=SUCCESS"
                 SET "PS7_FOUND=YES"
-                
-                REM Refresh PATH after installation
-                CALL :LOG_MESSAGE "Refreshing PATH after PowerShell 7 installation..." "DEBUG" "LAUNCHER"
-                CALL :REFRESH_PATH_FROM_REGISTRY
+                CALL :VERIFY_PWSH_AFTER_INSTALL
             ) ELSE (
                 CALL :LOG_MESSAGE "Chocolatey failed to install PowerShell 7" "WARN" "LAUNCHER"
             )
         ) ELSE (
             CALL :LOG_MESSAGE "Chocolatey not available - attempting Chocolatey installation..." "INFO" "LAUNCHER"
-            
-            REM Try installing Chocolatey from official installer
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; iex ((New-Object Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); Write-Host 'CHOCO_INSTALLED' } catch { Write-Host 'CHOCO_INSTALL_FAILED'; exit 1 }" >nul 2>&1
-            
-            IF !ERRORLEVEL! EQU 0 (
+
+            REM Try installing Chocolatey from the official installer. Capture output to a
+            REM log file instead of discarding it, so failures are diagnosable, and use the
+            REM bitwise-OR form for SecurityProtocol (Chocolatey's own recommendation) so we
+            REM add TLS 1.2 rather than clobbering whatever protocols were already enabled.
+            SET "CHOCO_INSTALL_LOG=%WORKING_DIR%choco-install.log"
+            DEL /Q "!CHOCO_INSTALL_LOG!" >nul 2>&1
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Set-ExecutionPolicy Bypass -Scope Process -Force; [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; iex ((New-Object Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); Write-Host 'CHOCO_INSTALLED' } catch { Write-Host ('CHOCO_INSTALL_FAILED: ' + $_.Exception.Message); exit 1 }" > "!CHOCO_INSTALL_LOG!" 2>&1
+
+            REM Refresh PATH so a freshly-installed choco.exe can be found, then trust its
+            REM actual on-disk presence over the exit code - the community install script's
+            REM own exit behavior is not always a reliable success/failure signal.
+            CALL :REFRESH_PATH_FROM_REGISTRY
+            IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" (
+                SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
                 CALL :LOG_MESSAGE "Chocolatey installed successfully" "SUCCESS" "LAUNCHER"
                 TIMEOUT /T 2 >nul 2>&1
-                
-                REM Update Chocolatey path after installation
-                IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
-                
+
                 CALL :LOG_MESSAGE "Installing PowerShell 7 via newly installed Chocolatey..." "INFO" "LAUNCHER"
-                "%CHOCO_EXE%" install powershell-core -y --no-progress
+                "!CHOCO_EXE!" install powershell-core -y --no-progress
                 IF !ERRORLEVEL! EQU 0 (
                     CALL :LOG_MESSAGE "PowerShell 7 installed successfully via newly installed Chocolatey" "SUCCESS" "LAUNCHER"
                     SET "INSTALL_STATUS=SUCCESS"
                     SET "PS7_FOUND=YES"
-                    
-                    REM Refresh PATH after installation
-                    CALL :LOG_MESSAGE "Refreshing PATH after PowerShell 7 installation..." "DEBUG" "LAUNCHER"
-                    CALL :REFRESH_PATH_FROM_REGISTRY
+                    CALL :VERIFY_PWSH_AFTER_INSTALL
                 ) ELSE (
                     CALL :LOG_MESSAGE "PowerShell 7 installation failed even with fresh Chocolatey" "WARN" "LAUNCHER"
                 )
             ) ELSE (
-                CALL :LOG_MESSAGE "Chocolatey installation failed - proceeding to MSI fallback for PowerShell 7" "WARN" "LAUNCHER"
+                CALL :LOG_MESSAGE "Chocolatey installation failed - see !CHOCO_INSTALL_LOG! for details - proceeding to MSI fallback for PowerShell 7" "WARN" "LAUNCHER"
             )
         )
     )
@@ -841,6 +887,7 @@ IF "%PS7_FOUND%"=="NO" (
                 CALL :LOG_MESSAGE "PowerShell 7 installed successfully via MSI" "SUCCESS" "LAUNCHER"
                 SET "INSTALL_STATUS=SUCCESS"
                 SET "PS7_FOUND=YES"
+                CALL :VERIFY_PWSH_AFTER_INSTALL
             ) ELSE (
                 CALL :LOG_MESSAGE "PowerShell 7 MSI installation failed" "ERROR" "LAUNCHER"
             )
@@ -1383,9 +1430,9 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     SET "PS_ARGS=-ExecutionPolicy Bypass -NoExit -Command "
     SET "PS_ARGS=!PS_ARGS!& { "
     SET "PS_ARGS=!PS_ARGS!Set-Location '%WORKING_DIR%'; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host '🚀 Windows Maintenance Automation - PowerShell 7+ Mode' -ForegroundColor Green; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host '📁 Working Directory: %WORKING_DIR%' -ForegroundColor Cyan; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host '🔧 Launching MaintenanceOrchestrator...' -ForegroundColor Yellow; "
+    SET "PS_ARGS=!PS_ARGS!Write-Host 'Windows Maintenance Automation - PowerShell 7+ Mode' -ForegroundColor Green; "
+    SET "PS_ARGS=!PS_ARGS!Write-Host 'Working Directory: %WORKING_DIR%' -ForegroundColor Cyan; "
+    SET "PS_ARGS=!PS_ARGS!Write-Host 'Launching MaintenanceOrchestrator...' -ForegroundColor Yellow; "
     SET "PS_ARGS=!PS_ARGS!Write-Host ''; "
     
     REM Check for command line arguments to pass through
@@ -1396,7 +1443,7 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     )
     
     SET "PS_ARGS=!PS_ARGS!Write-Host ''; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host '✅ Maintenance session completed. You can close this window or run additional commands.' -ForegroundColor Green; "
+    SET "PS_ARGS=!PS_ARGS!Write-Host '[OK] Maintenance session completed. You can close this window or run additional commands.' -ForegroundColor Green; "
     SET "PS_ARGS=!PS_ARGS!}"
     
     REM Write all remaining launcher messages BEFORE START so the bootstrap log
