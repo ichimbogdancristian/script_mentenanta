@@ -37,41 +37,28 @@ IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
 EXIT /B
 
 :REFRESH_PATH_FROM_REGISTRY
-<<<<<<< HEAD
-REM Refresh PATH so freshly-installed tools (pwsh, choco, winget) become reachable.
-REM IMPORTANT: never blindly overwrite PATH with the raw registry value - the registry
-REM stores PATH as REG_EXPAND_SZ and hands back literal "%SystemRoot%\system32" tokens
-REM that batch will NOT re-expand, which previously wiped the ability to run
-REM powershell.exe/pwsh.exe entirely. Instead: rebuild from a fully-RESOLVED known-good
-REM base (so core system tools always resolve), then append the machine + user PATH.
-REM Rebuilding each call also keeps PATH from growing unbounded across retries.
-SET "REG_SYS_PATH="
-SET "REG_USR_PATH="
-FOR /F "tokens=2*" %%i IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul') DO SET "REG_SYS_PATH=%%j"
-FOR /F "tokens=2*" %%i IN ('REG QUERY "HKCU\Environment" /v PATH 2^>nul') DO SET "REG_USR_PATH=%%j"
-SET "PATH=%SystemRoot%\system32;%SystemRoot%;%SystemRoot%\System32\Wbem;%SystemRoot%\System32\WindowsPowerShell\v1.0\;%ProgramFiles%\PowerShell\7;%LocalAppData%\Microsoft\WindowsApps;%ProgramData%\chocolatey\bin"
-IF DEFINED REG_SYS_PATH SET "PATH=!PATH!;!REG_SYS_PATH!"
-IF DEFINED REG_USR_PATH SET "PATH=!PATH!;!REG_USR_PATH!"
+REM Make freshly-installed tools (pwsh / choco / winget) reachable WITHOUT clobbering the working
+REM PATH. We only PREPEND the known install dirs onto the CURRENT PATH, using immediate %VAR%
+REM expansion only (no delayed expansion, no registry parsing) so this can never corrupt PATH.
+REM We must NOT overwrite PATH from the raw registry value: it is stored as REG_EXPAND_SZ with
+REM literal %SystemRoot% tokens that batch will not re-expand, which previously made
+REM powershell.exe / pwsh.exe unresolvable and cascaded into "is not recognized" for the run.
+SET "PATH=%ProgramFiles%\PowerShell\7;%LocalAppData%\Microsoft\WindowsApps;%ProgramData%\chocolatey\bin;%PATH%"
 EXIT /B
 
 :VERIFY_PS7_AFTER_INSTALL
-REM Called right after a PowerShell 7 install. Newly-installed pwsh (especially the
-REM winget Store/MSIX build under WindowsApps) is not always immediately resolvable, so
-REM give the system time to register it: up to 3 attempts with a 5s cooldown each,
-REM refreshing PATH before every probe. Sets PS7_FOUND=YES on the first hit. Fully
-REM unattended - no prompts, no keypress required.
+REM Called right after a PowerShell 7 install. A freshly-installed pwsh (especially the winget
+REM Store/MSIX build under WindowsApps) is not always immediately resolvable, so give the system
+REM time to register it: up to 3 attempts with a ~5s cooldown each, refreshing PATH before every
+REM probe. Sets PS7_FOUND=YES on the first hit. Fully unattended - uses ping as a headless-safe
+REM sleep (TIMEOUT cannot actually wait when stdin is redirected, e.g. under a scheduled task).
 SET "PS7_FOUND=NO"
 FOR /L %%R IN (1,1,3) DO (
     IF "!PS7_FOUND!"=="NO" (
         CALL :LOG_MESSAGE "Waiting 5s for PowerShell 7 registration to settle (attempt %%R/3)..." "INFO" "LAUNCHER"
-        TIMEOUT /T 5 /NOBREAK >nul 2>&1
+        ping -n 6 127.0.0.1 >nul 2>&1
         CALL :REFRESH_PATH_FROM_REGISTRY
-        pwsh.exe -NoProfile -Command "exit 0" >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            SET "PS7_FOUND=YES"
-            CALL :LOG_MESSAGE "PowerShell 7 discovered via PATH (attempt %%R/3)" "SUCCESS" "LAUNCHER"
-        )
-        IF "!PS7_FOUND!"=="NO" IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
+        IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
             SET "PS7_FOUND=YES"
             CALL :LOG_MESSAGE "PowerShell 7 discovered at %ProgramFiles%\PowerShell\7 (attempt %%R/3)" "SUCCESS" "LAUNCHER"
         )
@@ -79,29 +66,16 @@ FOR /L %%R IN (1,1,3) DO (
             SET "PS7_FOUND=YES"
             CALL :LOG_MESSAGE "PowerShell 7 discovered via WindowsApps alias (attempt %%R/3)" "SUCCESS" "LAUNCHER"
         )
+        IF "!PS7_FOUND!"=="NO" (
+            pwsh.exe -NoProfile -Command "exit 0" >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 (
+                SET "PS7_FOUND=YES"
+                CALL :LOG_MESSAGE "PowerShell 7 discovered via PATH (attempt %%R/3)" "SUCCESS" "LAUNCHER"
+            )
+        )
         IF "!PS7_FOUND!"=="NO" CALL :LOG_MESSAGE "PowerShell 7 not yet discoverable (attempt %%R/3) - retrying" "WARN" "LAUNCHER"
     )
-=======
-REM Make newly-installed tools discoverable WITHOUT clobbering the live PATH.
-REM NOTE: Rebuilding PATH from the registry is unsafe - the stored value is a
-REM REG_EXPAND_SZ containing %SystemRoot% and, combined with delayed expansion,
-REM can drop System32 and leave even powershell.exe unresolvable. So we only
-REM APPEND well-known install locations that may be missing after an install.
-IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
-IF EXIST "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" SET "PATH=%PATH%;%LocalAppData%\Microsoft\WindowsApps"
-IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" SET "PATH=%PATH%;%LocalAppData%\Microsoft\WindowsApps"
-IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "PATH=%PATH%;%ProgramData%\chocolatey\bin"
-EXIT /B
-
-:SAFE_PAUSE
-REM Pause only when a human is present. Under unattended/scheduled execution a
-REM bare PAUSE would hang forever waiting for a keypress, so it is skipped.
-IF "%UNATTENDED%"=="YES" (
-    CALL :LOG_MESSAGE "Unattended mode - skipping pause" "DEBUG" "LAUNCHER"
-    EXIT /B
->>>>>>> 5c3915edf1f5ad2ef0b803a1f687750f1d814ccf
 )
-PAUSE
 EXIT /B
 
 :MAIN_SCRIPT
@@ -111,18 +85,6 @@ REM Self-Discovery Environment Setup
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Starting Windows Maintenance Automation Launcher v2.0" "INFO" "LAUNCHER"
 CALL :LOG_MESSAGE "Environment: %USERNAME%@%COMPUTERNAME%" "INFO" "LAUNCHER"
-
-REM -----------------------------------------------------------------------------
-REM Unattended-execution detection (scheduled task / SYSTEM / non-interactive)
-REM When YES, the launcher must NEVER block on a prompt (PAUSE/CHOICE/SET-P).
-REM -----------------------------------------------------------------------------
-SET "UNATTENDED=NO"
-whoami 2>nul | find /i "nt authority\system" >nul && SET "UNATTENDED=YES"
-IF NOT DEFINED SESSIONNAME SET "UNATTENDED=YES"
-IF /I "%~1"=="-NonInteractive" SET "UNATTENDED=YES"
-IF /I "%~1"=="-Unattended" SET "UNATTENDED=YES"
-SET "PS7_RESTART_DONE=NO"
-CALL :LOG_MESSAGE "Unattended mode: %UNATTENDED%" "INFO" "LAUNCHER"
 
 REM Enhanced path detection - works from any location
 SET "SCRIPT_PATH=%~f0"
@@ -219,7 +181,7 @@ IF "%IS_ADMIN%"=="NO" (
     powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs -WindowStyle Normal"
     IF !ERRORLEVEL! NEQ 0 (
         CALL :LOG_MESSAGE "Elevation failed or was cancelled by user" "ERROR" "LAUNCHER"
-        CALL :SAFE_PAUSE
+        PAUSE
         EXIT /B 1
     )
     exit
@@ -360,7 +322,6 @@ IF EXIST "%WORKING_DIR%restart_flag.tmp" (
         CALL :LOG_MESSAGE "Restart context: %%i" "DEBUG" "LAUNCHER"
     )
     DEL "%WORKING_DIR%restart_flag.tmp" >nul 2>&1
-    SET "PS7_RESTART_DONE=YES"
     CALL :LOG_MESSAGE "Script restarted after PowerShell 7 installation - continuing with fresh environment" "SUCCESS" "LAUNCHER"
 )
 
@@ -414,7 +375,7 @@ CALL :LOG_MESSAGE "PowerShell version: %PS_VERSION%" "INFO" "LAUNCHER"
 IF %PS_VERSION% LSS 5 (
     CALL :LOG_MESSAGE "PowerShell 5.1 or higher required. Current: %PS_VERSION%" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "Please install Windows PowerShell 5.1 or PowerShell 7+" "ERROR" "LAUNCHER"
-    CALL :SAFE_PAUSE
+    PAUSE
     EXIT /B 2
 )
 
@@ -436,13 +397,13 @@ powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'Silent
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository download failed. Check internet connection." "ERROR" "LAUNCHER"
-    CALL :SAFE_PAUSE
+    PAUSE
     EXIT /B 3
 )
 
 IF NOT EXIST "%ZIP_FILE%" (
     CALL :LOG_MESSAGE "Download verification failed - ZIP file not found" "ERROR" "LAUNCHER"
-    CALL :SAFE_PAUSE
+    PAUSE
     EXIT /B 3
 )
 
@@ -454,7 +415,7 @@ powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository extraction failed" "ERROR" "LAUNCHER"
-    CALL :SAFE_PAUSE
+    PAUSE
     EXIT /B 3
 )
 
@@ -509,12 +470,12 @@ IF EXIST "%EXTRACTED_PATH%" (
         CALL :LOG_MESSAGE "Using extracted legacy orchestrator" "INFO" "LAUNCHER"
     ) ELSE (
         CALL :LOG_MESSAGE "No valid orchestrator found in extracted files" "ERROR" "LAUNCHER"
-        CALL :SAFE_PAUSE
+        PAUSE
         EXIT /B 3
     )
 ) ELSE (
     CALL :LOG_MESSAGE "Repository extraction verification failed" "ERROR" "LAUNCHER"
-    CALL :SAFE_PAUSE
+    PAUSE
     EXIT /B 3
 )
 
@@ -609,7 +570,7 @@ CALL :LOG_MESSAGE "Project structure verification: %COMPONENTS_FOUND%/3 major co
 
 IF "%STRUCTURE_VALID%"=="NO" (
     CALL :LOG_MESSAGE "Project structure incomplete but repository already downloaded. Check extraction." "ERROR" "LAUNCHER"
-    CALL :SAFE_PAUSE
+    PAUSE
     EXIT /B 4
 ) ELSE (
     CALL :LOG_MESSAGE "Project structure validated" "SUCCESS" "LAUNCHER"
@@ -768,9 +729,9 @@ CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
     )
 
 REM -----------------------------------------------------------------------------
-REM Winget Self-Update (keep App Installer / winget current before we rely on it)
-REM Runs only when winget is available; fully non-fatal and non-interactive so an
-REM unattended run is never blocked by an "already current" or update-blocked result.
+REM Winget Self-Update (keep App Installer / winget current before we rely on it).
+REM Only runs when winget is available; fully non-fatal and non-interactive so an
+REM unattended run is never blocked by "already current" or an update being unavailable.
 REM -----------------------------------------------------------------------------
 IF "!WINGET_AVAILABLE!"=="YES" (
     CALL :LOG_MESSAGE "Refreshing winget sources..." "INFO" "LAUNCHER"
@@ -780,7 +741,7 @@ IF "!WINGET_AVAILABLE!"=="YES" (
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "winget self-update applied (or already current)" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "winget self-update not applied (already current or blocked) - continuing" "INFO" "LAUNCHER"
+        CALL :LOG_MESSAGE "winget self-update not applied (already current or unavailable) - continuing" "INFO" "LAUNCHER"
     )
 )
 
@@ -833,20 +794,15 @@ IF "%PS7_FOUND%"=="NO" (
     SET "INSTALL_STATUS=FAILED"
     SET "WINGET_LOG=%WORKING_DIR%winget-pwsh-install.log"
 
-    REM NOTE: every state check below uses delayed expansion (!VAR!) on purpose. This whole
-    REM IF-block is parsed once, so %INSTALL_STATUS% / %PS7_FOUND% would be frozen at their
-    REM parse-time values ("FAILED"/"NO") and a successful winget install would still fall
-    REM through into Chocolatey, MSI, and finally "all methods failed". !VAR! reads the live
-    REM value instead. Do NOT change these back to %VAR%.
+    REM Every state check below uses delayed expansion (!VAR!) on purpose. This whole IF-block
+    REM is parsed once, so %INSTALL_STATUS% would be frozen at its parse-time value ("FAILED")
+    REM and a SUCCESSFUL install would still fall through Chocolatey, MSI and finally report
+    REM "all methods failed". !VAR! reads the live value. Do NOT change these back to %VAR%.
 
     REM 1) Try installing PowerShell via winget (if available)
     IF "!WINGET_AVAILABLE!"=="YES" (
         CALL :LOG_MESSAGE "Installing PowerShell 7 via winget..." "INFO" "LAUNCHER"
-<<<<<<< HEAD
         "!WINGET_EXE!" install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements
-=======
-        "%WINGET_EXE%" install Microsoft.PowerShell --source winget --silent --accept-package-agreements --accept-source-agreements
->>>>>>> 5c3915edf1f5ad2ef0b803a1f687750f1d814ccf
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "PowerShell 7 installed successfully via winget" "SUCCESS" "LAUNCHER"
             SET "INSTALL_STATUS=SUCCESS"
@@ -879,12 +835,12 @@ IF "%PS7_FOUND%"=="NO" (
         ) ELSE (
             CALL :LOG_MESSAGE "Chocolatey not available - attempting Chocolatey installation..." "INFO" "LAUNCHER"
 
-            REM Official Chocolatey bootstrap. TLS 1.2 is enabled via ...SecurityProtocol -bor 3072
-            REM (community.chocolatey.org rejects older protocols). We deliberately do NOT trust the
-            REM iex exit code (the install script can emit non-fatal errors to stderr and still
-            REM succeed); instead we refresh PATH and check for choco.exe on disk as the real signal.
+            REM Official Chocolatey bootstrap. TLS 1.2 is enabled via SecurityProtocol -bor 3072
+            REM (community.chocolatey.org rejects older protocols). We deliberately do NOT trust
+            REM the iex exit code - the installer can emit non-fatal errors and still succeed - so
+            REM we refresh PATH and verify choco.exe on disk as the real success signal.
             powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')) } catch { exit 1 }"
-            TIMEOUT /T 3 /NOBREAK >nul 2>&1
+            ping -n 4 127.0.0.1 >nul 2>&1
             CALL :REFRESH_PATH_FROM_REGISTRY
 
             IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" (
@@ -926,11 +882,10 @@ IF "%PS7_FOUND%"=="NO" (
         )
     )
 
-<<<<<<< HEAD
-    REM Post-install verification result. VERIFY_PS7_AFTER_INSTALL already ran the
-    REM 5s-cooldown / 3-retry discovery in-place, so there is no need to relaunch the
-    REM whole script (which spawned nested windows and broke unattended runs). The
-    REM exhaustive PS_EXECUTABLE detection further below will retry once more anyway.
+    REM Post-install result. VERIFY_PS7_AFTER_INSTALL already ran the 5s-cooldown / 3-retry
+    REM discovery in-place, so we do NOT relaunch the whole script (the old nested-restart via
+    REM START /WAIT spawned extra windows and broke unattended runs). The exhaustive
+    REM PS_EXECUTABLE detection further below retries discovery once more anyway.
     IF "!INSTALL_STATUS!"=="SUCCESS" (
         IF "!PS7_FOUND!"=="YES" (
             CALL :LOG_MESSAGE "PowerShell 7 installed and discovered successfully" "SUCCESS" "LAUNCHER"
@@ -938,26 +893,6 @@ IF "%PS7_FOUND%"=="NO" (
             CALL :LOG_MESSAGE "PowerShell 7 installed but not yet discoverable after retries - later detection will retry" "WARN" "LAUNCHER"
         )
     ) ELSE (
-=======
-    REM Post-install verification and restart logic
-    IF "!INSTALL_STATUS!"=="SUCCESS" IF NOT "%PS7_RESTART_DONE%"=="YES" (
-        CALL :LOG_MESSAGE "Restarting script with fresh environment to detect PowerShell 7..." "INFO" "LAUNCHER"
-
-        REM Create restart flag with timestamp to prevent infinite loops
-        ECHO POWERSHELL_RESTART_%DATE:~-4,4%%DATE:~-10,2%%DATE:~-7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2% > "%WORKING_DIR%restart_flag.tmp"
-
-        REM Restart the script with a fresh environment (give Windows a moment to update PATH)
-        TIMEOUT /T 3 /NOBREAK >nul 2>&1
-        START "" /WAIT cmd.exe /C ""%SCRIPT_PATH%" %*"
-
-        REM Exit current instance after new instance completes
-        EXIT /B !ERRORLEVEL!
-    )
-    IF "!INSTALL_STATUS!"=="SUCCESS" IF "%PS7_RESTART_DONE%"=="YES" (
-        CALL :LOG_MESSAGE "PowerShell 7 install reported success but pwsh still not on PATH after a prior restart. Will rely on absolute-path detection instead of restarting again (loop guard)." "WARN" "LAUNCHER"
-    )
-    IF NOT "!INSTALL_STATUS!"=="SUCCESS" (
->>>>>>> 5c3915edf1f5ad2ef0b803a1f687750f1d814ccf
         CALL :LOG_MESSAGE "All automated installation methods for PowerShell 7 failed." "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE "Troubleshooting tips:" "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE " - Ensure winget can access sources: winget source list / reset --force / update" "ERROR" "LAUNCHER"
@@ -1276,7 +1211,7 @@ IF "%PS_EXECUTABLE%"=="" (
     CALL :LOG_MESSAGE "  3. Chocolatey: choco install powershell-core" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "After installation, restart this script to continue." "ERROR" "LAUNCHER"
-    CALL :SAFE_PAUSE
+    PAUSE
     EXIT /B 1
 )
 
@@ -1299,7 +1234,7 @@ IF "%PS_EXECUTABLE%"=="" (
     CALL :LOG_MESSAGE "  - pwsh.exe is in PATH or default location" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  - No execution policy restrictions" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  - Antivirus/security software not blocking execution" "ERROR" "LAUNCHER"
-    CALL :SAFE_PAUSE
+    PAUSE
     EXIT /B 1
 )
 
@@ -1434,7 +1369,7 @@ CALL :LOG_MESSAGE "AUTO_NONINTERACTIVE flag: %AUTO_NONINTERACTIVE%" "DEBUG" "LAU
 
 IF "%ORCHESTRATOR_PATH%"=="" (
     CALL :LOG_MESSAGE "No valid PowerShell orchestrator found" "ERROR" "LAUNCHER"
-    CALL :SAFE_PAUSE
+    PAUSE
     EXIT /B 4
 )
 
@@ -1443,7 +1378,7 @@ CALL :LOG_MESSAGE "Orchestrator path: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
 REM Verify orchestrator file exists
 IF NOT EXIST "%ORCHESTRATOR_PATH%" (
     CALL :LOG_MESSAGE "Orchestrator file not found: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
-    CALL :SAFE_PAUSE
+    PAUSE
     EXIT /B 4
 )
 
@@ -1453,7 +1388,6 @@ REM [REMOVED: Legacy PowerShell 7+ orchestrator check. Now handled by consolidat
 
 CALL :LOG_MESSAGE "Using PowerShell 7+ for orchestrator execution" "SUCCESS" "LAUNCHER"
 
-<<<<<<< HEAD
 REM Parse command line arguments for the orchestrator
 SET "PS_ARGS="
 IF "%1"=="-NonInteractive" SET "PS_ARGS=%PS_ARGS% -NonInteractive"
@@ -1510,35 +1444,59 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     REM Exit batch script cleanly - PowerShell 7 window takes over
     EXIT /B 0
 ) ELSE (
-=======
-REM -----------------------------------------------------------------------------
-REM Orchestrator launch (same console, non-interactive, exit-code captured)
-REM For unattended operation we must NOT spawn a detached -NoExit window: that
-REM leaves an orphaned pwsh process and makes the launcher report success before
-REM the orchestrator has finished. Run it in THIS console and wait for it.
-REM -----------------------------------------------------------------------------
-IF NOT "%AUTO_NONINTERACTIVE%"=="YES" (
->>>>>>> 5c3915edf1f5ad2ef0b803a1f687750f1d814ccf
     CALL :LOG_MESSAGE "CRITICAL: PowerShell 7+ not detected - cannot run orchestrator" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "The launcher requires a compatible pwsh.exe (PowerShell 7+) to execute the orchestrator" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Install it with: winget install Microsoft.PowerShell --source winget" "ERROR" "LAUNCHER"
-    CALL :SAFE_PAUSE
+    CALL :LOG_MESSAGE "Windows PowerShell 5.1 is not suitable for full orchestrator execution" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please install PowerShell 7+ and restart this script:" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "  https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
+    PAUSE
     EXIT /B 1
 )
 
-CALL :LOG_MESSAGE "Setup phase completed - launching orchestrator in this console (non-interactive)" "SUCCESS" "LAUNCHER"
-CALL :LOG_MESSAGE "Orchestrator: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
-CALL :LOG_MESSAGE "=== LAUNCHER HANDOFF TO ORCHESTRATOR ===" "INFO" "LAUNCHER"
+REM Batch script execution completed - PowerShell 7+ window is now handling all operations
+CALL :LOG_MESSAGE "Batch launcher phase completed successfully" "SUCCESS" "LAUNCHER"
+GOTO :FINAL_CLEANUP
 
-REM Clear LOG_FILE so no launcher write races with the orchestrator consuming the bootstrap log
-SET "LOG_FILE="
+REM -----------------------------------------------------------------------------
+REM Post-Orchestrator Execution Logic: Interactive Menu with Countdown
+REM -----------------------------------------------------------------------------
+:POST_ORCHESTRATOR_MENU
+ECHO.
+ECHO ===============================
+ECHO  Select Task Execution (20s):
+ECHO ===============================
+ECHO 1. Execute all tasks unattended
+ECHO 2. Execute only specific task numbers
+ECHO.
+ECHO Waiting for selection... (defaults to option 1 after 20 seconds)
+CHOICE /C 12 /N /T 20 /D 1 /M "Select option (1-2): "
+SET "NORMAL_CHOICE=%ERRORLEVEL%"
+IF "%NORMAL_CHOICE%"=="2" GOTO :NORMAL_INSERTED
+REM Default or Option 1 selected
+GOTO :EXECUTE_ALL
 
-CD /D "%WORKING_DIR%"
-IF /I "%~1"=="-TaskNumbers" (
-    "%PS_EXECUTABLE%" -NoProfile -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive -TaskNumbers "%~2"
-) ELSE (
-    "%PS_EXECUTABLE%" -NoProfile -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive
+:NORMAL_INSERTED
+ECHO.
+SET /P TASKNUMS="Enter task numbers (comma-separated, e.g., 1,3,5): "
+IF "%TASKNUMS%"=="" (
+    ECHO No task numbers entered. Executing all tasks...
+    GOTO :EXECUTE_ALL
 )
+GOTO :EXECUTE_INSERTED
+
+:EXECUTE_ALL
+CALL :LOG_MESSAGE "Executing all tasks unattended..." "INFO" "LAUNCHER"
+CD /D "%WORKING_DIR%"
+"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
+SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
+GOTO :FINAL_CLEANUP
+
+:EXECUTE_INSERTED
+CALL :LOG_MESSAGE "Executing selected tasks: %TASKNUMS%..." "INFO" "LAUNCHER"
+CD /D "%WORKING_DIR%"
+"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -TaskNumbers "%TASKNUMS%"
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 
@@ -1563,10 +1521,8 @@ IF EXIST "%WORKING_DIR%temp_files\reports" (
     )
 )
 
-IF NOT "%UNATTENDED%"=="YES" (
-    CALL :LOG_MESSAGE "Interactive mode - press any key to close" "INFO" "LAUNCHER"
-    CALL :SAFE_PAUSE
-)
+CALL :LOG_MESSAGE "Interactive mode - press any key to close" "INFO" "LAUNCHER"
+PAUSE >nul
 EXIT /B %FINAL_EXIT_CODE%
 
 REM -----------------------------------------------------------------------------
