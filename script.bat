@@ -187,7 +187,6 @@ IF "%IS_ADMIN%"=="NO" (
     powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs -WindowStyle Normal"
     IF !ERRORLEVEL! NEQ 0 (
         CALL :LOG_MESSAGE "Elevation failed or was cancelled by user" "ERROR" "LAUNCHER"
-        PAUSE
         EXIT /B 1
     )
     exit
@@ -381,7 +380,6 @@ CALL :LOG_MESSAGE "PowerShell version: %PS_VERSION%" "INFO" "LAUNCHER"
 IF %PS_VERSION% LSS 5 (
     CALL :LOG_MESSAGE "PowerShell 5.1 or higher required. Current: %PS_VERSION%" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "Please install Windows PowerShell 5.1 or PowerShell 7+" "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 2
 )
 
@@ -403,13 +401,11 @@ powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'Silent
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository download failed. Check internet connection." "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 3
 )
 
 IF NOT EXIST "%ZIP_FILE%" (
     CALL :LOG_MESSAGE "Download verification failed - ZIP file not found" "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 3
 )
 
@@ -421,7 +417,6 @@ powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository extraction failed" "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 3
 )
 
@@ -436,14 +431,10 @@ IF EXIST "%EXTRACTED_PATH%" (
         
         REM Use ORIGINAL_SCRIPT_DIR to ensure we overwrite the correct script.bat location
         SET "ORIGINAL_SCRIPT_BAT=%ORIGINAL_SCRIPT_DIR%script.bat"
-        SET "BACKUP_SCRIPT=%ORIGINAL_SCRIPT_DIR:~0,-1%.bat.backup"
-        
-        IF EXIST "%ORIGINAL_SCRIPT_BAT%" (
-            COPY /Y "%ORIGINAL_SCRIPT_BAT%" "%BACKUP_SCRIPT%" >nul 2>&1
-            CALL :LOG_MESSAGE "Original script.bat backed up to: %BACKUP_SCRIPT%" "DEBUG" "LAUNCHER"
-        )
-        
-        REM Copy extracted script.bat to original location
+
+        REM Copy extracted script.bat to original location (no backup kept - the
+        REM repository on GitHub is the source of truth, so a stray .bat.backup
+        REM file next to it is unnecessary clutter, not a safety net)
         COPY /Y "%EXTRACTED_PATH%\script.bat" "%ORIGINAL_SCRIPT_BAT%" >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "Successfully replaced script.bat with version from repository at: %ORIGINAL_SCRIPT_BAT%" "SUCCESS" "LAUNCHER"
@@ -476,12 +467,10 @@ IF EXIST "%EXTRACTED_PATH%" (
         CALL :LOG_MESSAGE "Using extracted legacy orchestrator" "INFO" "LAUNCHER"
     ) ELSE (
         CALL :LOG_MESSAGE "No valid orchestrator found in extracted files" "ERROR" "LAUNCHER"
-        PAUSE
         EXIT /B 3
     )
 ) ELSE (
     CALL :LOG_MESSAGE "Repository extraction verification failed" "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 3
 )
 
@@ -576,7 +565,6 @@ CALL :LOG_MESSAGE "Project structure verification: %COMPONENTS_FOUND%/3 major co
 
 IF "%STRUCTURE_VALID%"=="NO" (
     CALL :LOG_MESSAGE "Project structure incomplete but repository already downloaded. Check extraction." "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 4
 ) ELSE (
     CALL :LOG_MESSAGE "Project structure validated" "SUCCESS" "LAUNCHER"
@@ -1234,30 +1222,6 @@ IF "%PS_EXECUTABLE%"=="" (
     CALL :LOG_MESSAGE "  3. Chocolatey: choco install powershell-core" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "After installation, restart this script to continue." "ERROR" "LAUNCHER"
-    PAUSE
-    EXIT /B 1
-)
-
-IF "%PS_EXECUTABLE%"=="" (
-    CALL :LOG_MESSAGE "CRITICAL: No suitable PowerShell found after exhaustive detection attempts" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Detection methods attempted:" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  1. Default installation path: %ProgramFiles%\PowerShell\7\pwsh.exe" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  2. PATH environment variable lookup for pwsh.exe" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  3. Alternative installation paths (x86, LocalAppData, Chocolatey)" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  4. Windows 'where' command search" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  5. Registry-based PowerShell 7 detection" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  6. Manual PATH directory analysis" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "PowerShell 7+ is required for this maintenance system." "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Please install PowerShell 7+ from: https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Or install via winget: winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "If PowerShell 7+ is installed, please check:" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  - Installation completed successfully" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  - pwsh.exe is in PATH or default location" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  - No execution policy restrictions" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  - Antivirus/security software not blocking execution" "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 1
 )
 
@@ -1392,7 +1356,6 @@ CALL :LOG_MESSAGE "AUTO_NONINTERACTIVE flag: %AUTO_NONINTERACTIVE%" "DEBUG" "LAU
 
 IF "%ORCHESTRATOR_PATH%"=="" (
     CALL :LOG_MESSAGE "No valid PowerShell orchestrator found" "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 4
 )
 
@@ -1401,7 +1364,6 @@ CALL :LOG_MESSAGE "Orchestrator path: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
 REM Verify orchestrator file exists
 IF NOT EXIST "%ORCHESTRATOR_PATH%" (
     CALL :LOG_MESSAGE "Orchestrator file not found: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 4
 )
 
@@ -1470,7 +1432,6 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     CALL :LOG_MESSAGE "Please install PowerShell 7+ and restart this script:" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
-    PAUSE
     EXIT /B 1
 )
 
