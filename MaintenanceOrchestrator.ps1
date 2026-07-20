@@ -46,14 +46,15 @@ $ProjectRoot = $PSScriptRoot
 if (-not $ProjectRoot) { $ProjectRoot = (Get-Location).Path }
 
 $TempDir = Join-Path $ProjectRoot 'temp_files'
-# maintenance.log = authoritative structured log (direct-write, auto-flushed by the
-# core logger). transcript.log = raw PowerShell transcript sidecar (native output).
-# script.bat creates maintenance.log at launch and migrates it into temp_files\logs,
-# passing the path via $env:MAINTENANCE_LOG so this process appends to the SAME file.
+# maintenance.log is the SINGLE unified log for the whole run. script.bat creates it at launch
+# next to the launcher, migrates it into temp_files\logs after extraction, and passes the path
+# via $env:MAINTENANCE_LOG. The core logger opens that SAME file (append, auto-flushed, with
+# FileShare.ReadWrite) so the launcher's bootstrap phase and all five stages accumulate in one
+# file that the report can also read live. There is no separate transcript sidecar - a
+# Start-Transcript handle would block the report from reading the file mid-run.
 $LogPath = if ($env:MAINTENANCE_LOG) { $env:MAINTENANCE_LOG } else { Join-Path $TempDir 'logs\maintenance.log' }
-$TranscriptPath = Join-Path $TempDir 'logs\transcript.log'
 
-# Create temp_files structure before transcript starts
+# Create temp_files structure before the logger opens the file
 foreach ($sub in 'logs', 'data', 'reports', 'diff') {
     $d = Join-Path $TempDir $sub
     if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
@@ -61,17 +62,14 @@ foreach ($sub in 'logs', 'data', 'reports', 'diff') {
 
 #endregion
 
-#region ─── START TRANSCRIPT (raw sidecar) ────────────────────────────────────
-
-# Raw capture only; the authoritative log is maintenance.log via the core logger.
-Start-Transcript -Path $TranscriptPath -Append -Force | Out-Null
+#region ─── SESSION BANNER ────────────────────────────────────────────────────
 
 Write-Host ""
 Write-Host "======================================================================" -ForegroundColor Magenta
 Write-Host "  WINDOWS MAINTENANCE AUTOMATION  v5.0" -ForegroundColor White
 Write-Host "  Session start: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ForegroundColor Cyan
 Write-Host "  Project root:  $ProjectRoot" -ForegroundColor Cyan
-Write-Host "  Transcript:    $TranscriptPath" -ForegroundColor Cyan
+Write-Host "  Log file:      $LogPath" -ForegroundColor Cyan
 Write-Host "======================================================================" -ForegroundColor Magenta
 Write-Host ""
 
@@ -82,7 +80,6 @@ Write-Host ""
 $CorePath = Join-Path $ProjectRoot 'modules\core\Maintenance.psm1'
 if (-not (Test-Path $CorePath)) {
     Write-Host "[ERROR] Core module not found: $CorePath" -ForegroundColor Red
-    Stop-Transcript | Out-Null
     exit 1
 }
 # The core logger lives inside this module, so a load failure can't be logged through
@@ -99,7 +96,6 @@ catch {
     catch {
         Write-Host "[WARN] Could not write to log file: $_" -ForegroundColor Yellow
     }
-    Stop-Transcript | Out-Null
     exit 1
 }
 
@@ -684,7 +680,6 @@ try {
             Publish-MaintenanceReport
             Write-Host "  Removing project folder..." -ForegroundColor DarkGray
             try {
-                Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
                 Close-LogFile   # release the maintenance.log handle so the folder can be deleted
                 # Windows won't remove a directory that is a live process's current working
                 # directory - move out of $ProjectRoot first so the delete below can't fail
@@ -772,7 +767,6 @@ try {
         Publish-MaintenanceReport
         Write-Host "  Removing project folder: $ProjectRoot ..." -ForegroundColor DarkGray
         try {
-            Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
             Close-LogFile   # release the maintenance.log handle so the folder can be deleted
             # Windows won't remove a directory that is a live process's current working
             # directory - move out of $ProjectRoot first so the delete below can't fail
@@ -810,13 +804,6 @@ catch {
     exit 1
 }
 finally {
-    # Always flush/close the log and stop the raw transcript, even on crash or exit.
-    try {
-        Stop-Transcript -ErrorAction SilentlyContinue | Out-Null
-    }
-    catch {
-        # Transcript may not be active; silently continue cleanup
-        $null = $_
-    }
+    # Always flush/close the unified maintenance.log, even on crash or exit.
     Close-LogFile
 }

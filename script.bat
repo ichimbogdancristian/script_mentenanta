@@ -80,6 +80,16 @@ EXIT /B
 
 :MAIN_SCRIPT
 
+REM ============================================================================
+REM Unified maintenance.log - created IMMEDIATELY next to the launcher so the very first
+REM line onward is captured. It is migrated into <extracted>\temp_files\logs after
+REM extraction (see the migration block below) and the orchestrator then appends to the
+REM SAME file via $env:MAINTENANCE_LOG. This is the single log for the whole run.
+REM ============================================================================
+SET "ORIGINAL_SCRIPT_DIR=%~dp0"
+SET "LOG_FILE=%~dp0maintenance.log"
+IF NOT EXIST "%LOG_FILE%" TYPE NUL > "%LOG_FILE%"
+
 REM -----------------------------------------------------------------------------
 REM Self-Discovery Environment Setup
 REM -----------------------------------------------------------------------------
@@ -121,13 +131,9 @@ IF "%SCRIPT_PATH:~0,2%"=="\\" (
 )
 
 REM ============================================================================
-REM CRITICAL FIX: Use bootstrap log in TEMP until repository is extracted
-REM This ensures all logs end up in ONE location: extracted_repo\temp_files\logs
+REM Write the session banner into the unified maintenance.log (append - the file was
+REM created at launch above and may already hold lines from a prior resumed run).
 REM ============================================================================
-SET "BOOTSTRAP_LOG=%TEMP%\maintenance_bootstrap_%RANDOM%.log"
-SET "LOG_FILE=%BOOTSTRAP_LOG%"
-
-REM Initialize bootstrap log with banner BEFORE any LOG_MESSAGE calls
 FOR /F "tokens=1-4 delims=/ " %%A IN ('DATE /T') DO SET "BANNER_DATE=%%A %%B %%C %%D"
 FOR /F "tokens=1-2 delims=/:" %%A IN ('TIME /T') DO SET "BANNER_TIME=%%A:%%B"
 
@@ -140,16 +146,17 @@ FOR /F "tokens=1-2 delims=/:" %%A IN ('TIME /T') DO SET "BANNER_TIME=%%A:%%B"
     ECHO  User: %USERNAME%
     ECHO  Date: %BANNER_DATE%
     ECHO  Time: %BANNER_TIME%
-    ECHO  Bootstrap Phase: Using temporary log until repository extraction
     ECHO.
     ECHO ================================================
     ECHO.
-) > "%LOG_FILE%"
+) >> "%LOG_FILE%"
 
-CALL :LOG_MESSAGE "Bootstrap log initialized: %BOOTSTRAP_LOG% (will be consolidated after extraction)" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "Unified maintenance.log initialized: %LOG_FILE% (migrates to temp_files\logs after extraction)" "DEBUG" "LAUNCHER"
 
-REM Environment variables for PowerShell orchestrator
+REM Environment variables for PowerShell orchestrator. MAINTENANCE_LOG is the name the
+REM orchestrator actually reads ($env:MAINTENANCE_LOG), so it appends to this SAME file.
 SET "WORKING_DIRECTORY=%WORKING_DIR%"
+SET "MAINTENANCE_LOG=%LOG_FILE%"
 SET "SCRIPT_LOG_FILE=%LOG_FILE%"
 
 REM Repository configuration for auto-updates
@@ -453,13 +460,23 @@ IF EXIST "%EXTRACTED_PATH%" (
     SET "WORKING_DIRECTORY=%WORKING_DIR%"
     CALL :LOG_MESSAGE "Updated working directory to: %WORKING_DIR%" "INFO" "LAUNCHER"
     
-    REM Keep bootstrap log alive - orchestrator will inject it into maintenance.log
-    REM via $env:BOOTSTRAP_LOG (inherited by the child pwsh process)
-    CALL :LOG_MESSAGE "Bootstrap log ready for orchestrator injection: %BOOTSTRAP_LOG%" "DEBUG" "LAUNCHER"
-    
-    REM Update environment variable for PowerShell orchestrator
-    SET "SCRIPT_LOG_FILE=%WORKING_DIR%temp_files\logs\maintenance.log"
-    CALL :LOG_MESSAGE "SCRIPT_LOG_FILE set for orchestrator: %SCRIPT_LOG_FILE%" "DEBUG" "LAUNCHER"
+    REM ---- Migrate the unified maintenance.log into temp_files\logs and keep writing ----
+    REM The log has been accumulating next to the launcher since startup. Now that the repo is
+    REM extracted, move it into <extracted>\temp_files\logs\maintenance.log and repoint LOG_FILE
+    REM so every subsequent line continues in the SAME file. The orchestrator opens this exact
+    REM path via $env:MAINTENANCE_LOG. Delayed expansion (!VAR!) is required: WORKING_DIR and the
+    REM NEW_LOG_* vars are set inside this parenthesised block, so %VAR% would read stale values.
+    SET "NEW_LOG_DIR=!WORKING_DIR!temp_files\logs"
+    IF NOT EXIST "!NEW_LOG_DIR!" MD "!NEW_LOG_DIR!" >nul 2>&1
+    SET "NEW_LOG_FILE=!NEW_LOG_DIR!\maintenance.log"
+    IF EXIST "!LOG_FILE!" (
+        MOVE /Y "!LOG_FILE!" "!NEW_LOG_FILE!" >nul 2>&1
+        IF ERRORLEVEL 1 COPY /Y "!LOG_FILE!" "!NEW_LOG_FILE!" >nul 2>&1
+    )
+    SET "LOG_FILE=!NEW_LOG_FILE!"
+    SET "MAINTENANCE_LOG=!NEW_LOG_FILE!"
+    SET "SCRIPT_LOG_FILE=!NEW_LOG_FILE!"
+    CALL :LOG_MESSAGE "maintenance.log migrated to: !LOG_FILE! (continuing here)" "DEBUG" "LAUNCHER"
     
     REM Set orchestrator path within the extracted folder
     IF EXIST "%EXTRACTED_PATH%\MaintenanceOrchestrator.ps1" (

@@ -140,32 +140,46 @@ function Install-SysmonWithConfig {
         }
     }
 
-    # Resolve the Sysmon executable (winget installs under Links/WindowsApps, name varies)
+    # Resolve the REAL Sysmon binary (prefer the 64-bit build). We MUST avoid the winget
+    # "Links" shim (…\WinGet\Links\sysmon.exe): it is a 32-bit App-Execution-Alias reparse
+    # point, and launching it with redirected stdio fail-fast crashes with 0xC0000409
+    # (-1073740791) - exactly the failure seen before. Get-Command is skipped for the same
+    # reason (the Links dir is on PATH, so it resolves to the crashing shim).
     $sysmonExe = $null
-    foreach ($candidate in 'Sysmon64.exe', 'Sysmon.exe') {
-        $cmd = Get-Command $candidate -ErrorAction SilentlyContinue
-        if ($cmd) { $sysmonExe = $cmd.Source; break }
+    # 1) If Sysmon is already installed as a service, its binary lives directly in %windir%.
+    foreach ($name in 'Sysmon64.exe', 'Sysmon.exe') {
+        $p = Join-Path $env:windir $name
+        if (Test-Path $p) { $sysmonExe = $p; break }
     }
+    # 2) Otherwise use the real winget package binary (NOT the Links shim). winget portable
+    #    packages extract the actual executables under WinGet\Packages\...; prefer Sysmon64.exe.
     if (-not $sysmonExe) {
-        $searchRoots = @(
-            (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links'),
-            (Join-Path $env:ProgramFiles 'WinGet\Links'),
-            "$env:ProgramFiles\WindowsApps"
-        )
-        foreach ($root in $searchRoots) {
-            if (-not (Test-Path $root)) { continue }
-            $found = Get-ChildItem -Path $root -Filter 'Sysmon*.exe' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($found) { $sysmonExe = $found.FullName; break }
+        $pkgRoots = @(
+            (Join-Path $env:ProgramFiles 'WinGet\Packages'),
+            (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages')
+        ) | Where-Object { $_ -and (Test-Path $_) }
+        foreach ($name in 'Sysmon64.exe', 'Sysmon.exe') {
+            foreach ($root in $pkgRoots) {
+                $found = Get-ChildItem -Path $root -Filter $name -Recurse -ErrorAction SilentlyContinue |
+                    Where-Object { $_.FullName -notmatch '\\Links\\' } | Select-Object -First 1
+                if ($found) { $sysmonExe = $found.FullName; break }
+            }
+            if ($sysmonExe) { break }
         }
     }
     if (-not $sysmonExe) {
-        Write-Log -Level WARN -Component CONFIG -Message 'Sysmon executable not found after install'
+        Write-Log -Level WARN -Component CONFIG -Message 'Sysmon executable not found after install (real binary, not the Links shim)'
         return $false
     }
+    Write-Log -Level INFO -Component CONFIG -Message "Using Sysmon binary: $sysmonExe"
 
-    # Apply config: -i installs+configures a fresh Sysmon; -c updates config on an existing install
+    # Apply config: -i installs+configures a fresh Sysmon; -c updates config on an existing
+    # install. -accepteula on both is harmless if already accepted and stops a first-run EULA
+    # prompt blocking an unattended run. The config path is quoted in case it contains spaces
+    # (Invoke-ExternalPackageCommand joins args with a bare space and does not quote them).
     $sysmonSvc = Get-Service -Name 'Sysmon', 'Sysmon64' -ErrorAction SilentlyContinue | Select-Object -First 1
-    $applyArgs = if ($sysmonSvc) { @('-c', $configPath) } else { @('-accepteula', '-i', $configPath) }
+    $quotedConfig = '"' + $configPath + '"'
+    $applyArgs = if ($sysmonSvc) { @('-accepteula', '-c', $quotedConfig) } else { @('-accepteula', '-i', $quotedConfig) }
     $exit = Invoke-ExternalPackageCommand -FilePath $sysmonExe -ArgumentList $applyArgs
     if ($exit -eq 0) {
         Write-Log -Level SUCCESS -Component CONFIG -Message "Sysmon configured with $configPath"

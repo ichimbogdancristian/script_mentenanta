@@ -49,20 +49,27 @@ install/verify → launch `MaintenanceOrchestrator.ps1` under `pwsh`.
   next real run unless the change is also pushed to `master`. Because `cmd.exe` streams the
   running `.bat` from disk, the launcher cannot overwrite itself mid-run; it hands the fresh
   copy to the orchestrator via `PENDING_SCRIPT_UPDATE`, which applies it after the launcher exits.
-- **Unified `maintenance.log`:** the launcher creates `maintenance.log` next to `script.bat`
-  at the very first line (`:INIT_LOG`, append mode so elevation/PS7 relaunches continue it),
-  then after extraction migrates it into `<extracted>\temp_files\logs\` (`:MIGRATE_LOG`) and
-  passes that path via the `MAINTENANCE_LOG` env var. The orchestrator opens the SAME file in
-  append mode (`Initialize-Maintenance -LogPath`), so one log captures the whole run from launch
-  through the five stages. `ORIGINAL_SCRIPT_DIR` env var tells the orchestrator where to copy the
-  final HTML report (the folder the user launched from, e.g. a USB drive).
+- **Single unified `maintenance.log`:** the launcher creates `maintenance.log` next to
+  `script.bat` at the very top of `:MAIN_SCRIPT`, before the first log line (append mode so
+  elevation/PS7 relaunches continue it), so the whole bootstrap phase is captured. After
+  extraction it `MOVE`s the file into `<extracted>\temp_files\logs\maintenance.log`, repoints
+  `LOG_FILE` so writing continues in the same file, and exports the path via the
+  `MAINTENANCE_LOG` env var (that migration block uses delayed expansion — the vars are set
+  inside the extraction `IF` block). The orchestrator reads `$env:MAINTENANCE_LOG` and opens the
+  SAME file in append mode (`Initialize-Maintenance -LogPath`), so ONE file captures the whole
+  run from launch through the five stages. There is no separate transcript sidecar. Before
+  handing off it clears `LOG_FILE` so the launcher stops writing once the orchestrator owns the
+  file. `ORIGINAL_SCRIPT_DIR` tells the orchestrator where to copy the final HTML report (the
+  folder the user launched from, e.g. a USB drive).
 
 ### Orchestrator: five stages
-[MaintenanceOrchestrator.ps1](MaintenanceOrchestrator.ps1) opens the structured log
-(`maintenance.log`, via the core logger) plus a raw transcript sidecar (`transcript.log`),
-wraps the whole body in a fatal-capture `try/catch/finally` (any uncaught error is written to
-`maintenance.log` with a stack trace; the log and transcript are always closed in `finally`),
-then:
+[MaintenanceOrchestrator.ps1](MaintenanceOrchestrator.ps1) appends to the single unified
+`maintenance.log` (via the core logger — the launcher already created and migrated the file and
+passed its path in `$env:MAINTENANCE_LOG`). It is the sole log: a direct-write, auto-flushed
+stream, **not** a PowerShell `Start-Transcript` (a transcript handle would block the report from
+reading the file mid-run). The orchestrator wraps the whole body in a fatal-capture
+`try/catch/finally` (any uncaught error is written to `maintenance.log` with a stack trace; the
+log is always closed via `Close-LogFile` in `finally`), then:
 
 1. **Stage 1 – Inventory (Type1):** interactive menu with a 10s auto-run countdown; runs
    audit modules. A circuit breaker aborts the stage after 3 consecutive module failures.
@@ -71,15 +78,15 @@ then:
 2. **Stage 2 – Diff analysis:** for each pair, reads the diff list the Type1 module saved;
    only pairs with a non-empty diff (and not skipped by config) are queued. Each pair is
    wrapped so one bad diff/config entry can't abort the stage.
-<<<<<<< HEAD
 3. **Stage 3 – Maintenance (Type2):** runs only the queued action modules, in a deliberate
    order (`$Stage3Order`: SystemConfiguration → SoftwareManagement → WindowsUpdates →
    RestorePoint → **DiskCleanup last**, so it sweeps up residue the earlier actions created).
    If no diffs, no changes are made.
-4. **Stage 4 – Report:** generates the HTML report embedding `maintenance.log` (read live —
-   the log is auto-flushed with `FileShare.ReadWrite`, so no transcript stop/restart is needed),
-   then copies it to the launcher folder. `Publish-MaintenanceReport` is called again right before
-   cleanup so the surviving copy embeds the complete log (incl. Stage 5).
+4. **Stage 4 – Report:** generates the HTML report embedding `maintenance.log` (read live — the
+   log is a direct-write, auto-flushed stream opened with `FileShare.ReadWrite`, so the report
+   reads it while it is still being written), then copies it to the launcher folder.
+   `Publish-MaintenanceReport` is called again right before cleanup so the surviving copy embeds
+   the complete log (incl. Stage 5).
 5. **Stage 5 – Cleanup + reboot:** removes the session's Defender exclusions unconditionally, then
    a 120s countdown (configurable). Reboots and deletes the project folder unless a key is pressed,
    or skips reboot entirely when `rebootOnlyWhenRequired` is set and no module flagged `RebootRequired`.
@@ -90,17 +97,6 @@ audit/menu order; `Num` is the stable selection id used by `-TaskNumbers` and th
 on `Num`, not array index). Actionable pairs (1–4, 7) are ordered before the report-only audits
 (5, 6) so gating decisions are made first and, if a run is cut short, it's report-only work that's
 sacrificed. Stage 3's execution order is separate (`$Stage3Order`, above).
-=======
-3. **Stage 3 – Maintenance (Type2):** runs only the queued action modules. If no diffs, no
-   changes are made.
-4. **Stage 4 – Report:** imports [modules/core/ReportGenerator.psm1](modules/core/ReportGenerator.psm1)
-   and calls `New-MaintenanceReport` to build a single self-contained HTML report embedding
-   `maintenance.log` (read live — the log is auto-flushed with `FileShare.ReadWrite`, so no
-   transcript stop/restart is needed), then copies it to the launcher folder.
-5. **Stage 5 – Cleanup + reboot:** 120s countdown (configurable). Reboots and deletes the
-   project folder unless a key is pressed, or skips reboot entirely when
-   `rebootOnlyWhenRequired` is set and no module flagged `RebootRequired`.
->>>>>>> 5c3915edf1f5ad2ef0b803a1f687750f1d814ccf
 
 ### Type1 / Type2 module-pair model
 The heart of the design. Every maintenance concern is a **pair**: a Type1 *audit* module
@@ -125,7 +121,10 @@ the action module switches on):
 
 **Notable implementations:**
 - `SystemConfiguration` installs **Sysinternals Sysmon** via winget (`Microsoft.Sysinternals.Sysmon`)
-  and applies `config/sysmon/sysmonconfig.xml` when the Sysmon service is absent.
+  and applies `config/sysmon/sysmonconfig.xml` (with `-accepteula`) when the Sysmon service is
+  absent. It resolves the **real** `Sysmon64.exe` (from `%windir%` or the winget `Packages`
+  folder), deliberately **avoiding the winget `Links\sysmon.exe` shim** — launching that
+  App-Execution-Alias with redirected stdio fail-fast crashes with `0xC0000409` (-1073740791).
 - `SoftwareManagement` detects Microsoft Store bloatware via a multi-source method:
   Layer 1 PowerShell AppX cmdlets (PS5.1 via the compatibility layer) → Layer 2 DISM
   provisioned packages → Layer 3 registry fallback.
@@ -145,10 +144,11 @@ the action module switches on):
 ### Core modules
 There are two modules under `modules/core/`. [Maintenance.psm1](modules/core/Maintenance.psm1)
 is imported `-Global` and provides all shared infrastructure — do not duplicate these elsewhere:
-`Write-Log` (structured `[ts] [LEVEL] [COMPONENT] msg`, written **directly** to `maintenance.log`
-via an auto-flushed `StreamWriter` — independent of the transcript — with per-sink level gating:
-console defaults to INFO, file to DEBUG, both overridable via the `logging` block in
-`main-config.json` / `Set-LogLevel`; plus `Write-LogException`/`Close-LogFile`/`Add-LogRaw`),
+`Write-Log` (structured `[ts] [LEVEL] [COMPONENT] msg`, written **directly** to the single
+`maintenance.log` via an auto-flushed `StreamWriter` opened with `FileShare.ReadWrite` so the
+report can read it live, with per-sink level gating: console defaults to INFO, file to DEBUG,
+both overridable via the `logging` block in `main-config.json` / `Set-LogLevel`; plus
+`Write-LogException`/`Close-LogFile`/`Add-LogRaw`),
 `Get-OSContext` (Win10 vs 11 by build ≥22000, feature flags), `Get-MainConfig` / `Get-BaselineList`
 (JSON loaded with `-AsHashtable` — everything is a case-insensitive hashtable), the diff engine
 (`Compare-ListDiff` with `Present`/`Missing`/`Changed` strategies, `Save-DiffList`, `Get-DiffList`),
@@ -182,9 +182,9 @@ belong here, not in the orchestrator.
   audit may consume several list folders (e.g. SoftwareManagement reads `bloatware`,
   `essential-apps`, `app-upgrade`).
 - `config/sysmon/sysmonconfig.xml` — Sysmon configuration applied by SystemConfiguration.
-- `temp_files/` (git-ignored) — `logs/maintenance.log` (authoritative structured log),
-  `logs/transcript.log` (raw PowerShell transcript sidecar), `diff/*-diff.json`,
-  `reports/*.html`, `data/`. Created at startup by the orchestrator and core module.
+- `temp_files/` (git-ignored) — `logs/maintenance.log` (the single unified log; the launcher
+  migrates its startup log here after extraction), `diff/*-diff.json`, `reports/*.html`, `data/`.
+  Created at startup by the launcher/orchestrator and core module.
 
 ## Conventions
 
@@ -207,17 +207,3 @@ merged SystemHardening (Security + Telemetry) + SystemOptimization. `DiskCleanup
 `WindowsUpdates` stay standalone (distinct risk/tooling). Superseded `.psm1` files were deleted,
 so any module on disk is live. When merging modules, keep the one-combined-diff-plus-discriminator
 pattern and register the pair in `$ModulePairs`.
-<<<<<<< HEAD
-=======
-
-## History
-
-The project went through a consolidation (six Type2 modules → four, see "Consolidation note")
-and a full audit-and-remediation pass. The standalone audit reports that used to live in
-`archive/` and `PROJECT_EVALUATION.md` are gone; `git log` is now the record of what changed and
-why. The durable outcomes of that work are already reflected above: multi-layer detection in
-`SoftwareManagement` / `WindowsUpdates`, the registry backup→apply→verify→rollback safety pattern,
-and the standardized `New-ModuleResult` return schema. Remaining PSScriptAnalyzer noise is almost
-entirely cosmetic (formatting, missing help comments, BOM encoding) — run the analyzer for the
-current count rather than trusting a number recorded here.
->>>>>>> 5c3915edf1f5ad2ef0b803a1f687750f1d814ccf
