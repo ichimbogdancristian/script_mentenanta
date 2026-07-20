@@ -37,7 +37,7 @@ Invoke-ScriptAnalyzer -Path . -Recurse -Settings .\PSScriptAnalyzerSettings.psd1
 ## Architecture
 
 ### Two-process bootstrap
-`script.bat` (≈1400 lines) is a self-contained launcher that runs under cmd/PS5 before
+`script.bat` (~1400 lines) is a self-contained launcher that runs under cmd/PS5 before
 PS7 exists. Its responsibilities, in order: admin elevation → pending-Windows-Update
 reboot detection (creates an ONLOGON scheduled task and reboots if needed) → monthly
 scheduled task creation → **self-update** → winget install/verify → PowerShell 7
@@ -46,7 +46,9 @@ install/verify → launch `MaintenanceOrchestrator.ps1` under `pwsh`.
 - **Self-update:** the launcher downloads `…/archive/refs/heads/master.zip`, extracts to
   `script_mentenanta-master\`, overwrites its own `script.bat`, and re-points the working
   directory into the extracted folder. Editing `script.bat` in place is overwritten on the
-  next real run unless the change is also pushed to `master`.
+  next real run unless the change is also pushed to `master`. Because `cmd.exe` streams the
+  running `.bat` from disk, the launcher cannot overwrite itself mid-run; it hands the fresh
+  copy to the orchestrator via `PENDING_SCRIPT_UPDATE`, which applies it after the launcher exits.
 - **Unified `maintenance.log`:** the launcher creates `maintenance.log` next to `script.bat`
   at the very first line (`:INIT_LOG`, append mode so elevation/PS7 relaunches continue it),
   then after extraction migrates it into `<extracted>\temp_files\logs\` (`:MIGRATE_LOG`) and
@@ -64,17 +66,29 @@ then:
 
 1. **Stage 1 – Inventory (Type1):** interactive menu with a 10s auto-run countdown; runs
    audit modules. A circuit breaker aborts the stage after 3 consecutive module failures.
+   Buffered keystrokes are drained (`Clear-PendingConsoleInput`) before each timed prompt so a
+   stray key from an earlier unattended stage can't trigger a phantom selection/abort.
 2. **Stage 2 – Diff analysis:** for each pair, reads the diff list the Type1 module saved;
    only pairs with a non-empty diff (and not skipped by config) are queued. Each pair is
    wrapped so one bad diff/config entry can't abort the stage.
-3. **Stage 3 – Maintenance (Type2):** runs only the queued action modules. If no diffs, no
-   changes are made.
+3. **Stage 3 – Maintenance (Type2):** runs only the queued action modules, in a deliberate
+   order (`$Stage3Order`: SystemConfiguration → SoftwareManagement → WindowsUpdates →
+   RestorePoint → **DiskCleanup last**, so it sweeps up residue the earlier actions created).
+   If no diffs, no changes are made.
 4. **Stage 4 – Report:** generates the HTML report embedding `maintenance.log` (read live —
    the log is auto-flushed with `FileShare.ReadWrite`, so no transcript stop/restart is needed),
-   then copies it to the launcher folder.
-5. **Stage 5 – Cleanup + reboot:** 120s countdown (configurable). Reboots and deletes the
-   project folder unless a key is pressed, or skips reboot entirely when
-   `rebootOnlyWhenRequired` is set and no module flagged `RebootRequired`.
+   then copies it to the launcher folder. `Publish-MaintenanceReport` is called again right before
+   cleanup so the surviving copy embeds the complete log (incl. Stage 5).
+5. **Stage 5 – Cleanup + reboot:** removes the session's Defender exclusions unconditionally, then
+   a 120s countdown (configurable). Reboots and deletes the project folder unless a key is pressed,
+   or skips reboot entirely when `rebootOnlyWhenRequired` is set and no module flagged `RebootRequired`.
+
+### `$ModulePairs`: the source of truth
+`$ModulePairs` in the orchestrator declares what actually runs — array **order** is the Stage 1
+audit/menu order; `Num` is the stable selection id used by `-TaskNumbers` and the menu (they match
+on `Num`, not array index). Actionable pairs (1–4, 7) are ordered before the report-only audits
+(5, 6) so gating decisions are made first and, if a run is cut short, it's report-only work that's
+sacrificed. Stage 3's execution order is separate (`$Stage3Order`, above).
 
 ### Type1 / Type2 module-pair model
 The heart of the design. Every maintenance concern is a **pair**: a Type1 *audit* module
@@ -92,22 +106,20 @@ the action module switches on):
 | 1 | SoftwareManagement | `SoftwareManagement` | ✅ | `Action` = remove/install/upgrade | bloatware removal (40+ MS Store apps), essential-app install, app upgrade |
 | 2 | SystemConfiguration | `SystemConfiguration` | ✅ | `ConfigType` = security/telemetry/optimization | Defender/firewall/security registry + **Sysmon**, privacy services/registry/tasks, services/power/startup/visual-fx |
 | 3 | DiskCleanup | `DiskCleanup` | ✅ | `Type` = temp/browser/update/bin | temp/browser cache/cookies, DISM component store, recycle-bin cleanup |
-| 4 | WindowsUpdates | `WindowsUpdates` | ✅ | — | Windows Update detection (3-layer: COM/WMI/Registry) and installation |
+| 4 | WindowsUpdates | `WindowsUpdates` | ✅ | — | Windows Update detection (3-layer: COM/Registry/EventLog) and installation |
 | 5 | SystemInventory | `SystemInventory` | — | — | OS/CPU/Memory/Disk/Network inventory (report only, no actions) |
 | 6 | SystemHealth | `SystemHealth` | — | — | Event log analysis, Defender incidents, exclusions (report only, no actions) |
 | 7 | RestorePoint | `RestorePoint` | ✅ | `Action` = create/remove | System restore point management and consolidation |
 
 **Notable implementations:**
-- `SystemConfiguration` installs **Sysinternals Sysmon** via winget (`Microsoft.Sysinternals.Sysmon`) 
+- `SystemConfiguration` installs **Sysinternals Sysmon** via winget (`Microsoft.Sysinternals.Sysmon`)
   and applies `config/sysmon/sysmonconfig.xml` when the Sysmon service is absent.
-- `SoftwareManagement` detects Microsoft Store bloatware via multi-source method:
-  * Layer 1: PowerShell AppX cmdlets (PS5.1 via compatibility layer)
-  * Layer 2: DISM provisioned packages
-  * Layer 3: Registry fallback
-- `WindowsUpdates` detects pending updates via three-layer detection:
-  * Layer 1: COM API (Windows.Update.Session)
-  * Layer 2: Registry pending updates and setup-in-progress flags
-  * Layer 3: Event log analysis (update installation events)
+- `SoftwareManagement` detects Microsoft Store bloatware via a multi-source method:
+  Layer 1 PowerShell AppX cmdlets (PS5.1 via the compatibility layer) → Layer 2 DISM
+  provisioned packages → Layer 3 registry fallback.
+- `WindowsUpdates` detects pending updates via three layers: Layer 1 COM API
+  (`Windows.Update.Session`) → Layer 2 registry pending/setup-in-progress flags → Layer 3
+  event-log analysis.
 
 - **Type1** (`modules/type1/*Audit.psm1`): loads a baseline JSON from `config/lists/`, scans
   the live system, computes what needs to change, and calls `Save-DiffList -ModuleName <DiffKey>`.
@@ -138,13 +150,10 @@ console defaults to INFO, file to DEBUG, both overridable via the `logging` bloc
   (audit side, emit diff items) and `Invoke-RegistryChangeItem` / `Invoke-ServiceChangeItem`
   (action side, apply one item). Registry/service audit and action modules should route through
   these rather than reimplementing the compare/set logic inline.
-- **Registry safety pattern:** High-risk Type2 modules that modify registry (e.g., `SystemConfiguration`)
-  wrap registry changes with backup/verify/rollback:
-  1. `Backup-RegistryValue` captures current state before change (or use in-module equivalent)
-  2. Apply change via `Set-RegistryValue` or `Invoke-RegistryChangeItem`
-  3. `Test-RegistryValueApplied` verifies change took effect (post-write validation)
-  4. If verification fails, `Restore-RegistryValue` rolls back automatically
-  This pattern prevents system corruption from failed registry writes.
+- **Registry safety pattern:** high-risk Type2 modules that modify the registry (e.g.
+  `SystemConfiguration`) wrap changes with backup → apply → verify → rollback: capture current
+  state, apply via `Set-RegistryValue` / `Invoke-RegistryChangeItem`, verify with
+  `Test-RegistryValueApplied`, and roll back automatically if verification fails.
 
 ### Config and generated files
 - `config/settings/main-config.json` — execution/shutdown behavior and per-module `skip*` flags.
@@ -167,46 +176,15 @@ console defaults to INFO, file to DEBUG, both overridable via the `logging` bloc
   can treat all modules uniformly (`Status`, `ItemsDetected/Processed/Skipped/Failed`,
   `RebootRequired`, `ExtraData`).
 - Log through `Write-Log` (never `Write-Host` for status), using an uppercase `Component` tag.
+  `Write-Host` in the orchestrator is reserved for the user-facing stage banners / menus.
 - Reboot is only ever decided in two places: `script.bat` (pending Windows Update at startup)
   and Stage 5 cleanup. Individual modules signal a need via `RebootRequired`; they must not reboot.
 
 ## Consolidation note
 
-`$ModulePairs` is the source of truth for what actually runs. The Type2 surface was consolidated
-from six modules to four: `SoftwareManagement` merged BloatwareRemoval + AppManagement (itself
-EssentialApps + AppUpgrade); `SystemConfiguration` merged SystemHardening (Security + Telemetry)
-+ SystemOptimization. `DiskCleanup` and `WindowsUpdates` stay standalone (distinct risk/tooling).
-The superseded `.psm1` files were deleted — the tree now contains only referenced modules, so any
-module on disk is live. When merging modules, keep the one-combined-diff-plus-discriminator
+The Type2 surface was consolidated from six modules to four: `SoftwareManagement` merged
+BloatwareRemoval + AppManagement (itself EssentialApps + AppUpgrade); `SystemConfiguration`
+merged SystemHardening (Security + Telemetry) + SystemOptimization. `DiskCleanup` and
+`WindowsUpdates` stay standalone (distinct risk/tooling). Superseded `.psm1` files were deleted,
+so any module on disk is live. When merging modules, keep the one-combined-diff-plus-discriminator
 pattern and register the pair in `$ModulePairs`.
-
-## Comprehensive Audit & Remediation (v5.0+)
-
-A full system audit identified and fixed **10 critical/high-priority issues** across 6 modules
-and the orchestrator (commits fd75650 and prior). See [archive/PROJECT_AUDIT_REPORT.md](archive/PROJECT_AUDIT_REPORT.md)
-for complete findings, and [PROJECT_EVALUATION.md](PROJECT_EVALUATION.md) for the newer 2026-07-18
-full-project evaluation (which supersedes several claims below — critical bugs remain open). Key improvements:
-
-**Critical Bug Fixes:**
-- `SystemConfigurationAudit`: Startup program audit was exiting early (changed `return` → `continue`), causing data loss after first unsafe entry
-- `WindowsUpdatesAudit`: Layer 2 detection was returning already-installed updates instead of pending ones (switched from WMI to registry)
-- `WindowsUpdates`: Undefined `$WaitTime` variable in log message would cause runtime errors
-- `RestorePointManagement`: Syntax error in line 121 — invalid if-expression in string interpolation now separated into variable assignment
-
-**Logic & Configuration Fixes:**
-- `WindowsUpdates`: Added pre-check and post-check validation to ensure installations actually succeeded; added `LASTEXITCODE` validation after `usoclient` calls
-- Consolidated registry rollback pattern in `SystemConfiguration` with proper backup verification and error logging
-- Added missing config entries (`skipSystemHealth`, `skipRestorePointManagement`) to `main-config.json`
-- Fixed empty catch blocks in orchestrator (lines 96, 754) with proper error messages or PSScriptAnalyzer compliance
-
-**Enhanced Safety:**
-- Registry changes now wrap with backup → apply → verify → rollback pattern across all ConfigType sections
-- Marked unused Type2 `$OSContext` parameters with `$null = $OSContext` to indicate intentional interface requirement
-
-**Detection Improvements:**
-- `SoftwareManagement`: Multi-source bloatware detection (COM API → DISM → Registry fallback) plus 40+ Microsoft Store bloatware entries
-- `WindowsUpdates`: Three-layer detection (COM API → Registry → Event Log) for greater resilience
-- Error handling and logging enhanced with type-specific exceptions, stack traces, and component tagging
-
-**Project Status:** All critical bugs eliminated, all logic faults fixed, error handling standardized.
-PSScriptAnalyzer warnings reduced from 1,075 → 1,065 (10 fixed); remaining 1,065 are cosmetic (966 formatting, 27 help comments, 14 BOM encoding).
