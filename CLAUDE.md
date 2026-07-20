@@ -71,6 +71,7 @@ then:
 2. **Stage 2 – Diff analysis:** for each pair, reads the diff list the Type1 module saved;
    only pairs with a non-empty diff (and not skipped by config) are queued. Each pair is
    wrapped so one bad diff/config entry can't abort the stage.
+<<<<<<< HEAD
 3. **Stage 3 – Maintenance (Type2):** runs only the queued action modules, in a deliberate
    order (`$Stage3Order`: SystemConfiguration → SoftwareManagement → WindowsUpdates →
    RestorePoint → **DiskCleanup last**, so it sweeps up residue the earlier actions created).
@@ -89,6 +90,17 @@ audit/menu order; `Num` is the stable selection id used by `-TaskNumbers` and th
 on `Num`, not array index). Actionable pairs (1–4, 7) are ordered before the report-only audits
 (5, 6) so gating decisions are made first and, if a run is cut short, it's report-only work that's
 sacrificed. Stage 3's execution order is separate (`$Stage3Order`, above).
+=======
+3. **Stage 3 – Maintenance (Type2):** runs only the queued action modules. If no diffs, no
+   changes are made.
+4. **Stage 4 – Report:** imports [modules/core/ReportGenerator.psm1](modules/core/ReportGenerator.psm1)
+   and calls `New-MaintenanceReport` to build a single self-contained HTML report embedding
+   `maintenance.log` (read live — the log is auto-flushed with `FileShare.ReadWrite`, so no
+   transcript stop/restart is needed), then copies it to the launcher folder.
+5. **Stage 5 – Cleanup + reboot:** 120s countdown (configurable). Reboots and deletes the
+   project folder unless a key is pressed, or skips reboot entirely when
+   `rebootOnlyWhenRequired` is set and no module flagged `RebootRequired`.
+>>>>>>> 5c3915edf1f5ad2ef0b803a1f687750f1d814ccf
 
 ### Type1 / Type2 module-pair model
 The heart of the design. Every maintenance concern is a **pair**: a Type1 *audit* module
@@ -130,9 +142,9 @@ the action module switches on):
 - **`DiffKey` is the contract** between a pair and must match on both sides and in `$ModulePairs`;
   it is the filename stem under `temp_files/diff/<DiffKey>-diff.json`.
 
-### Core module
-[modules/core/Maintenance.psm1](modules/core/Maintenance.psm1) is imported `-Global` and provides
-all shared infrastructure — do not duplicate these elsewhere:
+### Core modules
+There are two modules under `modules/core/`. [Maintenance.psm1](modules/core/Maintenance.psm1)
+is imported `-Global` and provides all shared infrastructure — do not duplicate these elsewhere:
 `Write-Log` (structured `[ts] [LEVEL] [COMPONENT] msg`, written **directly** to `maintenance.log`
 via an auto-flushed `StreamWriter` — independent of the transcript — with per-sink level gating:
 console defaults to INFO, file to DEBUG, both overridable via the `logging` block in
@@ -141,6 +153,13 @@ console defaults to INFO, file to DEBUG, both overridable via the `logging` bloc
 (JSON loaded with `-AsHashtable` — everything is a case-insensitive hashtable), the diff engine
 (`Compare-ListDiff` with `Present`/`Missing`/`Changed` strategies, `Save-DiffList`, `Get-DiffList`),
 `New-ModuleResult` (the standard return schema), and shared system queries.
+
+[ReportGenerator.psm1](modules/core/ReportGenerator.psm1) is imported only in Stage 4 and owns
+all HTML report rendering. Public entry point is `New-MaintenanceReport`; internal `Build-*`
+helpers render per-module cards, the system overview, the SystemInventory/RestorePoint/SystemHealth
+sections, and the embedded log console (`ConvertFrom-MaintenanceLog` / `Build-LogConsole` parse the
+structured `maintenance.log` into the collapsible in-report console). Report markup/styling changes
+belong here, not in the orchestrator.
 
 - **AppX compatibility layer:** PS7 Core's Appx cmdlets are unreliable, so `*Compat` functions
   (`Get-AppxPackageCompat`, `Remove-AppxPackageCompat`, etc.) delegate AppX operations to
@@ -188,3 +207,17 @@ merged SystemHardening (Security + Telemetry) + SystemOptimization. `DiskCleanup
 `WindowsUpdates` stay standalone (distinct risk/tooling). Superseded `.psm1` files were deleted,
 so any module on disk is live. When merging modules, keep the one-combined-diff-plus-discriminator
 pattern and register the pair in `$ModulePairs`.
+<<<<<<< HEAD
+=======
+
+## History
+
+The project went through a consolidation (six Type2 modules → four, see "Consolidation note")
+and a full audit-and-remediation pass. The standalone audit reports that used to live in
+`archive/` and `PROJECT_EVALUATION.md` are gone; `git log` is now the record of what changed and
+why. The durable outcomes of that work are already reflected above: multi-layer detection in
+`SoftwareManagement` / `WindowsUpdates`, the registry backup→apply→verify→rollback safety pattern,
+and the standardized `New-ModuleResult` return schema. Remaining PSScriptAnalyzer noise is almost
+entirely cosmetic (formatting, missing help comments, BOM encoding) — run the analyzer for the
+current count rather than trusting a number recorded here.
+>>>>>>> 5c3915edf1f5ad2ef0b803a1f687750f1d814ccf
