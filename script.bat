@@ -475,74 +475,74 @@ SET "COMPONENTS_FOUND=0"
 REM Look for MaintenanceOrchestrator.ps1
 IF EXIST "%WORKING_DIR%MaintenanceOrchestrator.ps1" (
     SET "ORCHESTRATOR_PATH=%WORKING_DIR%MaintenanceOrchestrator.ps1"
-    CALL :LOG_MESSAGE "✓ Found orchestrator: MaintenanceOrchestrator.ps1" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "[OK] Found orchestrator: MaintenanceOrchestrator.ps1" "SUCCESS" "LAUNCHER"
     SET /A COMPONENTS_FOUND+=1
 ) ELSE IF EXIST "%WORKING_DIR%script.ps1" (
     SET "ORCHESTRATOR_PATH=%WORKING_DIR%script.ps1"
-    CALL :LOG_MESSAGE "✓ Found legacy orchestrator: script.ps1" "INFO" "LAUNCHER"
+    CALL :LOG_MESSAGE "[OK] Found legacy orchestrator: script.ps1" "INFO" "LAUNCHER"
     SET /A COMPONENTS_FOUND+=1
 ) ELSE (
-    CALL :LOG_MESSAGE "✗ No PowerShell orchestrator found in current directory" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "[X] No PowerShell orchestrator found in current directory" "WARN" "LAUNCHER"
     SET "STRUCTURE_VALID=NO"
 )
 
 REM Check for config directory and its contents (FIX #7: Check new subdirectory structure)
 IF EXIST "%WORKING_DIR%config" (
-    CALL :LOG_MESSAGE "✓ Found configuration directory" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "[OK] Found configuration directory" "SUCCESS" "LAUNCHER"
     SET /A COMPONENTS_FOUND+=1
     
     REM Check for settings subdirectory (execution configs)
     IF EXIST "%WORKING_DIR%config\settings" (
-        CALL :LOG_MESSAGE "  ✓ config\settings directory present" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [OK] config\settings directory present" "SUCCESS" "LAUNCHER"
         IF EXIST "%WORKING_DIR%config\settings\main-config.json" (
-            CALL :LOG_MESSAGE "    ✓ main-config.json present" "SUCCESS" "LAUNCHER"
+            CALL :LOG_MESSAGE "    [OK] main-config.json present" "SUCCESS" "LAUNCHER"
         ) ELSE (
-            CALL :LOG_MESSAGE "    ✗ main-config.json missing" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "    [X] main-config.json missing" "WARN" "LAUNCHER"
         )
     ) ELSE (
-        CALL :LOG_MESSAGE "  ✗ config\settings directory not found" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [X] config\settings directory not found" "WARN" "LAUNCHER"
     )
     
     REM Check for lists subdirectory (data lists)
     IF EXIST "%WORKING_DIR%config\lists" (
-        CALL :LOG_MESSAGE "  ✓ config\lists directory present" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [OK] config\lists directory present" "SUCCESS" "LAUNCHER"
         IF EXIST "%WORKING_DIR%config\lists\bloatware-list.json" (
-            CALL :LOG_MESSAGE "    ✓ bloatware-list.json present" "SUCCESS" "LAUNCHER"
+            CALL :LOG_MESSAGE "    [OK] bloatware-list.json present" "SUCCESS" "LAUNCHER"
         ) ELSE (
-            CALL :LOG_MESSAGE "    ✗ bloatware-list.json missing" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "    [X] bloatware-list.json missing" "WARN" "LAUNCHER"
         )
     ) ELSE (
-        CALL :LOG_MESSAGE "  ✗ config\lists directory not found" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [X] config\lists directory not found" "WARN" "LAUNCHER"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "✗ Configuration directory not found" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "[X] Configuration directory not found" "WARN" "LAUNCHER"
     SET "STRUCTURE_VALID=NO"
 )
 
 REM Check for modules directory and core modules
 IF EXIST "%WORKING_DIR%modules" (
-    CALL :LOG_MESSAGE "✓ Found modules directory" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "[OK] Found modules directory" "SUCCESS" "LAUNCHER"
     SET /A COMPONENTS_FOUND+=1
     
     IF EXIST "%WORKING_DIR%modules\core" (
-        CALL :LOG_MESSAGE "  ✓ Core modules directory present" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [OK] Core modules directory present" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "  ✗ Core modules directory missing" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [X] Core modules directory missing" "WARN" "LAUNCHER"
     )
     
     IF EXIST "%WORKING_DIR%modules\type1" (
-        CALL :LOG_MESSAGE "  ✓ Type1 modules directory present" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [OK] Type1 modules directory present" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "  ✗ Type1 modules directory missing" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [X] Type1 modules directory missing" "WARN" "LAUNCHER"
     )
     
     IF EXIST "%WORKING_DIR%modules\type2" (
-        CALL :LOG_MESSAGE "  ✓ Type2 modules directory present" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [OK] Type2 modules directory present" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "  ✗ Type2 modules directory missing" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "  [X] Type2 modules directory missing" "WARN" "LAUNCHER"
     )
 ) ELSE (
-    CALL :LOG_MESSAGE "✗ Modules directory not found" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "[X] Modules directory not found" "WARN" "LAUNCHER"
     SET "STRUCTURE_VALID=NO"
 )
 
