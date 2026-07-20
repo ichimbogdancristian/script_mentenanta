@@ -540,13 +540,15 @@ IF EXIST "%WORKING_DIR%config" (
         CALL :LOG_MESSAGE "  [X] config\settings directory not found" "WARN" "LAUNCHER"
     )
     
-    REM Check for lists subdirectory (data lists)
+    REM Check for lists subdirectory (data lists). The bloatware baseline lives in the
+    REM 'bloatware' SUBFOLDER (config\lists\bloatware\), and the primary config is
+    REM bloatware-detection.json (bloatware-list.json is only the legacy fallback).
     IF EXIST "%WORKING_DIR%config\lists" (
         CALL :LOG_MESSAGE "  [OK] config\lists directory present" "SUCCESS" "LAUNCHER"
-        IF EXIST "%WORKING_DIR%config\lists\bloatware-list.json" (
-            CALL :LOG_MESSAGE "    [OK] bloatware-list.json present" "SUCCESS" "LAUNCHER"
+        IF EXIST "%WORKING_DIR%config\lists\bloatware\bloatware-detection.json" (
+            CALL :LOG_MESSAGE "    [OK] bloatware\bloatware-detection.json present" "SUCCESS" "LAUNCHER"
         ) ELSE (
-            CALL :LOG_MESSAGE "    [X] bloatware-list.json missing" "WARN" "LAUNCHER"
+            CALL :LOG_MESSAGE "    [X] bloatware\bloatware-detection.json missing" "WARN" "LAUNCHER"
         )
     ) ELSE (
         CALL :LOG_MESSAGE "  [X] config\lists directory not found" "WARN" "LAUNCHER"
