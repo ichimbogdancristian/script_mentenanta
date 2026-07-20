@@ -69,9 +69,10 @@ then:
    wrapped so one bad diff/config entry can't abort the stage.
 3. **Stage 3 – Maintenance (Type2):** runs only the queued action modules. If no diffs, no
    changes are made.
-4. **Stage 4 – Report:** generates the HTML report embedding `maintenance.log` (read live —
-   the log is auto-flushed with `FileShare.ReadWrite`, so no transcript stop/restart is needed),
-   then copies it to the launcher folder.
+4. **Stage 4 – Report:** imports [modules/core/ReportGenerator.psm1](modules/core/ReportGenerator.psm1)
+   and calls `New-MaintenanceReport` to build a single self-contained HTML report embedding
+   `maintenance.log` (read live — the log is auto-flushed with `FileShare.ReadWrite`, so no
+   transcript stop/restart is needed), then copies it to the launcher folder.
 5. **Stage 5 – Cleanup + reboot:** 120s countdown (configurable). Reboots and deletes the
    project folder unless a key is pressed, or skips reboot entirely when
    `rebootOnlyWhenRequired` is set and no module flagged `RebootRequired`.
@@ -118,9 +119,9 @@ the action module switches on):
 - **`DiffKey` is the contract** between a pair and must match on both sides and in `$ModulePairs`;
   it is the filename stem under `temp_files/diff/<DiffKey>-diff.json`.
 
-### Core module
-[modules/core/Maintenance.psm1](modules/core/Maintenance.psm1) is imported `-Global` and provides
-all shared infrastructure — do not duplicate these elsewhere:
+### Core modules
+There are two modules under `modules/core/`. [Maintenance.psm1](modules/core/Maintenance.psm1)
+is imported `-Global` and provides all shared infrastructure — do not duplicate these elsewhere:
 `Write-Log` (structured `[ts] [LEVEL] [COMPONENT] msg`, written **directly** to `maintenance.log`
 via an auto-flushed `StreamWriter` — independent of the transcript — with per-sink level gating:
 console defaults to INFO, file to DEBUG, both overridable via the `logging` block in
@@ -129,6 +130,13 @@ console defaults to INFO, file to DEBUG, both overridable via the `logging` bloc
 (JSON loaded with `-AsHashtable` — everything is a case-insensitive hashtable), the diff engine
 (`Compare-ListDiff` with `Present`/`Missing`/`Changed` strategies, `Save-DiffList`, `Get-DiffList`),
 `New-ModuleResult` (the standard return schema), and shared system queries.
+
+[ReportGenerator.psm1](modules/core/ReportGenerator.psm1) is imported only in Stage 4 and owns
+all HTML report rendering. Public entry point is `New-MaintenanceReport`; internal `Build-*`
+helpers render per-module cards, the system overview, the SystemInventory/RestorePoint/SystemHealth
+sections, and the embedded log console (`ConvertFrom-MaintenanceLog` / `Build-LogConsole` parse the
+structured `maintenance.log` into the collapsible in-report console). Report markup/styling changes
+belong here, not in the orchestrator.
 
 - **AppX compatibility layer:** PS7 Core's Appx cmdlets are unreliable, so `*Compat` functions
   (`Get-AppxPackageCompat`, `Remove-AppxPackageCompat`, etc.) delegate AppX operations to
@@ -180,33 +188,13 @@ The superseded `.psm1` files were deleted — the tree now contains only referen
 module on disk is live. When merging modules, keep the one-combined-diff-plus-discriminator
 pattern and register the pair in `$ModulePairs`.
 
-## Comprehensive Audit & Remediation (v5.0+)
+## History
 
-A full system audit identified and fixed **10 critical/high-priority issues** across 6 modules
-and the orchestrator (commits fd75650 and prior). See [archive/PROJECT_AUDIT_REPORT.md](archive/PROJECT_AUDIT_REPORT.md)
-for complete findings, and [PROJECT_EVALUATION.md](PROJECT_EVALUATION.md) for the newer 2026-07-18
-full-project evaluation (which supersedes several claims below — critical bugs remain open). Key improvements:
-
-**Critical Bug Fixes:**
-- `SystemConfigurationAudit`: Startup program audit was exiting early (changed `return` → `continue`), causing data loss after first unsafe entry
-- `WindowsUpdatesAudit`: Layer 2 detection was returning already-installed updates instead of pending ones (switched from WMI to registry)
-- `WindowsUpdates`: Undefined `$WaitTime` variable in log message would cause runtime errors
-- `RestorePointManagement`: Syntax error in line 121 — invalid if-expression in string interpolation now separated into variable assignment
-
-**Logic & Configuration Fixes:**
-- `WindowsUpdates`: Added pre-check and post-check validation to ensure installations actually succeeded; added `LASTEXITCODE` validation after `usoclient` calls
-- Consolidated registry rollback pattern in `SystemConfiguration` with proper backup verification and error logging
-- Added missing config entries (`skipSystemHealth`, `skipRestorePointManagement`) to `main-config.json`
-- Fixed empty catch blocks in orchestrator (lines 96, 754) with proper error messages or PSScriptAnalyzer compliance
-
-**Enhanced Safety:**
-- Registry changes now wrap with backup → apply → verify → rollback pattern across all ConfigType sections
-- Marked unused Type2 `$OSContext` parameters with `$null = $OSContext` to indicate intentional interface requirement
-
-**Detection Improvements:**
-- `SoftwareManagement`: Multi-source bloatware detection (COM API → DISM → Registry fallback) plus 40+ Microsoft Store bloatware entries
-- `WindowsUpdates`: Three-layer detection (COM API → Registry → Event Log) for greater resilience
-- Error handling and logging enhanced with type-specific exceptions, stack traces, and component tagging
-
-**Project Status:** All critical bugs eliminated, all logic faults fixed, error handling standardized.
-PSScriptAnalyzer warnings reduced from 1,075 → 1,065 (10 fixed); remaining 1,065 are cosmetic (966 formatting, 27 help comments, 14 BOM encoding).
+The project went through a consolidation (six Type2 modules → four, see "Consolidation note")
+and a full audit-and-remediation pass. The standalone audit reports that used to live in
+`archive/` and `PROJECT_EVALUATION.md` are gone; `git log` is now the record of what changed and
+why. The durable outcomes of that work are already reflected above: multi-layer detection in
+`SoftwareManagement` / `WindowsUpdates`, the registry backup→apply→verify→rollback safety pattern,
+and the standardized `New-ModuleResult` return schema. Remaining PSScriptAnalyzer noise is almost
+entirely cosmetic (formatting, missing help comments, BOM encoding) — run the analyzer for the
+current count rather than trusting a number recorded here.

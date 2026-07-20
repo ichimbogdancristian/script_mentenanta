@@ -37,21 +37,25 @@ IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
 EXIT /B
 
 :REFRESH_PATH_FROM_REGISTRY
-REM Refresh PATH environment variable from system registry
-FOR /F "tokens=2*" %%i IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul') DO (
-    SET "SYSTEM_PATH=%%j"
+REM Make newly-installed tools discoverable WITHOUT clobbering the live PATH.
+REM NOTE: Rebuilding PATH from the registry is unsafe - the stored value is a
+REM REG_EXPAND_SZ containing %SystemRoot% and, combined with delayed expansion,
+REM can drop System32 and leave even powershell.exe unresolvable. So we only
+REM APPEND well-known install locations that may be missing after an install.
+IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" SET "PATH=%PATH%;%ProgramFiles%\PowerShell\7"
+IF EXIST "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" SET "PATH=%PATH%;%LocalAppData%\Microsoft\WindowsApps"
+IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" SET "PATH=%PATH%;%LocalAppData%\Microsoft\WindowsApps"
+IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "PATH=%PATH%;%ProgramData%\chocolatey\bin"
+EXIT /B
+
+:SAFE_PAUSE
+REM Pause only when a human is present. Under unattended/scheduled execution a
+REM bare PAUSE would hang forever waiting for a keypress, so it is skipped.
+IF "%UNATTENDED%"=="YES" (
+    CALL :LOG_MESSAGE "Unattended mode - skipping pause" "DEBUG" "LAUNCHER"
+    EXIT /B
 )
-FOR /F "tokens=2*" %%i IN ('REG QUERY "HKCU\Environment" /v PATH 2^>nul') DO (
-    SET "USER_PATH=%%j"
-)
-REM Combine system and user PATH
-IF DEFINED SYSTEM_PATH IF DEFINED USER_PATH (
-    SET "PATH=%SYSTEM_PATH%;%USER_PATH%"
-) ELSE IF DEFINED SYSTEM_PATH (
-    SET "PATH=%SYSTEM_PATH%"
-) ELSE IF DEFINED USER_PATH (
-    SET "PATH=%USER_PATH%"
-)
+PAUSE
 EXIT /B
 
 :MAIN_SCRIPT
@@ -61,6 +65,18 @@ REM Self-Discovery Environment Setup
 REM -----------------------------------------------------------------------------
 CALL :LOG_MESSAGE "Starting Windows Maintenance Automation Launcher v2.0" "INFO" "LAUNCHER"
 CALL :LOG_MESSAGE "Environment: %USERNAME%@%COMPUTERNAME%" "INFO" "LAUNCHER"
+
+REM -----------------------------------------------------------------------------
+REM Unattended-execution detection (scheduled task / SYSTEM / non-interactive)
+REM When YES, the launcher must NEVER block on a prompt (PAUSE/CHOICE/SET-P).
+REM -----------------------------------------------------------------------------
+SET "UNATTENDED=NO"
+whoami 2>nul | find /i "nt authority\system" >nul && SET "UNATTENDED=YES"
+IF NOT DEFINED SESSIONNAME SET "UNATTENDED=YES"
+IF /I "%~1"=="-NonInteractive" SET "UNATTENDED=YES"
+IF /I "%~1"=="-Unattended" SET "UNATTENDED=YES"
+SET "PS7_RESTART_DONE=NO"
+CALL :LOG_MESSAGE "Unattended mode: %UNATTENDED%" "INFO" "LAUNCHER"
 
 REM Enhanced path detection - works from any location
 SET "SCRIPT_PATH=%~f0"
@@ -157,7 +173,7 @@ IF "%IS_ADMIN%"=="NO" (
     powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs -WindowStyle Normal"
     IF !ERRORLEVEL! NEQ 0 (
         CALL :LOG_MESSAGE "Elevation failed or was cancelled by user" "ERROR" "LAUNCHER"
-        PAUSE
+        CALL :SAFE_PAUSE
         EXIT /B 1
     )
     exit
@@ -298,6 +314,7 @@ IF EXIST "%WORKING_DIR%restart_flag.tmp" (
         CALL :LOG_MESSAGE "Restart context: %%i" "DEBUG" "LAUNCHER"
     )
     DEL "%WORKING_DIR%restart_flag.tmp" >nul 2>&1
+    SET "PS7_RESTART_DONE=YES"
     CALL :LOG_MESSAGE "Script restarted after PowerShell 7 installation - continuing with fresh environment" "SUCCESS" "LAUNCHER"
 )
 
@@ -351,7 +368,7 @@ CALL :LOG_MESSAGE "PowerShell version: %PS_VERSION%" "INFO" "LAUNCHER"
 IF %PS_VERSION% LSS 5 (
     CALL :LOG_MESSAGE "PowerShell 5.1 or higher required. Current: %PS_VERSION%" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "Please install Windows PowerShell 5.1 or PowerShell 7+" "ERROR" "LAUNCHER"
-    PAUSE
+    CALL :SAFE_PAUSE
     EXIT /B 2
 )
 
@@ -373,13 +390,13 @@ powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'Silent
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository download failed. Check internet connection." "ERROR" "LAUNCHER"
-    PAUSE
+    CALL :SAFE_PAUSE
     EXIT /B 3
 )
 
 IF NOT EXIST "%ZIP_FILE%" (
     CALL :LOG_MESSAGE "Download verification failed - ZIP file not found" "ERROR" "LAUNCHER"
-    PAUSE
+    CALL :SAFE_PAUSE
     EXIT /B 3
 )
 
@@ -391,7 +408,7 @@ powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository extraction failed" "ERROR" "LAUNCHER"
-    PAUSE
+    CALL :SAFE_PAUSE
     EXIT /B 3
 )
 
@@ -446,12 +463,12 @@ IF EXIST "%EXTRACTED_PATH%" (
         CALL :LOG_MESSAGE "Using extracted legacy orchestrator" "INFO" "LAUNCHER"
     ) ELSE (
         CALL :LOG_MESSAGE "No valid orchestrator found in extracted files" "ERROR" "LAUNCHER"
-        PAUSE
+        CALL :SAFE_PAUSE
         EXIT /B 3
     )
 ) ELSE (
     CALL :LOG_MESSAGE "Repository extraction verification failed" "ERROR" "LAUNCHER"
-    PAUSE
+    CALL :SAFE_PAUSE
     EXIT /B 3
 )
 
@@ -546,7 +563,7 @@ CALL :LOG_MESSAGE "Project structure verification: %COMPONENTS_FOUND%/3 major co
 
 IF "%STRUCTURE_VALID%"=="NO" (
     CALL :LOG_MESSAGE "Project structure incomplete but repository already downloaded. Check extraction." "ERROR" "LAUNCHER"
-    PAUSE
+    CALL :SAFE_PAUSE
     EXIT /B 4
 ) ELSE (
     CALL :LOG_MESSAGE "Project structure validated" "SUCCESS" "LAUNCHER"
@@ -756,7 +773,7 @@ IF "%PS7_FOUND%"=="NO" (
     REM 1) Try installing PowerShell via winget (if available)
     IF "%WINGET_AVAILABLE%"=="YES" (
         CALL :LOG_MESSAGE "Installing PowerShell 7 via winget..." "INFO" "LAUNCHER"
-        "%WINGET_EXE%" install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements
+        "%WINGET_EXE%" install Microsoft.PowerShell --source winget --silent --accept-package-agreements --accept-source-agreements
         IF !ERRORLEVEL! EQU 0 (
             CALL :LOG_MESSAGE "PowerShell 7 installed successfully via winget" "SUCCESS" "LAUNCHER"
             SET "INSTALL_STATUS=SUCCESS"
@@ -773,7 +790,7 @@ IF "%PS7_FOUND%"=="NO" (
     )
 
     REM 2) Try Chocolatey (prioritize existing installation or install it first)
-    IF NOT "%INSTALL_STATUS%"=="SUCCESS" (
+    IF NOT "!INSTALL_STATUS!"=="SUCCESS" (
         REM Check if Chocolatey is available
         SET "CHOCO_EXE=choco"
         IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
@@ -826,7 +843,7 @@ IF "%PS7_FOUND%"=="NO" (
     )
 
     REM 3) MSI fallback from GitHub Releases (latest stable PowerShell)
-    IF NOT "%INSTALL_STATUS%"=="SUCCESS" (
+    IF NOT "!INSTALL_STATUS!"=="SUCCESS" (
         CALL :LOG_MESSAGE "Attempting PowerShell 7 MSI fallback from GitHub Releases..." "INFO" "LAUNCHER"
         DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
         powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; $headers=@{ 'User-Agent'='WinMaintLauncher' }; $arch = if([Environment]::Is64BitOperatingSystem){ 'x64' } else { 'x86' }; $rel = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -match ('win-' + $arch + '\\.msi$') } | Select-Object -First 1; if(-not $asset){ Write-Host 'ASSET_NOT_FOUND'; exit 2 }; $url = $asset.browser_download_url; Invoke-WebRequest -Headers $headers -Uri $url -OutFile '%WORKING_DIR%pwsh.msi'; Write-Host 'MSI_DOWNLOADED' } catch { Write-Host 'MSI_DOWNLOAD_FAILED'; exit 1 }" >nul 2>&1
@@ -846,19 +863,23 @@ IF "%PS7_FOUND%"=="NO" (
     )
 
     REM Post-install verification and restart logic
-    IF "%INSTALL_STATUS%"=="SUCCESS" (
+    IF "!INSTALL_STATUS!"=="SUCCESS" IF NOT "%PS7_RESTART_DONE%"=="YES" (
         CALL :LOG_MESSAGE "Restarting script with fresh environment to detect PowerShell 7..." "INFO" "LAUNCHER"
-        
+
         REM Create restart flag with timestamp to prevent infinite loops
         ECHO POWERSHELL_RESTART_%DATE:~-4,4%%DATE:~-10,2%%DATE:~-7,2%_%TIME:~0,2%%TIME:~3,2%%TIME:~6,2% > "%WORKING_DIR%restart_flag.tmp"
-        
+
         REM Restart the script with a fresh environment (give Windows a moment to update PATH)
         TIMEOUT /T 3 /NOBREAK >nul 2>&1
         START "" /WAIT cmd.exe /C ""%SCRIPT_PATH%" %*"
-        
+
         REM Exit current instance after new instance completes
         EXIT /B !ERRORLEVEL!
-    ) ELSE (
+    )
+    IF "!INSTALL_STATUS!"=="SUCCESS" IF "%PS7_RESTART_DONE%"=="YES" (
+        CALL :LOG_MESSAGE "PowerShell 7 install reported success but pwsh still not on PATH after a prior restart. Will rely on absolute-path detection instead of restarting again (loop guard)." "WARN" "LAUNCHER"
+    )
+    IF NOT "!INSTALL_STATUS!"=="SUCCESS" (
         CALL :LOG_MESSAGE "All automated installation methods for PowerShell 7 failed." "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE "Troubleshooting tips:" "ERROR" "LAUNCHER"
         CALL :LOG_MESSAGE " - Ensure winget can access sources: winget source list / reset --force / update" "ERROR" "LAUNCHER"
@@ -1177,7 +1198,7 @@ IF "%PS_EXECUTABLE%"=="" (
     CALL :LOG_MESSAGE "  3. Chocolatey: choco install powershell-core" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "After installation, restart this script to continue." "ERROR" "LAUNCHER"
-    PAUSE
+    CALL :SAFE_PAUSE
     EXIT /B 1
 )
 
@@ -1200,7 +1221,7 @@ IF "%PS_EXECUTABLE%"=="" (
     CALL :LOG_MESSAGE "  - pwsh.exe is in PATH or default location" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  - No execution policy restrictions" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  - Antivirus/security software not blocking execution" "ERROR" "LAUNCHER"
-    PAUSE
+    CALL :SAFE_PAUSE
     EXIT /B 1
 )
 
@@ -1335,7 +1356,7 @@ CALL :LOG_MESSAGE "AUTO_NONINTERACTIVE flag: %AUTO_NONINTERACTIVE%" "DEBUG" "LAU
 
 IF "%ORCHESTRATOR_PATH%"=="" (
     CALL :LOG_MESSAGE "No valid PowerShell orchestrator found" "ERROR" "LAUNCHER"
-    PAUSE
+    CALL :SAFE_PAUSE
     EXIT /B 4
 )
 
@@ -1344,7 +1365,7 @@ CALL :LOG_MESSAGE "Orchestrator path: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
 REM Verify orchestrator file exists
 IF NOT EXIST "%ORCHESTRATOR_PATH%" (
     CALL :LOG_MESSAGE "Orchestrator file not found: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
-    PAUSE
+    CALL :SAFE_PAUSE
     EXIT /B 4
 )
 
@@ -1354,115 +1375,33 @@ REM [REMOVED: Legacy PowerShell 7+ orchestrator check. Now handled by consolidat
 
 CALL :LOG_MESSAGE "Using PowerShell 7+ for orchestrator execution" "SUCCESS" "LAUNCHER"
 
-REM Parse command line arguments for the orchestrator
-SET "PS_ARGS="
-IF "%1"=="-NonInteractive" SET "PS_ARGS=%PS_ARGS% -NonInteractive"
-IF "%AUTO_NONINTERACTIVE%"=="YES" (
-    IF NOT "%1"=="-NonInteractive" (
-        SET "PS_ARGS=%PS_ARGS% -NonInteractive"
-        CALL :LOG_MESSAGE "Auto-enabling non-interactive mode due to PowerShell 7+ availability" "INFO" "LAUNCHER"
-    )
-)
-IF "%1"=="-TaskNumbers" SET "PS_ARGS=%PS_ARGS% -TaskNumbers %2"
-
-CALL :LOG_MESSAGE "Launching orchestrator with arguments: %PS_ARGS%" "INFO" "LAUNCHER"
-
-REM Setup complete - transitioning to dedicated PowerShell 7 window for better performance and UI
-CALL :LOG_MESSAGE "Setup phase completed - launching dedicated PowerShell 7+ window" "INFO" "LAUNCHER"
-CALL :LOG_MESSAGE "This will provide better performance and eliminate visual glitches" "INFO" "LAUNCHER"
-
-REM Critical: Use PowerShell 7+ (pwsh.exe) for MaintenanceOrchestrator.ps1 due to #Requires directive
-IF "%AUTO_NONINTERACTIVE%"=="YES" (
-    CALL :LOG_MESSAGE "Launching PowerShell 7+ in dedicated window for optimal experience" "SUCCESS" "LAUNCHER"
-    
-    REM Prepare arguments for the new PowerShell window
-    SET "PS_ARGS=-ExecutionPolicy Bypass -NoExit -Command "
-    SET "PS_ARGS=!PS_ARGS!& { "
-    SET "PS_ARGS=!PS_ARGS!Set-Location '%WORKING_DIR%'; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host '🚀 Windows Maintenance Automation - PowerShell 7+ Mode' -ForegroundColor Green; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host '📁 Working Directory: %WORKING_DIR%' -ForegroundColor Cyan; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host '🔧 Launching MaintenanceOrchestrator...' -ForegroundColor Yellow; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host ''; "
-    
-    REM Check for command line arguments to pass through
-    IF "%1"=="-NonInteractive" (
-        SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%' -NonInteractive; "
-    ) ELSE (
-        SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%'; "
-    )
-    
-    SET "PS_ARGS=!PS_ARGS!Write-Host ''; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host '✅ Maintenance session completed. You can close this window or run additional commands.' -ForegroundColor Green; "
-    SET "PS_ARGS=!PS_ARGS!}"
-    
-    REM Write all remaining launcher messages BEFORE START so the bootstrap log
-    REM is complete by the time the orchestrator reads and deletes it.
-    CALL :LOG_MESSAGE "Launching: \"%PS_EXECUTABLE%\" !PS_ARGS!" "DEBUG" "LAUNCHER"
-    CALL :LOG_MESSAGE "PowerShell 7+ window launching - batch launcher exiting" "SUCCESS" "LAUNCHER"
-    CALL :LOG_MESSAGE "All further operations will run in the dedicated PowerShell window" "INFO" "LAUNCHER"
-    CALL :LOG_MESSAGE "=== END OF LAUNCHER LOG ===" "INFO" "LAUNCHER"
-    
-    REM Clear LOG_FILE now so no stray write can race with the orchestrator's delete
-    SET "LOG_FILE="
-    
-    START "Windows Maintenance Automation - PowerShell 7" "%PS_EXECUTABLE%" !PS_ARGS!
-    
-    REM Exit batch script cleanly - PowerShell 7 window takes over
-    EXIT /B 0
-) ELSE (
+REM -----------------------------------------------------------------------------
+REM Orchestrator launch (same console, non-interactive, exit-code captured)
+REM For unattended operation we must NOT spawn a detached -NoExit window: that
+REM leaves an orphaned pwsh process and makes the launcher report success before
+REM the orchestrator has finished. Run it in THIS console and wait for it.
+REM -----------------------------------------------------------------------------
+IF NOT "%AUTO_NONINTERACTIVE%"=="YES" (
     CALL :LOG_MESSAGE "CRITICAL: PowerShell 7+ not detected - cannot run orchestrator" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "The launcher requires a compatible pwsh.exe (PowerShell 7+) to execute the orchestrator" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Windows PowerShell 5.1 is not suitable for full orchestrator execution" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "Please install PowerShell 7+ and restart this script:" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
-    CALL :LOG_MESSAGE "  https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
-    PAUSE
+    CALL :LOG_MESSAGE "Install it with: winget install Microsoft.PowerShell --source winget" "ERROR" "LAUNCHER"
+    CALL :SAFE_PAUSE
     EXIT /B 1
 )
 
-REM Batch script execution completed - PowerShell 7+ window is now handling all operations
-CALL :LOG_MESSAGE "Batch launcher phase completed successfully" "SUCCESS" "LAUNCHER"
-GOTO :FINAL_CLEANUP
+CALL :LOG_MESSAGE "Setup phase completed - launching orchestrator in this console (non-interactive)" "SUCCESS" "LAUNCHER"
+CALL :LOG_MESSAGE "Orchestrator: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
+CALL :LOG_MESSAGE "=== LAUNCHER HANDOFF TO ORCHESTRATOR ===" "INFO" "LAUNCHER"
 
-REM -----------------------------------------------------------------------------
-REM Post-Orchestrator Execution Logic: Interactive Menu with Countdown
-REM -----------------------------------------------------------------------------
-:POST_ORCHESTRATOR_MENU
-ECHO.
-ECHO ===============================
-ECHO  Select Task Execution (20s):
-ECHO ===============================
-ECHO 1. Execute all tasks unattended
-ECHO 2. Execute only specific task numbers
-ECHO.
-ECHO Waiting for selection... (defaults to option 1 after 20 seconds)
-CHOICE /C 12 /N /T 20 /D 1 /M "Select option (1-2): "
-SET "NORMAL_CHOICE=%ERRORLEVEL%"
-IF "%NORMAL_CHOICE%"=="2" GOTO :NORMAL_INSERTED
-REM Default or Option 1 selected
-GOTO :EXECUTE_ALL
+REM Clear LOG_FILE so no launcher write races with the orchestrator consuming the bootstrap log
+SET "LOG_FILE="
 
-:NORMAL_INSERTED
-ECHO.
-SET /P TASKNUMS="Enter task numbers (comma-separated, e.g., 1,3,5): "
-IF "%TASKNUMS%"=="" (
-    ECHO No task numbers entered. Executing all tasks...
-    GOTO :EXECUTE_ALL
+CD /D "%WORKING_DIR%"
+IF /I "%~1"=="-TaskNumbers" (
+    "%PS_EXECUTABLE%" -NoProfile -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive -TaskNumbers "%~2"
+) ELSE (
+    "%PS_EXECUTABLE%" -NoProfile -ExecutionPolicy Bypass -File "%ORCHESTRATOR_PATH%" -NonInteractive
 )
-GOTO :EXECUTE_INSERTED
-
-:EXECUTE_ALL
-CALL :LOG_MESSAGE "Executing all tasks unattended..." "INFO" "LAUNCHER"
-CD /D "%WORKING_DIR%"
-"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
-SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
-GOTO :FINAL_CLEANUP
-
-:EXECUTE_INSERTED
-CALL :LOG_MESSAGE "Executing selected tasks: %TASKNUMS%..." "INFO" "LAUNCHER"
-CD /D "%WORKING_DIR%"
-"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -TaskNumbers "%TASKNUMS%"
 SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
 GOTO :FINAL_CLEANUP
 
@@ -1487,8 +1426,10 @@ IF EXIST "%WORKING_DIR%temp_files\reports" (
     )
 )
 
-CALL :LOG_MESSAGE "Interactive mode - press any key to close" "INFO" "LAUNCHER"
-PAUSE >nul
+IF NOT "%UNATTENDED%"=="YES" (
+    CALL :LOG_MESSAGE "Interactive mode - press any key to close" "INFO" "LAUNCHER"
+    CALL :SAFE_PAUSE
+)
 EXIT /B %FINAL_EXIT_CODE%
 
 REM -----------------------------------------------------------------------------
