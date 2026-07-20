@@ -799,6 +799,12 @@ IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "PowerShell 7 detected - skipping installation" "SUCCESS" "LAUNCHER"
 )
 
+REM Methods 2/3 above can find PS7 at an absolute path (default install dir or the
+REM WindowsApps alias) without it necessarily being on THIS session's PATH yet.
+REM Refresh PATH now so the bare "pwsh.exe"/"powershell" calls further down
+REM (PSWindowsUpdate check, Defender exclusions) can actually find it.
+IF "%PS7_FOUND%"=="YES" CALL :REFRESH_PATH_FROM_REGISTRY
+
 IF "%PS7_FOUND%"=="NO" (
     CALL :LOG_MESSAGE "PowerShell 7 not found. Attempting installation..." "INFO" "LAUNCHER"
     SET "INSTALL_STATUS=FAILED"
@@ -1267,14 +1273,14 @@ SET "SR_VERIFY_STATUS=UNKNOWN"
 SET "MIN_RESTORE_SPACE_GB=10"
 
 REM Simple check for System Protection availability
-FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Stop'; if (Get-Command 'Get-ComputerRestorePoint' -ErrorAction SilentlyContinue) { try { $rp = Get-ComputerRestorePoint -ErrorAction SilentlyContinue; Write-Host 'SR_AVAILABLE' } catch { Write-Host 'SR_ERROR' } } else { Write-Host 'SR_NOT_SUPPORTED' } } catch { Write-Host 'SR_FAILED' }" 2^>nul`) DO SET "SR_CHECK=%%i"
+FOR /F "usebackq tokens=* delims=" %%i IN (`"%PS_EXECUTABLE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Stop'; if (Get-Command 'Get-ComputerRestorePoint' -ErrorAction SilentlyContinue) { try { $rp = Get-ComputerRestorePoint -ErrorAction SilentlyContinue; Write-Host 'SR_AVAILABLE' } catch { Write-Host 'SR_ERROR' } } else { Write-Host 'SR_NOT_SUPPORTED' } } catch { Write-Host 'SR_FAILED' }" 2^>nul`) DO SET "SR_CHECK=%%i"
 
 REM Check and allocate System Restore Point space (minimum 10GB)
 IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
     CALL :LOG_MESSAGE "Checking System Protection disk space allocation..." "INFO" "LAUNCHER"
     
     REM Use vssadmin to check current shadow storage allocation (modern method)
-    FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $vssOutput = & vssadmin list shadowstorage 2>&1 | Out-String; if ($vssOutput -match 'Maximum Shadow Copy Storage space.*?([0-9.]+)\s*(GB|MB|TB)') { $size = [decimal]$matches[1]; $unit = $matches[2]; $sizeGB = switch ($unit) { 'TB' { $size * 1024 } 'GB' { $size } 'MB' { $size / 1024 } default { 0 } }; Write-Host ('CURRENT:' + [math]::Round($sizeGB, 2)) } elseif ($vssOutput -match 'UNBOUNDED|No.*found') { Write-Host 'UNBOUNDED' } else { Write-Host 'NO_CONFIG' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_SPACE_CHECK=%%i"
+    FOR /F "usebackq tokens=* delims=" %%i IN (`"%PS_EXECUTABLE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $vssOutput = & vssadmin list shadowstorage 2>&1 | Out-String; if ($vssOutput -match 'Maximum Shadow Copy Storage space.*?([0-9.]+)\s*(GB|MB|TB)') { $size = [decimal]$matches[1]; $unit = $matches[2]; $sizeGB = switch ($unit) { 'TB' { $size * 1024 } 'GB' { $size } 'MB' { $size / 1024 } default { 0 } }; Write-Host ('CURRENT:' + [math]::Round($sizeGB, 2)) } elseif ($vssOutput -match 'UNBOUNDED|No.*found') { Write-Host 'UNBOUNDED' } else { Write-Host 'NO_CONFIG' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_SPACE_CHECK=%%i"
     
     REM Parse current allocation
     IF "!SR_SPACE_CHECK:~0,8!"=="CURRENT:" (
@@ -1286,7 +1292,7 @@ IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
             CALL :LOG_MESSAGE "Current allocation is !SR_CURRENT_GB! GB (minimum required: !MIN_RESTORE_SPACE_GB! GB). Allocating..." "WARN" "LAUNCHER"
             
             REM Use vssadmin resize shadowstorage (correct modern method)
-            FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $result = & vssadmin resize shadowstorage /For=%SYS_DRIVE%\ /On=%SYS_DRIVE%\ /MaxSize=10GB 2>&1 | Out-String; if ($result -match 'successfully') { Write-Host 'ALLOCATED' } else { Write-Host 'FAILED' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_ALLOCATE_RESULT=%%i"
+            FOR /F "usebackq tokens=* delims=" %%i IN (`"%PS_EXECUTABLE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $result = & vssadmin resize shadowstorage /For=%SYS_DRIVE%\ /On=%SYS_DRIVE%\ /MaxSize=10GB 2>&1 | Out-String; if ($result -match 'successfully') { Write-Host 'ALLOCATED' } else { Write-Host 'FAILED' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_ALLOCATE_RESULT=%%i"
             
             IF /I "!SR_ALLOCATE_RESULT!"=="ALLOCATED" (
                 CALL :LOG_MESSAGE "System Restore Point allocation set to !MIN_RESTORE_SPACE_GB! GB successfully" "SUCCESS" "LAUNCHER"
@@ -1302,7 +1308,7 @@ IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
         CALL :LOG_MESSAGE "No shadow storage configured yet. Attempting to configure 10GB allocation..." "INFO" "LAUNCHER"
         
         REM Initialize shadow storage with vssadmin
-        FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $result = & vssadmin resize shadowstorage /For=%SYS_DRIVE%\ /On=%SYS_DRIVE%\ /MaxSize=10GB 2>&1 | Out-String; if ($result -match 'successfully') { Write-Host 'ALLOCATED' } else { Write-Host 'FAILED' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_ALLOCATE_RESULT=%%i"
+        FOR /F "usebackq tokens=* delims=" %%i IN (`"%PS_EXECUTABLE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $result = & vssadmin resize shadowstorage /For=%SYS_DRIVE%\ /On=%SYS_DRIVE%\ /MaxSize=10GB 2>&1 | Out-String; if ($result -match 'successfully') { Write-Host 'ALLOCATED' } else { Write-Host 'FAILED' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_ALLOCATE_RESULT=%%i"
         
         IF /I "!SR_ALLOCATE_RESULT!"=="ALLOCATED" (
             CALL :LOG_MESSAGE "Shadow storage initialized with 10GB allocation" "SUCCESS" "LAUNCHER"
@@ -1316,7 +1322,7 @@ IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
     CALL :LOG_MESSAGE "System Protection is available and functional" "SUCCESS" "LAUNCHER"
     
     REM Try to enable System Protection if not already enabled
-    FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Continue'; $drive = $env:SystemDrive; try { Enable-ComputerRestore -Drive $drive -ErrorAction Stop; Write-Host 'SR_ENABLED' } catch { if ($_.Exception.Message -like '*already enabled*' -or $_.Exception.Message -like '*System Protection*already*') { Write-Host 'SR_ALREADY_ENABLED' } else { Write-Host 'SR_ENABLE_FAILED' } } } catch { Write-Host 'SR_ENABLE_ERROR' }" 2^>nul`) DO SET "SR_ENABLE_STATUS=%%i"
+    FOR /F "usebackq tokens=* delims=" %%i IN (`"%PS_EXECUTABLE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Continue'; $drive = $env:SystemDrive; try { Enable-ComputerRestore -Drive $drive -ErrorAction Stop; Write-Host 'SR_ENABLED' } catch { if ($_.Exception.Message -like '*already enabled*' -or $_.Exception.Message -like '*System Protection*already*') { Write-Host 'SR_ALREADY_ENABLED' } else { Write-Host 'SR_ENABLE_FAILED' } } } catch { Write-Host 'SR_ENABLE_ERROR' }" 2^>nul`) DO SET "SR_ENABLE_STATUS=%%i"
     
     IF /I "!SR_ENABLE_STATUS!"=="SR_ENABLED" (
         CALL :LOG_MESSAGE "System Protection enabled successfully" "SUCCESS" "LAUNCHER"
@@ -1339,11 +1345,11 @@ IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
 
 CALL :LOG_MESSAGE "Creating system restore point before execution..." "INFO" "LAUNCHER"
 
-FOR /F "usebackq tokens=*" %%i IN (`%PS_EXECUTABLE% -NoProfile -Command "[guid]::NewGuid().ToString().Substring(0,8)" 2^>nul`) DO SET "RESTORE_GUID=%%i"
+FOR /F "usebackq tokens=*" %%i IN (`"%PS_EXECUTABLE%" -NoProfile -Command "[guid]::NewGuid().ToString().Substring(0,8)" 2^>nul`) DO SET "RESTORE_GUID=%%i"
 SET "RESTORE_DESC=WindowsMaintenance-!RESTORE_GUID!"
 
 REM Simple restore point creation using Checkpoint-Computer
-FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Stop'; Checkpoint-Computer -Description '!RESTORE_DESC!' -RestorePointType 'MODIFY_SETTINGS'; Write-Host 'RESTORE_CREATED' } catch { Write-Host 'RESTORE_FAILED'; Write-Host $_.Exception.Message }" 2^>nul`) DO (
+FOR /F "usebackq tokens=* delims=" %%i IN (`"%PS_EXECUTABLE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Stop'; Checkpoint-Computer -Description '!RESTORE_DESC!' -RestorePointType 'MODIFY_SETTINGS'; Write-Host 'RESTORE_CREATED' } catch { Write-Host 'RESTORE_FAILED'; Write-Host $_.Exception.Message }" 2^>nul`) DO (
     IF /I "%%i"=="RESTORE_CREATED" (
         SET "RESTORE_RESULT=SUCCESS"
     ) ELSE (
@@ -1356,7 +1362,7 @@ IF /I "!RESTORE_RESULT!"=="SUCCESS" (
     CALL :LOG_MESSAGE "System restore point created successfully: !RESTORE_DESC!" "SUCCESS" "LAUNCHER"
     
     REM Quick verification that restore point exists
-    FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $rp = Get-ComputerRestorePoint | Where-Object Description -eq '!RESTORE_DESC!' | Select-Object -First 1; if ($rp) { Write-Host ('VERIFIED:' + $rp.SequenceNumber) } else { Write-Host 'NOT_FOUND' } } catch { Write-Host 'VERIFY_ERROR' }" 2^>nul`) DO SET "RESTORE_VERIFY=%%i"
+    FOR /F "usebackq tokens=* delims=" %%i IN (`"%PS_EXECUTABLE%" -NoProfile -ExecutionPolicy Bypass -Command "try { $rp = Get-ComputerRestorePoint | Where-Object Description -eq '!RESTORE_DESC!' | Select-Object -First 1; if ($rp) { Write-Host ('VERIFIED:' + $rp.SequenceNumber) } else { Write-Host 'NOT_FOUND' } } catch { Write-Host 'VERIFY_ERROR' }" 2^>nul`) DO SET "RESTORE_VERIFY=%%i"
     
     IF "!RESTORE_VERIFY:~0,8!"=="VERIFIED" (
         SET "RESTORE_SEQ=!RESTORE_VERIFY:~9!"
@@ -1405,18 +1411,13 @@ REM [REMOVED: Legacy PowerShell 7+ orchestrator check. Now handled by consolidat
 
 CALL :LOG_MESSAGE "Using PowerShell 7+ for orchestrator execution" "SUCCESS" "LAUNCHER"
 
-REM Parse command line arguments for the orchestrator
-SET "PS_ARGS="
-IF "%1"=="-NonInteractive" SET "PS_ARGS=%PS_ARGS% -NonInteractive"
-IF "%AUTO_NONINTERACTIVE%"=="YES" (
-    IF NOT "%1"=="-NonInteractive" (
-        SET "PS_ARGS=%PS_ARGS% -NonInteractive"
-        CALL :LOG_MESSAGE "Auto-enabling non-interactive mode due to PowerShell 7+ availability" "INFO" "LAUNCHER"
-    )
-)
-IF "%1"=="-TaskNumbers" SET "PS_ARGS=%PS_ARGS% -TaskNumbers %2"
+REM Parse command line arguments for the orchestrator. The dedicated window
+REM (below) always runs the orchestrator non-interactively; -TaskNumbers lets
+REM the caller select a subset of tasks (CLAUDE.md: script.bat -TaskNumbers "1,3,5").
+SET "ORCH_ARGS= -NonInteractive"
+IF "%1"=="-TaskNumbers" SET "ORCH_ARGS= -NonInteractive -TaskNumbers '%~2'"
 
-CALL :LOG_MESSAGE "Launching orchestrator with arguments: %PS_ARGS%" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Launching orchestrator with arguments:%ORCH_ARGS%" "INFO" "LAUNCHER"
 
 REM Setup complete - transitioning to dedicated PowerShell 7 window for better performance and UI
 CALL :LOG_MESSAGE "Setup phase completed - launching dedicated PowerShell 7+ window" "INFO" "LAUNCHER"
@@ -1425,39 +1426,40 @@ CALL :LOG_MESSAGE "This will provide better performance and eliminate visual gli
 REM Critical: Use PowerShell 7+ (pwsh.exe) for MaintenanceOrchestrator.ps1 due to #Requires directive
 IF "%AUTO_NONINTERACTIVE%"=="YES" (
     CALL :LOG_MESSAGE "Launching PowerShell 7+ in dedicated window for optimal experience" "SUCCESS" "LAUNCHER"
-    
-    REM Prepare arguments for the new PowerShell window
-    SET "PS_ARGS=-ExecutionPolicy Bypass -NoExit -Command "
-    SET "PS_ARGS=!PS_ARGS!& { "
-    SET "PS_ARGS=!PS_ARGS!Set-Location '%WORKING_DIR%'; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host 'Windows Maintenance Automation - PowerShell 7+ Mode' -ForegroundColor Green; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host 'Working Directory: %WORKING_DIR%' -ForegroundColor Cyan; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host 'Launching MaintenanceOrchestrator...' -ForegroundColor Yellow; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host ''; "
-    
-    REM Check for command line arguments to pass through
-    IF "%1"=="-NonInteractive" (
-        SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%' -NonInteractive; "
-    ) ELSE (
-        SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%'; "
-    )
-    
-    SET "PS_ARGS=!PS_ARGS!Write-Host ''; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host '[OK] Maintenance session completed. You can close this window or run additional commands.' -ForegroundColor Green; "
-    SET "PS_ARGS=!PS_ARGS!}"
-    
+
+    REM Write the launch commands to a temp .ps1 and run it via -File rather than
+    REM inlining them as an unquoted -Command string. An inlined string containing
+    REM raw & { } characters gets parsed by cmd.exe itself (as command separators)
+    REM when expanded unquoted on the START command line, splitting one intended
+    REM command into several broken fragments: the new window opens with no script
+    REM to run, while the old window tries (and fails) to execute the leftover
+    REM fragments as cmd commands ("'{' is not recognized...") before finally
+    REM exiting. A -File script keeps every &/{/'  out of the cmd.exe command line
+    REM entirely, since they only ever appear inside the .ps1 file content.
+    SET "PS_LAUNCH_SCRIPT=%TEMP%\maintenance_launch_%RANDOM%.ps1"
+    (
+        ECHO Set-Location '%WORKING_DIR%'
+        ECHO Write-Host 'Windows Maintenance Automation - PowerShell 7+ Mode' -ForegroundColor Green
+        ECHO Write-Host 'Working Directory: %WORKING_DIR%' -ForegroundColor Cyan
+        ECHO Write-Host 'Launching MaintenanceOrchestrator...' -ForegroundColor Yellow
+        ECHO Write-Host ''
+        ECHO ^& '%ORCHESTRATOR_PATH%'!ORCH_ARGS!
+        ECHO Write-Host ''
+        ECHO Write-Host '[OK] Maintenance session completed. You can close this window or run additional commands.' -ForegroundColor Green
+    ) > "%PS_LAUNCH_SCRIPT%"
+
     REM Write all remaining launcher messages BEFORE START so the bootstrap log
     REM is complete by the time the orchestrator reads and deletes it.
-    CALL :LOG_MESSAGE "Launching: \"%PS_EXECUTABLE%\" !PS_ARGS!" "DEBUG" "LAUNCHER"
+    CALL :LOG_MESSAGE "Launching: \"%PS_EXECUTABLE%\" -File \"%PS_LAUNCH_SCRIPT%\"" "DEBUG" "LAUNCHER"
     CALL :LOG_MESSAGE "PowerShell 7+ window launching - batch launcher exiting" "SUCCESS" "LAUNCHER"
     CALL :LOG_MESSAGE "All further operations will run in the dedicated PowerShell window" "INFO" "LAUNCHER"
     CALL :LOG_MESSAGE "=== END OF LAUNCHER LOG ===" "INFO" "LAUNCHER"
-    
+
     REM Clear LOG_FILE now so no stray write can race with the orchestrator's delete
     SET "LOG_FILE="
-    
-    START "Windows Maintenance Automation - PowerShell 7" "%PS_EXECUTABLE%" !PS_ARGS!
-    
+
+    START "Windows Maintenance Automation - PowerShell 7" "%PS_EXECUTABLE%" -ExecutionPolicy Bypass -NoExit -File "%PS_LAUNCH_SCRIPT%"
+
     REM Exit batch script cleanly - PowerShell 7 window takes over
     EXIT /B 0
 ) ELSE (
@@ -1472,77 +1474,6 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     EXIT /B 1
 )
 
-REM Batch script execution completed - PowerShell 7+ window is now handling all operations
-CALL :LOG_MESSAGE "Batch launcher phase completed successfully" "SUCCESS" "LAUNCHER"
-GOTO :FINAL_CLEANUP
-
 REM -----------------------------------------------------------------------------
-REM Post-Orchestrator Execution Logic: Interactive Menu with Countdown
+REM End of Script - both branches above always EXIT /B before reaching here.
 REM -----------------------------------------------------------------------------
-:POST_ORCHESTRATOR_MENU
-ECHO.
-ECHO ===============================
-ECHO  Select Task Execution (20s):
-ECHO ===============================
-ECHO 1. Execute all tasks unattended
-ECHO 2. Execute only specific task numbers
-ECHO.
-ECHO Waiting for selection... (defaults to option 1 after 20 seconds)
-CHOICE /C 12 /N /T 20 /D 1 /M "Select option (1-2): "
-SET "NORMAL_CHOICE=%ERRORLEVEL%"
-IF "%NORMAL_CHOICE%"=="2" GOTO :NORMAL_INSERTED
-REM Default or Option 1 selected
-GOTO :EXECUTE_ALL
-
-:NORMAL_INSERTED
-ECHO.
-SET /P TASKNUMS="Enter task numbers (comma-separated, e.g., 1,3,5): "
-IF "%TASKNUMS%"=="" (
-    ECHO No task numbers entered. Executing all tasks...
-    GOTO :EXECUTE_ALL
-)
-GOTO :EXECUTE_INSERTED
-
-:EXECUTE_ALL
-CALL :LOG_MESSAGE "Executing all tasks unattended..." "INFO" "LAUNCHER"
-CD /D "%WORKING_DIR%"
-"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
-SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
-GOTO :FINAL_CLEANUP
-
-:EXECUTE_INSERTED
-CALL :LOG_MESSAGE "Executing selected tasks: %TASKNUMS%..." "INFO" "LAUNCHER"
-CD /D "%WORKING_DIR%"
-"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -TaskNumbers "%TASKNUMS%"
-SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
-GOTO :FINAL_CLEANUP
-
-:FINAL_CLEANUP
-REM -----------------------------------------------------------------------------
-REM Post-Execution Cleanup and Reporting
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "PowerShell orchestrator final execution completed with exit code: %FINAL_EXIT_CODE%" "INFO" "LAUNCHER"
-
-CALL :LOG_MESSAGE "All logs consolidated in single location: %WORKING_DIR%temp_files\logs\maintenance.log" "SUCCESS" "LAUNCHER"
-
-IF %FINAL_EXIT_CODE% EQU 0 (
-    CALL :LOG_MESSAGE "Maintenance execution completed successfully" "SUCCESS" "LAUNCHER"
-) ELSE (
-    CALL :LOG_MESSAGE "Maintenance execution completed with errors (exit code: %FINAL_EXIT_CODE%)" "WARN" "LAUNCHER"
-)
-
-REM Check for generated reports
-IF EXIST "%WORKING_DIR%temp_files\reports" (
-    FOR %%F IN ("%WORKING_DIR%temp_files\reports\*.html") DO (
-        CALL :LOG_MESSAGE "Generated report: %%~nxF" "INFO" "LAUNCHER"
-    )
-)
-
-CALL :LOG_MESSAGE "Interactive mode - press any key to close" "INFO" "LAUNCHER"
-PAUSE >nul
-EXIT /B %FINAL_EXIT_CODE%
-
-REM -----------------------------------------------------------------------------
-REM End of Script
-REM -----------------------------------------------------------------------------
-ENDLOCAL
