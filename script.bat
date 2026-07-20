@@ -44,6 +44,10 @@ FOR /F "tokens=2*" %%i IN ('REG QUERY "HKLM\SYSTEM\CurrentControlSet\Control\Ses
 FOR /F "tokens=2*" %%i IN ('REG QUERY "HKCU\Environment" /v PATH 2^>nul') DO (
     SET "USER_PATH=%%j"
 )
+REM REG QUERY returns the raw REG_EXPAND_SZ text (e.g. literal "%SystemRoot%\system32"),
+REM so force a second expansion pass via CALL to resolve embedded env-var references.
+IF DEFINED SYSTEM_PATH CALL SET "SYSTEM_PATH=%SYSTEM_PATH%"
+IF DEFINED USER_PATH CALL SET "USER_PATH=%USER_PATH%"
 REM Combine system and user PATH
 IF DEFINED SYSTEM_PATH IF DEFINED USER_PATH (
     SET "PATH=%SYSTEM_PATH%;%USER_PATH%"
@@ -773,7 +777,7 @@ IF "%PS7_FOUND%"=="NO" (
     )
 
     REM 2) Try Chocolatey (prioritize existing installation or install it first)
-    IF NOT "%INSTALL_STATUS%"=="SUCCESS" (
+    IF NOT "!INSTALL_STATUS!"=="SUCCESS" (
         REM Check if Chocolatey is available
         SET "CHOCO_EXE=choco"
         IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
@@ -826,7 +830,7 @@ IF "%PS7_FOUND%"=="NO" (
     )
 
     REM 3) MSI fallback from GitHub Releases (latest stable PowerShell)
-    IF NOT "%INSTALL_STATUS%"=="SUCCESS" (
+    IF NOT "!INSTALL_STATUS!"=="SUCCESS" (
         CALL :LOG_MESSAGE "Attempting PowerShell 7 MSI fallback from GitHub Releases..." "INFO" "LAUNCHER"
         DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
         powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; $headers=@{ 'User-Agent'='WinMaintLauncher' }; $arch = if([Environment]::Is64BitOperatingSystem){ 'x64' } else { 'x86' }; $rel = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -match ('win-' + $arch + '\\.msi$') } | Select-Object -First 1; if(-not $asset){ Write-Host 'ASSET_NOT_FOUND'; exit 2 }; $url = $asset.browser_download_url; Invoke-WebRequest -Headers $headers -Uri $url -OutFile '%WORKING_DIR%pwsh.msi'; Write-Host 'MSI_DOWNLOADED' } catch { Write-Host 'MSI_DOWNLOAD_FAILED'; exit 1 }" >nul 2>&1
@@ -846,7 +850,7 @@ IF "%PS7_FOUND%"=="NO" (
     )
 
     REM Post-install verification and restart logic
-    IF "%INSTALL_STATUS%"=="SUCCESS" (
+    IF "!INSTALL_STATUS!"=="SUCCESS" (
         CALL :LOG_MESSAGE "Restarting script with fresh environment to detect PowerShell 7..." "INFO" "LAUNCHER"
         
         REM Create restart flag with timestamp to prevent infinite loops
