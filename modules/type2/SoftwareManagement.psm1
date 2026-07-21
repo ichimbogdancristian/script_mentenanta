@@ -329,13 +329,26 @@ function Invoke-SoftwareManagement {
                     Write-Log -Level SUCCESS -Component SOFTWARE -Message "Upgraded (winget): $name"
                     $upgraded = $true
                 }
-                # -1978335212 (NO_APPLICATIONS_FOUND): winget lists this package (correlated from
-                # Add/Remove Programs) but it was NOT installed via winget, so 'winget upgrade --id'
-                # can't manage it. Expected for MSI/vendor-installed apps (e.g. Wazuh Agent) — a
-                # skip, not a failure.
+                # -1978335212 (NO_APPLICATIONS_FOUND) for '--id' does NOT reliably mean "not
+                # managed by winget" - it's a documented winget-cli matching bug where '--id'
+                # uses stricter ARP-correlation logic than the bulk upgrade path, and fails for
+                # some MSI/vendor-installed-but-ARP-correlated packages (Wazuh Agent is a known
+                # example) even though 'winget upgrade' (bare/--all) finds and upgrades the same
+                # package fine (see microsoft/winget-cli#5688, #2686). Retry once with '--name'
+                # before concluding it's genuinely unmanaged - '--name' uses the same looser
+                # match the bulk path relies on, so it succeeds where '--id' incorrectly fails.
                 elseif ($exitCode -eq -1978335212) {
-                    Write-Log -Level INFO -Component SOFTWARE -Message "Not managed by winget (installed outside winget) — skipping upgrade: $name"
-                    $notWingetManaged = $true
+                    $retryArgs = @('upgrade', '--name', $name, '--silent', '--accept-package-agreements',
+                        '--accept-source-agreements', '--disable-interactivity')
+                    $retryExitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) -ArgumentList $retryArgs
+                    if ($retryExitCode -in 0, -1978335189) {
+                        Write-Log -Level SUCCESS -Component SOFTWARE -Message "Upgraded (winget, by name after --id matching bug): $name"
+                        $upgraded = $true
+                    }
+                    else {
+                        Write-Log -Level INFO -Component SOFTWARE -Message "Not managed by winget (installed outside winget) — skipping upgrade: $name"
+                        $notWingetManaged = $true
+                    }
                 }
                 else {
                     Write-Log -Level WARN -Component SOFTWARE -Message "winget exit $exitCode for $name"
