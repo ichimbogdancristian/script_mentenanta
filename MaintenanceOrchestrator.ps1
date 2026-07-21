@@ -478,12 +478,17 @@ try {
 
     #region ─── STAGE 3: MAINTENANCE (Type2) ──────────────────────────────────────
 
-    # Execute in a deliberate order, independent of Stage 1/2 order: hardening first (incl.
-    # re-enabling Defender if it was found off), then software changes, then Windows Update,
-    # then restore-point consolidation, and DiskCleanup LAST so it sweeps up the temp/cache/
-    # component-store residue this run's own actions just produced (installer downloads,
-    # WU download cache, etc.) instead of running before them and being immediately re-dirtied.
-    $Stage3Order = @('SystemConfiguration', 'SoftwareManagement', 'WindowsUpdates', 'RestorePoint', 'DiskCleanup')
+    # Execute in a deliberate order, independent of Stage 1/2 order:
+    #   1. RestorePoint FIRST - RestorePointAudit unconditionally queues a 'create' action every
+    #      run, and it's only a useful rollback safety net if taken BEFORE the other Type2
+    #      modules start mutating the system, not after.
+    #   2. SystemConfiguration - hardening (incl. re-enabling Defender if found off).
+    #   3. SoftwareManagement - bloatware removal, essential-app installs, upgrades.
+    #   4. WindowsUpdates.
+    #   5. DiskCleanup LAST so it sweeps up the temp/cache/component-store residue this run's
+    #      own actions just produced (installer downloads, WU download cache, etc.) instead of
+    #      running before them and being immediately re-dirtied.
+    $Stage3Order = @('RestorePoint', 'SystemConfiguration', 'SoftwareManagement', 'WindowsUpdates', 'DiskCleanup')
     $actionNeeded = @($actionNeeded | Sort-Object { $i = $Stage3Order.IndexOf($_.DiffKey); if ($i -lt 0) { 999 } else { $i } })
 
     Write-Host ""

@@ -5,6 +5,11 @@ tests/
 docs/
 scripts/
 
+# Local config overrides + persisted state (see CLAUDE.md "Local overrides + persisted state").
+# Normally lives under $env:ORIGINAL_SCRIPT_DIR outside the repo; this only matters for the
+# dev-loop fallback (running the orchestrator directly, no launcher), which creates it here.
+maintenance-persist/
+
 # Self-update extraction + bootstrap download artifacts (created in the launch dir by script.bat)
 script_mentenanta-master/
 update.zip

@@ -65,6 +65,30 @@ function Initialize-Maintenance {
     if (-not $LogPath) { $LogPath = Join-Path $env:MAINT_TEMP 'logs\maintenance.log' }
     Initialize-LogFile -Path $LogPath
 
+    # Persisted local overrides + state, stored OUTSIDE $ProjectRoot. script.bat's self-update
+    # RMDIR /S /Q's the extracted tree (and everything under it, including temp_files) before
+    # every real run, so nothing under $ProjectRoot can ever survive to the next run.
+    # $env:ORIGINAL_SCRIPT_DIR is the stable folder script.bat was launched from (e.g. a
+    # technician's USB stick) and is NOT touched by the re-extraction, so it's the only place
+    # per-machine config overrides (Get-BaselineList) and install-state tracking
+    # (Get-PersistentState/Set-PersistentState) can live across runs. Falls back under
+    # $ProjectRoot when running the orchestrator directly without the launcher (dev loop) -
+    # that copy won't survive a future self-update, which is fine since dev-loop runs never
+    # trigger one. Failure to create this folder (e.g. read-only media) must not abort the run.
+    try {
+        $persistRoot = if ($env:ORIGINAL_SCRIPT_DIR) { Join-Path $env:ORIGINAL_SCRIPT_DIR 'maintenance-persist' } else { Join-Path $ProjectRoot 'maintenance-persist' }
+        $env:MAINT_OVERRIDES = Join-Path $persistRoot 'overrides'
+        $env:MAINT_STATE = Join-Path $persistRoot 'state'
+        foreach ($dir in @($env:MAINT_OVERRIDES, $env:MAINT_STATE)) {
+            if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        }
+    }
+    catch {
+        Write-Log -Level WARN -Component CORE -Message "Could not set up persisted overrides/state folder - per-machine config overrides and install-state tracking are unavailable this run: $_"
+        $env:MAINT_OVERRIDES = $null
+        $env:MAINT_STATE = $null
+    }
+
     Write-Log -Level INFO -Component CORE -Message "Maintenance initialized. Root: $ProjectRoot"
 }
 
@@ -438,12 +462,55 @@ function Get-MainConfig {
 
 <#
 .SYNOPSIS
+    Recursively merges an override value on top of a base value from Get-BaselineList.
+.DESCRIPTION
+    Hashtables are merged key-by-key (recursing into nested hashtables so a local override
+    can add/replace a single package entry without repeating the whole file); arrays are
+    concatenated (base items first, then override items); anything else (scalars, or a
+    type mismatch between base and override) resolves to the override value.
+#>
+function Merge-BaselineData {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [AllowNull()] $Base,
+        [Parameter(Mandatory)] [AllowNull()] $Override
+    )
+
+    if ($Base -is [System.Collections.IDictionary] -and $Override -is [System.Collections.IDictionary]) {
+        $merged = @{}
+        foreach ($key in $Base.Keys) { $merged[$key] = $Base[$key] }
+        foreach ($key in $Override.Keys) {
+            if ($merged.ContainsKey($key) -and $merged[$key] -is [System.Collections.IDictionary] -and $Override[$key] -is [System.Collections.IDictionary]) {
+                $merged[$key] = Merge-BaselineData -Base $merged[$key] -Override $Override[$key]
+            }
+            else {
+                $merged[$key] = $Override[$key]
+            }
+        }
+        return $merged
+    }
+
+    if ($Base -is [array] -and $Override -is [array]) {
+        return @($Base) + @($Override)
+    }
+
+    return $Override
+}
+
+<#
+.SYNOPSIS
     Loads a preexisting baseline list for a module from config/lists/[folder]/[file].
 .DESCRIPTION
     Returns the baseline data as a nested [hashtable] (using -AsHashtable) so that
     all JSON objects become case-insensitive hashtables — consistent with
     Get-MainConfig.  This ensures uniform dot-access, index-access, and
     .ContainsKey() behaviour throughout the project.
+
+    If a file of the same name exists under $env:MAINT_OVERRIDES\[folder]\[file] (a
+    per-machine folder that lives OUTSIDE the self-updated tree — see Initialize-Maintenance),
+    it is deep-merged on top of the shipped baseline via Merge-BaselineData. This lets a
+    technician add a protected package, an extra essential app, etc. on one machine without
+    editing the repo, and without losing the change on script.bat's next self-update.
 .PARAMETER ModuleFolder
     Subfolder name under config/lists/ (e.g. 'bloatware').
 .PARAMETER FileName
@@ -470,12 +537,29 @@ function Get-BaselineList {
         # index-access ($obj['key']) uniformly.
         $obj = Get-Content -Path $path -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 20 -AsHashtable
         Write-Log -Level DEBUG -Component CORE -Message "Loaded baseline: $path"
-        return $obj
     }
     catch {
         Write-Log -Level ERROR -Component CORE -Message "Failed to parse $path : $_"
         return $null
     }
+
+    if ($env:MAINT_OVERRIDES) {
+        $overridePath = Join-Path $env:MAINT_OVERRIDES "$ModuleFolder\$FileName"
+        if (Test-Path $overridePath) {
+            try {
+                $overrideObj = Get-Content -Path $overridePath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 20 -AsHashtable
+                if ($null -ne $overrideObj) {
+                    $obj = Merge-BaselineData -Base $obj -Override $overrideObj
+                    Write-Log -Level INFO -Component CORE -Message "Applied local override: $overridePath"
+                }
+            }
+            catch {
+                Write-Log -Level WARN -Component CORE -Message "Failed to parse local override $overridePath (ignoring, using shipped baseline only): $_"
+            }
+        }
+    }
+
+    return $obj
 }
 
 #endregion
@@ -842,6 +926,70 @@ function Get-DiffList {
 
 #endregion
 
+#region ─── PERSISTED STATE ───────────────────────────────────────────────────
+
+<#
+.SYNOPSIS
+    Reads a small JSON state file from $env:MAINT_STATE (survives across runs).
+.DESCRIPTION
+    Unlike Get-DiffList/Save-DiffList (temp_files\diff, wiped every run by script.bat's
+    self-update), this reads from the persisted-state folder set up by Initialize-Maintenance,
+    which lives outside the self-updated tree. Intended for small "have we seen this before"
+    journals (e.g. which essential apps this tool has already installed), not large data.
+.PARAMETER FileName
+    File name under $env:MAINT_STATE (e.g. 'essential-apps-state.json').
+.OUTPUTS
+    [hashtable] — empty hashtable if the file, or $env:MAINT_STATE itself, doesn't exist.
+#>
+function Get-PersistentState {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory)] [string]$FileName
+    )
+
+    if (-not $env:MAINT_STATE) { return @{} }
+    $path = Join-Path $env:MAINT_STATE $FileName
+    if (-not (Test-Path $path)) { return @{} }
+    try {
+        $obj = Get-Content -Path $path -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 10 -AsHashtable
+        if ($null -eq $obj) { return @{} }
+        return $obj
+    }
+    catch {
+        Write-Log -Level WARN -Component CORE -Message "Failed to read persisted state ${path}: $_"
+        return @{}
+    }
+}
+
+<#
+.SYNOPSIS
+    Writes a small JSON state file to $env:MAINT_STATE (survives across runs).
+.PARAMETER FileName
+    File name under $env:MAINT_STATE (e.g. 'essential-apps-state.json').
+.PARAMETER Data
+    Hashtable to serialize. Failure to write is logged and swallowed — state tracking is a
+    convenience, never a reason to fail an otherwise-successful maintenance run.
+#>
+function Set-PersistentState {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$FileName,
+        [Parameter(Mandatory)] [hashtable]$Data
+    )
+
+    if (-not $env:MAINT_STATE) { return }
+    try {
+        $path = Join-Path $env:MAINT_STATE $FileName
+        $Data | ConvertTo-Json -Depth 10 | Set-Content -Path $path -Encoding UTF8 -Force
+    }
+    catch {
+        Write-Log -Level WARN -Component CORE -Message "Failed to write persisted state '$FileName': $_"
+    }
+}
+
+#endregion
+
 #region ─── MODULE RESULT OBJECTS ─────────────────────────────────────────────
 
 <#
@@ -1126,14 +1274,27 @@ function Get-WingetUpgrade {
         $raw = & $wingetExe upgrade --include-unknown 2>&1 | Where-Object { $_ -is [string] }
         $result = [System.Collections.Generic.List[hashtable]]::new()
 
+        # winget has no machine-readable output for this command (confirmed against current
+        # winget CLI docs - no --output/-o option exists for 'upgrade' or 'list' as of mid-2026),
+        # so the fixed-width table has to be parsed. Capture the HEADER row's column count (the
+        # line immediately before the '----' divider) and require each data row's split to fall
+        # within [4, headerCols] - too few means a wrapped/misaligned row, too many means the
+        # split caught a double-space inside a single field (e.g. a name like "App  Name") rather
+        # than a real column boundary.
         $inTable = $false
+        $headerCols = 0
+        $prevLine = $null
         foreach ($line in $raw) {
-            if ($line -match '^-+') { $inTable = $true; continue }
-            if (-not $inTable) { continue }
+            if ($line -match '^-+') {
+                $inTable = $true
+                if ($prevLine) { $headerCols = @($prevLine -split '\s{2,}').Count }
+                continue
+            }
+            if (-not $inTable) { $prevLine = $line; continue }
             if ($line -match '^\s*$') { continue }
 
-            $parts = $line -split '\s{2,}'
-            if ($parts.Count -ge 4) {
+            $parts = @($line -split '\s{2,}')
+            if ($parts.Count -ge 4 -and ($headerCols -eq 0 -or $parts.Count -le $headerCols) -and $parts[0].Trim()) {
                 $wingetItem = @{
                     Name             = $parts[0].Trim()
                     Id               = $parts[1].Trim()
@@ -1400,7 +1561,10 @@ Export-ModuleMember -Function @(
     'Get-OSContext',
     'Get-MainConfig',
     'Get-BaselineList',
+    'Merge-BaselineData',
     'Get-TempPath',
+    'Get-PersistentState',
+    'Set-PersistentState',
     'Compare-ListDiff',
     'Compare-RegistryBaseline',
     'Compare-ServiceBaseline',

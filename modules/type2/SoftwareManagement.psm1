@@ -118,19 +118,47 @@ function Remove-BloatwareLayered {
         }
     }
 
-    # Layer 4: WinGet removal (fallback)
+    # Layer 4: WinGet removal by resolved Id (fallback). Routed through
+    # Invoke-ExternalPackageCommand (timeout-guarded, kills a hung process tree) rather than a
+    # bare '&' call - this must never be able to hang an unattended run.
     if (-not $removed -and $WingetId -and $HasWinget) {
         try {
-            $wingetExe = Resolve-WingetPath
-            $null = & $wingetExe uninstall --id $WingetId --silent --accept-source-agreements --disable-interactivity 2>&1
-            if ($LASTEXITCODE -eq 0) {
-                Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 4: WinGet uninstall succeeded"
+            $exitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) `
+                -ArgumentList @('uninstall', '--id', $WingetId, '--silent', '--accept-source-agreements', '--disable-interactivity')
+            if ($exitCode -eq 0) {
+                Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 4: WinGet uninstall (by id) succeeded"
                 $attempts += 'WinGet'
                 $removed = $true
+            }
+            else {
+                Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 4 (WinGet by id) exit $exitCode"
             }
         }
         catch {
             Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 4 (WinGet) failed: $_"
+        }
+    }
+
+    # Layer 5: WinGet removal by name (fallback). Only tried when no WingetId was resolved
+    # during audit - a package detected solely via the Registry source has no correlated
+    # winget id, but winget may still be able to remove it once queried by name. Only attempted
+    # when Layer 4 didn't already run (WingetId known) so the more precise --id form is always
+    # preferred when available.
+    if (-not $removed -and -not $WingetId -and $HasWinget -and $PackageName) {
+        try {
+            $exitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) `
+                -ArgumentList @('uninstall', '--name', $PackageName, '--silent', '--accept-source-agreements', '--disable-interactivity')
+            if ($exitCode -eq 0) {
+                Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 5: WinGet uninstall (by name) succeeded"
+                $attempts += 'WinGet-byname'
+                $removed = $true
+            }
+            else {
+                Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 5 (WinGet by name) exit $exitCode - no match or already absent"
+            }
+        }
+        catch {
+            Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 5 (WinGet by name) failed: $_"
         }
     }
 
@@ -215,6 +243,12 @@ function Invoke-SoftwareManagement {
     }
 
     # ─── PHASE 2: INSTALL ────────────────────────────────────────────────────
+    # Tracks apps this tool has successfully installed, so a future audit can tell "user
+    # deliberately uninstalled this" apart from "never installed" and stop re-queueing it -
+    # see Get-PersistentState usage in SoftwareManagementAudit.psm1's essential-apps audit.
+    $installState = Get-PersistentState -FileName 'essential-apps-state.json'
+    $installStateChanged = $false
+
     foreach ($item in $installItems) {
         $name = $item.Name ?? "$item"
         $wingetId = $item.WingetId ?? ''
@@ -256,6 +290,8 @@ function Invoke-SoftwareManagement {
 
             if ($installed) {
                 $processed++
+                $installState[$name] = @{ InstalledByTool = $true; LastInstalled = (Get-Date -Format 'o') }
+                $installStateChanged = $true
             }
             else {
                 Write-Log -Level WARN -Component SOFTWARE -Message "Could not install: $name"
@@ -269,6 +305,8 @@ function Invoke-SoftwareManagement {
             $failed++
         }
     }
+
+    if ($installStateChanged) { Set-PersistentState -FileName 'essential-apps-state.json' -Data $installState }
 
     # ─── PHASE 3: UPGRADE ────────────────────────────────────────────────────
     foreach ($item in $upgradeItems) {

@@ -55,15 +55,28 @@ function Test-CanRemovePackage {
 }
 
 function Get-BloatwareFromAllSources {
-    param([hashtable]$BloatwareConfig, [hashtable]$Protected, [hashtable]$Dependencies)
+    param(
+        [hashtable]$BloatwareConfig,
+        [hashtable]$Protected,
+        [hashtable]$Dependencies,
+        # Pre-scanned registry+AppX inventory (Get-InstalledApp), passed in so the caller's
+        # essential-apps sub-audit can reuse the same scan instead of each side rescanning the
+        # registry/AppX independently within the same run.
+        [object[]]$InstalledApps
+    )
 
     $detected = @{}  # hashtable for deduplication
+    # Flat set of every identifier seen across all four sources this run, used by the
+    # cascade-safety pass below to tell "not installed" apart from "installed but not queued
+    # for removal" when checking a dependency-matrix entry's declared dependents.
+    $allInstalledNames = [System.Collections.Generic.HashSet[string]]::new()
 
     # Source 1: AppX packages (modern UWP apps)
     Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning AppX packages...'
     try {
         $appxPackages = Get-AppxPackageCompat -AllUsers -ErrorAction Stop |
             Select-Object -ExpandProperty Name | Where-Object { $_ }
+        foreach ($n in $appxPackages) { $null = $allInstalledNames.Add($n.ToLowerInvariant()) }
 
         foreach ($pattern in $BloatwareConfig.patterns) {
             foreach ($app in $appxPackages) {
@@ -92,6 +105,7 @@ function Get-BloatwareFromAllSources {
     try {
         $provisionedPackages = Get-AppxProvisionedPackageCompat -ErrorAction Stop |
             Select-Object -ExpandProperty PackageName | Where-Object { $_ }
+        foreach ($n in $provisionedPackages) { $null = $allInstalledNames.Add($n.ToLowerInvariant()) }
 
         foreach ($pattern in $BloatwareConfig.patterns) {
             foreach ($pkg in $provisionedPackages) {
@@ -117,10 +131,13 @@ function Get-BloatwareFromAllSources {
         Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "Provisioned packages query failed: $_"
     }
 
-    # Source 3: Registry (Win32 programs)
+    # Source 3: Registry (Win32 programs). Reuses the caller's single Get-InstalledApp scan
+    # (passed in as $InstalledApps) rather than rescanning the registry+AppX a second time in
+    # the same run.
     Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning registry for Win32 programs...'
     try {
-        $regApps = Get-InstalledApp -ErrorAction Stop | Select-Object -ExpandProperty Name | Where-Object { $_ }
+        $regApps = @($InstalledApps) | Select-Object -ExpandProperty Name | Where-Object { $_ }
+        foreach ($n in $regApps) { $null = $allInstalledNames.Add($n.ToLowerInvariant()) }
 
         foreach ($pattern in $BloatwareConfig.patterns) {
             foreach ($app in $regApps) {
@@ -157,15 +174,32 @@ function Get-BloatwareFromAllSources {
             $wingetRaw = & $wingetExe list --accept-source-agreements --disable-interactivity 2>&1 |
                 Where-Object { $_ -is [string] }
 
+            # winget has no machine-readable output for 'list' (confirmed against current winget
+            # CLI docs - no --output/-o option exists), so the fixed-width table has to be
+            # parsed. Capture the header row's column count (the line right before the '----'
+            # divider) and require each data row to split into no more columns than the header
+            # declared - catches the case where a double-space inside a Name field would
+            # otherwise be mistaken for a column boundary and shift Id into the wrong slot.
             $wingetApps = [System.Collections.Generic.List[hashtable]]::new()
             $inTable = $false
+            $headerCols = 0
+            $prevLine = $null
             foreach ($line in $wingetRaw) {
-                if ($line -match '^-{3,}') { $inTable = $true; continue }
-                if (-not $inTable -or $line -match '^\s*$') { continue }
-                $cols = $line -split '\s{2,}'
-                if ($cols.Count -ge 2 -and $cols[0].Trim()) {
+                if ($line -match '^-{3,}') {
+                    $inTable = $true
+                    if ($prevLine) { $headerCols = @($prevLine -split '\s{2,}').Count }
+                    continue
+                }
+                if (-not $inTable) { $prevLine = $line; continue }
+                if ($line -match '^\s*$') { continue }
+                $cols = @($line -split '\s{2,}')
+                if ($cols.Count -ge 2 -and ($headerCols -eq 0 -or $cols.Count -le $headerCols) -and $cols[0].Trim()) {
                     $wingetApps.Add(@{ Name = $cols[0].Trim(); Id = $cols[1].Trim() })
                 }
+            }
+            foreach ($wa in $wingetApps) {
+                if ($wa.Name) { $null = $allInstalledNames.Add($wa.Name.ToLowerInvariant()) }
+                if ($wa.Id) { $null = $allInstalledNames.Add($wa.Id.ToLowerInvariant()) }
             }
 
             foreach ($pattern in $BloatwareConfig.patterns) {
@@ -197,6 +231,38 @@ function Get-BloatwareFromAllSources {
         }
     }
 
+    # Cascade-safety pass: dependency-matrix.json's "dependents" lists which packages break if
+    # their parent is removed. Test-CanRemovePackage already blocked anything with
+    # protected=true; this catches the remaining case - a parent that ISN'T individually
+    # protected, but has a dependent that IS actually installed on this machine and ISN'T
+    # itself queued for removal in this same run. Removing the parent alone would orphan that
+    # dependent, so the parent is dropped from $detected (protected for this run, not removed)
+    # rather than proceeding - correct behavior for an unattended run, since there's no one to
+    # ask and "leave it alone" is always the safe default.
+    $depRoot = if ($Dependencies -is [System.Collections.IDictionary]) { $Dependencies['dependencies'] } else { $null }
+    if ($depRoot -is [System.Collections.IDictionary]) {
+        foreach ($entry in $depRoot.GetEnumerator()) {
+            $parentPattern = $entry.Key.ToLowerInvariant()
+            $dependents = @($entry.Value.dependents)
+            if ($dependents.Count -eq 0) { continue }
+
+            $parentKeys = @($detected.Keys | Where-Object { $_ -like $parentPattern })
+            foreach ($parentKey in $parentKeys) {
+                foreach ($dependent in $dependents) {
+                    $depLower = "$dependent".ToLowerInvariant()
+                    $dependentQueued = $detected.Keys | Where-Object { $_ -like $depLower -or $depLower -like $_ }
+                    $dependentInstalled = $allInstalledNames | Where-Object { $_ -like $depLower -or $depLower -like $_ }
+                    if ($dependentInstalled -and -not $dependentQueued) {
+                        Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message `
+                            "Cascade safety: keeping '$($detected[$parentKey].Name)' - dependent '$dependent' is installed but not queued for removal this run"
+                        $detected.Remove($parentKey)
+                        break
+                    }
+                }
+            }
+        }
+    }
+
     return $detected.Values
 }
 
@@ -215,6 +281,14 @@ function Invoke-SoftwareManagementAudit {
 
         $osCtx = (Get-Variable -Name 'OSContext' -Scope Global -ValueOnly -ErrorAction SilentlyContinue)
         if (-not $osCtx) { $osCtx = Get-OSContext }
+
+        $mainConfig = Get-MainConfig
+        $aggressiveOemRemoval = [bool]($mainConfig.modules.softwareManagement.aggressiveOemRemoval -eq $true)
+
+        # Single registry+AppX scan reused by both the bloatware (Source 3) and essential-apps
+        # sub-audits below, instead of each independently rescanning the same unchanged system
+        # state within this one run.
+        $installedApps = Get-InstalledApp
 
         # ─── BLOATWARE (REMOVE) AUDIT ────────────────────────────────────────
         Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Auditing bloatware to remove (multi-source)...'
@@ -240,7 +314,11 @@ function Invoke-SoftwareManagementAudit {
         # Load bloatware patterns
         $bloatConfig = Get-BaselineList -ModuleFolder 'bloatware' -FileName 'bloatware-detection.json'
         if (-not $bloatConfig -or -not $bloatConfig.categories) {
-            # Fallback to old format
+            # Legacy v4.0 fallback format (bloatware-list.json), superseded by
+            # bloatware-detection.json's categorized v6.0 format. Only reachable here if
+            # bloatware-detection.json is missing or corrupt - kept deliberately as a
+            # config-corruption safety net so a bad deploy of the primary config file doesn't
+            # silently disable bloatware detection entirely on an unattended run.
             Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message 'New bloatware detection config not found, using legacy format'
             $legacyBaseline = Get-BaselineList -ModuleFolder 'bloatware' -FileName 'bloatware-list.json'
             if (-not $legacyBaseline -or -not $legacyBaseline.common) {
@@ -263,13 +341,22 @@ function Invoke-SoftwareManagementAudit {
             # .Values (NOT .PSObject.Properties, which yields CLR members on a hashtable and
             # only produced patterns before by accident through the 'Values' member).
             $patterns = [System.Collections.Generic.List[string]]::new()
+            $broadSkipped = 0
             foreach ($category in $bloatConfig.categories.Values) {
                 if (-not ($category -is [System.Collections.IDictionary]) -or -not $category.apps) { continue }
                 foreach ($app in $category.apps) {
                     if ($app.removable -eq $false) { continue }
+                    # "tier": "broad" marks whole-vendor wildcards that can also match software
+                    # the user deliberately installed (e.g. *Razer* also matches Razer Synapse,
+                    # the peripheral config app, not just OEM bloat). Only included when the
+                    # operator has explicitly opted in via main-config.json.
+                    if ($app.tier -eq 'broad' -and -not $aggressiveOemRemoval) { $broadSkipped++; continue }
                     if ($app.appx_pattern) { $patterns.Add($app.appx_pattern) }
                     elseif ($app.name) { $patterns.Add($app.name) }
                 }
+            }
+            if ($broadSkipped -gt 0) {
+                Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Skipped $broadSkipped broad-tier OEM pattern(s) (aggressiveOemRemoval is off)"
             }
             $bloatConfig = @{ patterns = $patterns }
         }
@@ -277,7 +364,7 @@ function Invoke-SoftwareManagementAudit {
         if ($bloatConfig -and $bloatConfig.patterns) {
             Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message "Bloatware patterns: $($bloatConfig.patterns.Count)"
 
-            $detected = Get-BloatwareFromAllSources -BloatwareConfig $bloatConfig -Protected $protected -Dependencies $dependencies
+            $detected = Get-BloatwareFromAllSources -BloatwareConfig $bloatConfig -Protected $protected -Dependencies $dependencies -InstalledApps $installedApps
 
             foreach ($item in $detected) {
                 $diff.Add(@{
@@ -301,10 +388,14 @@ function Invoke-SoftwareManagementAudit {
         }
         else {
             $baselineApps = @($essential)
-            $installed = Get-InstalledApp
-            $installedNames = $installed | ForEach-Object { $_.Name.ToLowerInvariant() } | Where-Object { $_ }
+            $installedNames = $installedApps | ForEach-Object { $_.Name.ToLowerInvariant() } | Where-Object { $_ }
             $hasWinget = Test-CommandAvailable 'winget'
             $hasMsOffice = [bool]($installedNames | Where-Object { $_ -match 'microsoft.*(office|word|excel|outlook)' })
+
+            # Tracks which essential apps this tool has successfully installed before, so a
+            # user who deliberately uninstalls one afterwards isn't fought forever (Type2 sets
+            # InstalledByTool = true after a successful install; see essential-apps-state.json).
+            $installState = Get-PersistentState -FileName 'essential-apps-state.json'
 
             foreach ($app in $baselineApps) {
                 $appNameLow = if ($app.name) { $app.name.ToLowerInvariant() } else { continue }
@@ -314,13 +405,28 @@ function Invoke-SoftwareManagementAudit {
                     continue
                 }
 
-                $foundByName = $installedNames | Where-Object { $_ -like "*$appNameLow*" }
-                if ($foundByName) { continue }
-
+                # Precise check first: an exact winget --id match is authoritative when
+                # available. Name-substring is only a fallback (winget unavailable, or this app
+                # has no winget id) - registry DisplayName often doesn't literally contain the
+                # baseline's "name" string (e.g. "Java Runtime Environment" vs. an installed
+                # "Java(TM) SE Runtime Environment 8u401"), so trying substring FIRST used to
+                # both miss real installs and mask the more precise check below.
                 $wingetId = $app.winget
+                $alreadyInstalled = $false
                 if ($hasWinget -and $wingetId) {
                     $null = & (Resolve-WingetPath) list --id $wingetId --exact --accept-source-agreements --disable-interactivity 2>&1
-                    if ($LASTEXITCODE -eq 0) { continue }
+                    if ($LASTEXITCODE -eq 0) { $alreadyInstalled = $true }
+                }
+                if (-not $alreadyInstalled) {
+                    $foundByName = $installedNames | Where-Object { $_ -like "*$appNameLow*" }
+                    if ($foundByName) { $alreadyInstalled = $true }
+                }
+                if ($alreadyInstalled) { continue }
+
+                $priorState = $installState[$app.name]
+                if ($priorState -and $priorState.InstalledByTool -eq $true) {
+                    Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message "  Skipping reinstall of '$($app.name)' - previously installed by this tool and since removed (treated as intentional)"
+                    continue
                 }
 
                 $diff.Add(@{
@@ -373,7 +479,10 @@ function Invoke-SoftwareManagementAudit {
             if ((Test-CommandAvailable 'choco') -and $upgradeCfg.EnabledSources -contains 'Chocolatey') {
                 Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'Querying chocolatey for upgrades...'
                 try {
-                    $chocoOutput = & choco outdated --no-progress --no-color 2>&1 | Where-Object { $_ -is [string] }
+                    # --limit-output forces the pipe-delimited "name|current|available|pinned"
+                    # format explicitly, rather than relying on it being the default across
+                    # every Chocolatey version/locale.
+                    $chocoOutput = & choco outdated --no-progress --no-color --limit-output 2>&1 | Where-Object { $_ -is [string] }
                     foreach ($line in $chocoOutput) {
                         if ($line -match '^(\S+)\|(\S+)\|(\S+)') {
                             $pname = $Matches[1]; $curVer = $Matches[2]; $newVer = $Matches[3]

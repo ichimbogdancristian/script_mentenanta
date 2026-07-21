@@ -79,9 +79,11 @@ log is always closed via `Close-LogFile` in `finally`), then:
    only pairs with a non-empty diff (and not skipped by config) are queued. Each pair is
    wrapped so one bad diff/config entry can't abort the stage.
 3. **Stage 3 – Maintenance (Type2):** runs only the queued action modules, in a deliberate
-   order (`$Stage3Order`: SystemConfiguration → SoftwareManagement → WindowsUpdates →
-   RestorePoint → **DiskCleanup last**, so it sweeps up residue the earlier actions created).
-   If no diffs, no changes are made.
+   order (`$Stage3Order`: **RestorePoint first** — it unconditionally queues a `create` action
+   every run, and is only a useful rollback safety net if taken before anything else mutates the
+   system — then SystemConfiguration → SoftwareManagement → WindowsUpdates →
+   **DiskCleanup last**, so it sweeps up residue the earlier actions created). If no diffs, no
+   changes are made.
 4. **Stage 4 – Report:** generates the HTML report embedding `maintenance.log` (read live — the
    log is a direct-write, auto-flushed stream opened with `FileShare.ReadWrite`, so the report
    reads it while it is still being written), then copies it to the launcher folder.
@@ -127,12 +129,24 @@ the action module switches on):
   App-Execution-Alias with redirected stdio fail-fast crashes with `0xC0000409` (-1073740791).
 - `SoftwareManagement` detects bloatware from **four sources** — AppX (PS5.1 compat layer) →
   provisioned packages → registry → winget `list` (parsed into Name/Id columns, never matched
-  against the raw formatted line). Every candidate is gated by `bloatware/protected-packages.json`
-  + `bloatware/dependency-matrix.json` via `Test-CanRemovePackage`: a package matching a
-  protected/depended-on entry is never queued for removal. Type2 removes each item with a layered
-  strategy (AppX → Provisioned → registry **silent-uninstall only** → winget), then installs
-  essentials and applies upgrades. Open follow-ups (WinGet.Client module, essential-app matching,
-  unused cascade config) are catalogued in [SoftwareManagement-Evaluation.md](SoftwareManagement-Evaluation.md).
+  against the raw formatted line; the winget table has no JSON/CSV output option, so parsing
+  validates each row's column count against the header row rather than trusting a blanket
+  minimum). Every candidate is gated by `bloatware/protected-packages.json` (hard block) +
+  `bloatware/dependency-matrix.json` via `Test-CanRemovePackage`, **plus a cascade-safety pass**
+  after all sources are merged: a package is dropped from the removal set if
+  `dependency-matrix.json` declares a dependent that's actually installed but not itself queued
+  for removal this run (protects, never removes — the safe default for an unattended run).
+  Bloatware patterns tagged `"tier": "broad"` in `bloatware-detection.json` (whole-vendor
+  wildcards like `*Razer*`/`*ASUS*`/`Dell.*` that can also match software the user deliberately
+  installed) are excluded unless `modules.softwareManagement.aggressiveOemRemoval` is `true` in
+  `main-config.json`. Type2 removes each item with a layered strategy (AppX → Provisioned →
+  registry **silent-uninstall only** → winget-by-id → winget-by-name), then installs essentials
+  and applies upgrades, all through `Invoke-ExternalPackageCommand` (timeout-guarded — no package
+  manager call can hang an unattended run). Essential-app "already installed" detection tries the
+  precise `winget list --id --exact` check before falling back to a name-substring match (not the
+  other way around — registry `DisplayName` often doesn't literally contain the baseline's `name`
+  string). Installs are tracked in persisted state (see below) so an app the user deliberately
+  uninstalls afterward isn't silently reinstalled on the next run.
 - `WindowsUpdates` detects pending updates via three layers: Layer 1 COM API
   (`Windows.Update.Session`) → Layer 2 registry pending/setup-in-progress flags → Layer 3
   event-log analysis.
@@ -181,18 +195,42 @@ belong here, not in the orchestrator.
   `SystemConfiguration`) wrap changes with backup → apply → verify → rollback: capture current
   state, apply via `Set-RegistryValue` / `Invoke-RegistryChangeItem`, verify with
   `Test-RegistryValueApplied`, and roll back automatically if verification fails.
+- **Local overrides + persisted state (survive self-update):** `script.bat`'s self-update
+  `RMDIR /S /Q`'s the extracted tree before every real run, so nothing under `$env:MAINT_ROOT`
+  (including `temp_files/`) can persist to the next run. `Initialize-Maintenance` sets up a
+  `maintenance-persist/` folder under `$env:ORIGINAL_SCRIPT_DIR` instead (the stable folder
+  `script.bat` was launched from, e.g. a technician's USB stick — untouched by re-extraction;
+  falls back under `$env:MAINT_ROOT` when running the orchestrator directly with no launcher,
+  which never self-updates anyway). Two things live there:
+  - `maintenance-persist/overrides/<folder>/<file>.json` — mirrors the `config/lists/` layout.
+    `Get-BaselineList` deep-merges it on top of the shipped baseline via `Merge-BaselineData`
+    (hashtables merge key-by-key recursively, arrays concatenate) when present, so a per-machine
+    customization (an extra protected package, an extra essential app) survives self-update
+    without editing the repo. Silently absent = no behavior change.
+  - `maintenance-persist/state/*.json` — small read/write journals via `Get-PersistentState`
+    /`Set-PersistentState` (e.g. `essential-apps-state.json`, which tools Install phases write
+    `InstalledByTool = true` to). Distinct from `Get-DiffList`/`Save-DiffList`
+    (`temp_files/diff/`, intentionally wiped every run) — this is for state that must
+    outlive the run.
+  Failure to create the persist folder (e.g. read-only media) logs a WARN and disables both
+  features for that run rather than aborting.
 
 ### Config and generated files
-- `config/settings/main-config.json` — execution/shutdown behavior and per-module `skip*` flags.
+- `config/settings/main-config.json` — execution/shutdown behavior and per-module `skip*` flags,
+  plus per-module option blocks (e.g. `modules.softwareManagement.aggressiveOemRemoval`).
 - `config/lists/<area>/*.json` — the baseline data each Type1 module diffs against (bloatware
   names, essential apps, security baseline, etc.). Baseline JSON commonly has `common` /
   `windows10` / `windows11` sections that Type1 modules merge based on `OSContext`. One merged
   audit may consume several list folders (e.g. SoftwareManagement reads `bloatware`,
-  `essential-apps`, `app-upgrade`).
+  `essential-apps`, `app-upgrade`). `Get-BaselineList` transparently merges a same-named file
+  from `maintenance-persist/overrides/` on top when present (see "Local overrides + persisted
+  state" above).
 - `config/sysmon/sysmonconfig.xml` — Sysmon configuration applied by SystemConfiguration.
 - `temp_files/` (git-ignored) — `logs/maintenance.log` (the single unified log; the launcher
   migrates its startup log here after extraction), `diff/*-diff.json`, `reports/*.html`, `data/`.
-  Created at startup by the launcher/orchestrator and core module.
+  Created at startup by the launcher/orchestrator and core module. **Wiped every run** by
+  `script.bat`'s self-update — never a place to persist state across runs (use
+  `maintenance-persist/` instead, outside the extracted tree).
 
 ## Conventions
 

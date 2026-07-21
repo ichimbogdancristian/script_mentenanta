@@ -13,7 +13,11 @@
     "skipDiskCleanup": false,
     "skipWindowsUpdates": false,
     "skipSystemHealth": false,
-    "skipRestorePointManagement": false
+    "skipRestorePointManagement": false,
+    "softwareManagement": {
+      "_comment": "aggressiveOemRemoval: when false (default), bloatware patterns tagged \"tier\": \"broad\" in bloatware-detection.json (whole-vendor wildcards like *Razer*, *ASUS*, Dell.*, HP.* that can also match software the user deliberately installed) are excluded from detection. Set true to include them.",
+      "aggressiveOemRemoval": false
+    }
   },
   "reporting": {
     "enableHtmlReport": true
