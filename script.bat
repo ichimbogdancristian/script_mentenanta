@@ -78,6 +78,28 @@ FOR /L %%R IN (1,1,3) DO (
 )
 EXIT /B
 
+:FIND_OTHER_INSTANCES
+REM Sets OTHER_INSTANCES to a comma-separated list of OTHER cmd.exe PIDs whose command
+REM line references script.bat. Empty when this is the only instance.
+REM
+REM Concurrent launcher instances are mutually DESTRUCTIVE: every instance deletes and
+REM re-extracts the SAME %WORKING_DIR%script_mentenanta-master folder, downloads to the
+REM SAME update.zip, and moves the SAME maintenance.log. A second instance therefore makes
+REM the first one fail mid-run with "No valid PowerShell orchestrator found" /
+REM "config\lists directory not found" while both logs interleave with silent gaps.
+REM
+REM Self-exclusion MUST cover the probe's whole ANCESTOR CHAIN, not just its parent:
+REM FOR /F executes the backquoted command through an ephemeral child cmd.exe, so the
+REM chain is: this batch's cmd -> FOR /F child cmd -> powershell. Excluding only the
+REM powershell's parent (the FOR /F child) would leave the batch's own cmd "visible" and
+REM make the guard detect ITSELF as a foreign instance. INSTANCE_ID is excluded too as a
+REM belt-and-suspenders (covers an ancestor walk cut short).
+REM Process-based detection (instead of a lock file) self-heals after crashes: a dead
+REM instance simply stops matching, so nothing stale ever blocks the next run.
+SET "OTHER_INSTANCES="
+FOR /F "usebackq delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; $skip='%INSTANCE_ID%'; $all=@(Get-CimInstance Win32_Process); $byId=@{}; foreach($p in $all){ $byId[[int]$p.ProcessId]=$p }; $anc=@(); $cur=[int]$PID; for($i=0; $i -lt 10; $i++){ $anc += $cur; $proc=$byId[$cur]; if(-not $proc){ break }; $cur=[int]$proc.ParentProcessId; if($cur -le 0){ break } }; $hits=@(); foreach($p in $all){ if($p.Name -eq 'cmd.exe' -and ($anc -notcontains [int]$p.ProcessId) -and ([string]$p.ProcessId -ne $skip) -and $p.CommandLine -match 'script\.bat'){ $hits += [int]$p.ProcessId } }; if($hits.Count -gt 0){ Write-Output ($hits -join ',') }" 2^>nul`) DO SET "OTHER_INSTANCES=%%i"
+EXIT /B
+
 :MAIN_SCRIPT
 
 REM ============================================================================
@@ -89,6 +111,12 @@ REM ============================================================================
 SET "ORIGINAL_SCRIPT_DIR=%~dp0"
 SET "LOG_FILE=%~dp0maintenance.log"
 IF NOT EXIST "%LOG_FILE%" TYPE NUL > "%LOG_FILE%"
+
+REM Instance identity used to exclude THIS process's own ancestor chain from the
+REM single-instance guard below (see :FIND_OTHER_INSTANCES). %RANDOM% fallback if the
+REM PowerShell probe fails, so interleaved instances still get distinct tags.
+SET "INSTANCE_ID=R%RANDOM%"
+FOR /F "usebackq delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='SilentlyContinue'; $all=@(Get-CimInstance Win32_Process); $byId=@{}; foreach($p in $all){ $byId[[int]$p.ProcessId]=$p }; $cur=[int]$PID; $best=''; $firstCmd=''; for($i=0; $i -lt 10; $i++){ $proc=$byId[$cur]; if(-not $proc){ break }; $par=[int]$proc.ParentProcessId; $pp=$byId[$par]; if(-not $pp){ break }; if($pp.Name -eq 'cmd.exe'){ if($firstCmd -eq ''){ $firstCmd=$par }; if($pp.CommandLine -match 'script\.bat'){ $best=$par; break } }; $cur=$par }; if($best -ne ''){ Write-Output $best } elseif($firstCmd -ne ''){ Write-Output $firstCmd }" 2^>nul`) DO SET "INSTANCE_ID=%%i"
 
 REM -----------------------------------------------------------------------------
 REM Self-Discovery Environment Setup
@@ -185,16 +213,40 @@ CALL :LOG_MESSAGE "Admin check results: NET=%NET_ADMIN_CHECK%, PS=%PS_ADMIN_CHEC
 
 IF "%IS_ADMIN%"=="NO" (
     CALL :LOG_MESSAGE "Administrator privileges required. Attempting elevation..." "WARN" "LAUNCHER"
-    powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\"' -Verb RunAs -WindowStyle Normal"
+    powershell -Command "Start-Process cmd -ArgumentList '/c \"%~f0\" %*' -Verb RunAs -WindowStyle Normal"
     IF !ERRORLEVEL! NEQ 0 (
         CALL :LOG_MESSAGE "Elevation failed or was cancelled by user" "ERROR" "LAUNCHER"
-        PAUSE
+        TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
         EXIT /B 1
     )
     exit
 )
 
 CALL :LOG_MESSAGE "Administrator privileges confirmed" "SUCCESS" "LAUNCHER"
+
+REM -----------------------------------------------------------------------------
+REM Single-Instance Guard
+REM Concurrent runs corrupt each other's downloaded/extracted files and shared log (see
+REM :FIND_OTHER_INSTANCES above). Only ONE instance may pass. Placed AFTER elevation so
+REM the un-elevated parent (which exits within ~1s of spawning the elevated child) is not
+REM counted against its own child.
+REM -----------------------------------------------------------------------------
+CALL :LOG_MESSAGE "Checking for other running launcher instances..." "INFO" "LAUNCHER"
+CALL :FIND_OTHER_INSTANCES
+IF DEFINED OTHER_INSTANCES (
+    REM One retry: an elevation parent or a just-finished run may still be exiting.
+    CALL :LOG_MESSAGE "Other launcher cmd process(es) detected: !OTHER_INSTANCES! - rechecking in 8s..." "WARN" "LAUNCHER"
+    TIMEOUT /T 8 >nul 2>&1
+    CALL :FIND_OTHER_INSTANCES
+)
+IF DEFINED OTHER_INSTANCES (
+    CALL :LOG_MESSAGE "Another script.bat instance is still running (cmd PID(s): !OTHER_INSTANCES!)" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Concurrent runs delete each other's downloaded/extracted files and move the shared log - aborting THIS instance (PID %INSTANCE_ID%)." "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Let the other run finish, then run script.bat again." "ERROR" "LAUNCHER"
+    TIMEOUT /T 20 >nul 2>&1
+    EXIT /B 9
+)
+CALL :LOG_MESSAGE "No other launcher instances running - continuing" "SUCCESS" "LAUNCHER"
 
 REM -----------------------------------------------------------------------------
 REM Startup Task Cleanup and Pending Restart Handling (Always check first)
@@ -382,7 +434,7 @@ CALL :LOG_MESSAGE "PowerShell version: %PS_VERSION%" "INFO" "LAUNCHER"
 IF %PS_VERSION% LSS 5 (
     CALL :LOG_MESSAGE "PowerShell 5.1 or higher required. Current: %PS_VERSION%" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "Please install Windows PowerShell 5.1 or PowerShell 7+" "ERROR" "LAUNCHER"
-    PAUSE
+    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
     EXIT /B 2
 )
 
@@ -394,9 +446,21 @@ REM ----------------------------------------------------------------------------
 :DOWNLOAD_REPOSITORY
 CALL :LOG_MESSAGE "Downloading latest repository from GitHub..." "INFO" "LAUNCHER"
 
-REM Clean up existing files
+REM Clean up leftovers from a previous run. If the extracted folder cannot be fully
+REM removed (files held open by another process), abort NOW instead of extracting
+REM into a half-deleted tree: ZipFile.ExtractToDirectory fails on existing files and
+REM the run would otherwise die much later with a confusing "orchestrator not found".
 IF EXIST "%ZIP_FILE%" DEL /Q "%ZIP_FILE%" >nul 2>&1
-IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" RMDIR /S /Q "%WORKING_DIR%%EXTRACT_FOLDER%" >nul 2>&1
+IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" (
+    CALL :LOG_MESSAGE "Removing leftover extracted folder from a previous run: %WORKING_DIR%%EXTRACT_FOLDER%" "DEBUG" "LAUNCHER"
+    RMDIR /S /Q "%WORKING_DIR%%EXTRACT_FOLDER%" >nul 2>&1
+)
+IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" (
+    CALL :LOG_MESSAGE "Could not remove previous extracted folder - files are in use (a previous run's window still open? antivirus scan?)" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Close anything using %WORKING_DIR%%EXTRACT_FOLDER%, then run script.bat again." "ERROR" "LAUNCHER"
+    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
+    EXIT /B 3
+)
 
 REM Download repository
 CALL :LOG_MESSAGE "Downloading from: %REPO_URL%" "DEBUG" "LAUNCHER"
@@ -404,13 +468,13 @@ powershell -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'Silent
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository download failed. Check internet connection." "ERROR" "LAUNCHER"
-    PAUSE
+    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
     EXIT /B 3
 )
 
 IF NOT EXIST "%ZIP_FILE%" (
     CALL :LOG_MESSAGE "Download verification failed - ZIP file not found" "ERROR" "LAUNCHER"
-    PAUSE
+    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
     EXIT /B 3
 )
 
@@ -422,7 +486,7 @@ powershell -ExecutionPolicy Bypass -Command "try { Add-Type -AssemblyName System
 
 IF !ERRORLEVEL! NEQ 0 (
     CALL :LOG_MESSAGE "Repository extraction failed" "ERROR" "LAUNCHER"
-    PAUSE
+    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
     EXIT /B 3
 )
 
@@ -431,26 +495,21 @@ SET "EXTRACTED_PATH=%WORKING_DIR%%EXTRACT_FOLDER%"
 IF EXIST "%EXTRACTED_PATH%" (
     CALL :LOG_MESSAGE "Repository extracted to: %EXTRACTED_PATH%" "SUCCESS" "LAUNCHER"
     
-    REM Replace script.bat with the one from extracted folder
+    REM ---------------------------------------------------------------------------------
+    REM Self-update: DEFERRED ON PURPOSE - do NOT overwrite script.bat while it is running.
+    REM
+    REM cmd.exe streams a .bat file from disk by BYTE OFFSET as it executes. Replacing the
+    REM file mid-run makes execution resume at that same offset inside the NEW content, so
+    REM it jumps into the middle of unrelated code (this is what caused the crash mid-way
+    REM through the PowerShell 7 install section: overwriting script.bat here desyncs the
+    REM byte offset cmd.exe is reading from against the new file's different structure).
+    REM
+    REM The orchestrator (a separate pwsh process that starts after this launcher exits)
+    REM performs the copy instead - see $env:PENDING_SCRIPT_UPDATE in MaintenanceOrchestrator.ps1.
+    REM ---------------------------------------------------------------------------------
     IF EXIST "%EXTRACTED_PATH%\script.bat" (
-        CALL :LOG_MESSAGE "Updating script.bat from extracted repository" "INFO" "LAUNCHER"
-        
-        REM Use ORIGINAL_SCRIPT_DIR to ensure we overwrite the correct script.bat location
-        SET "ORIGINAL_SCRIPT_BAT=%ORIGINAL_SCRIPT_DIR%script.bat"
-        SET "BACKUP_SCRIPT=%ORIGINAL_SCRIPT_DIR:~0,-1%.bat.backup"
-        
-        IF EXIST "%ORIGINAL_SCRIPT_BAT%" (
-            COPY /Y "%ORIGINAL_SCRIPT_BAT%" "%BACKUP_SCRIPT%" >nul 2>&1
-            CALL :LOG_MESSAGE "Original script.bat backed up to: %BACKUP_SCRIPT%" "DEBUG" "LAUNCHER"
-        )
-        
-        REM Copy extracted script.bat to original location
-        COPY /Y "%EXTRACTED_PATH%\script.bat" "%ORIGINAL_SCRIPT_BAT%" >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Successfully replaced script.bat with version from repository at: %ORIGINAL_SCRIPT_BAT%" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "Failed to replace script.bat at %ORIGINAL_SCRIPT_BAT% - continuing with current version" "WARN" "LAUNCHER"
-        )
+        SET "PENDING_SCRIPT_UPDATE=%EXTRACTED_PATH%\script.bat"
+        CALL :LOG_MESSAGE "script.bat self-update deferred to the orchestrator (a running .bat cannot safely overwrite itself)" "INFO" "LAUNCHER"
     ) ELSE (
         CALL :LOG_MESSAGE "No script.bat found in extracted repository" "WARN" "LAUNCHER"
     )
@@ -487,12 +546,12 @@ IF EXIST "%EXTRACTED_PATH%" (
         CALL :LOG_MESSAGE "Using extracted legacy orchestrator" "INFO" "LAUNCHER"
     ) ELSE (
         CALL :LOG_MESSAGE "No valid orchestrator found in extracted files" "ERROR" "LAUNCHER"
-        PAUSE
+        TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
         EXIT /B 3
     )
 ) ELSE (
     CALL :LOG_MESSAGE "Repository extraction verification failed" "ERROR" "LAUNCHER"
-    PAUSE
+    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
     EXIT /B 3
 )
 
@@ -589,7 +648,7 @@ CALL :LOG_MESSAGE "Project structure verification: %COMPONENTS_FOUND%/3 major co
 
 IF "%STRUCTURE_VALID%"=="NO" (
     CALL :LOG_MESSAGE "Project structure incomplete but repository already downloaded. Check extraction." "ERROR" "LAUNCHER"
-    PAUSE
+    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
     EXIT /B 4
 ) ELSE (
     CALL :LOG_MESSAGE "Project structure validated" "SUCCESS" "LAUNCHER"
@@ -973,7 +1032,7 @@ IF "!PS7_INSTALL_SUCCESS!"=="YES" (
 ) ELSE (
     CALL :LOG_MESSAGE "All PowerShell 7 installation methods failed" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "Please manually install from: https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
-    PAUSE
+    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
     EXIT /B 1
 )
 
@@ -1290,7 +1349,7 @@ IF "%PS_EXECUTABLE%"=="" (
     CALL :LOG_MESSAGE "  3. Chocolatey: choco install powershell-core" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "After installation, restart this script to continue." "ERROR" "LAUNCHER"
-    PAUSE
+    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
     EXIT /B 1
 )
 
@@ -1313,7 +1372,7 @@ IF "%PS_EXECUTABLE%"=="" (
     CALL :LOG_MESSAGE "  - pwsh.exe is in PATH or default location" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  - No execution policy restrictions" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  - Antivirus/security software not blocking execution" "ERROR" "LAUNCHER"
-    PAUSE
+    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
     EXIT /B 1
 )
 
@@ -1448,7 +1507,7 @@ CALL :LOG_MESSAGE "AUTO_NONINTERACTIVE flag: %AUTO_NONINTERACTIVE%" "DEBUG" "LAU
 
 IF "%ORCHESTRATOR_PATH%"=="" (
     CALL :LOG_MESSAGE "No valid PowerShell orchestrator found" "ERROR" "LAUNCHER"
-    PAUSE
+    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
     EXIT /B 4
 )
 
@@ -1457,7 +1516,7 @@ CALL :LOG_MESSAGE "Orchestrator path: %ORCHESTRATOR_PATH%" "DEBUG" "LAUNCHER"
 REM Verify orchestrator file exists
 IF NOT EXIST "%ORCHESTRATOR_PATH%" (
     CALL :LOG_MESSAGE "Orchestrator file not found: %ORCHESTRATOR_PATH%" "ERROR" "LAUNCHER"
-    PAUSE
+    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
     EXIT /B 4
 )
 
@@ -1467,18 +1526,19 @@ REM [REMOVED: Legacy PowerShell 7+ orchestrator check. Now handled by consolidat
 
 CALL :LOG_MESSAGE "Using PowerShell 7+ for orchestrator execution" "SUCCESS" "LAUNCHER"
 
-REM Parse command line arguments for the orchestrator
-SET "PS_ARGS="
-IF "%1"=="-NonInteractive" SET "PS_ARGS=%PS_ARGS% -NonInteractive"
-IF "%AUTO_NONINTERACTIVE%"=="YES" (
-    IF NOT "%1"=="-NonInteractive" (
-        SET "PS_ARGS=%PS_ARGS% -NonInteractive"
-        CALL :LOG_MESSAGE "Auto-enabling non-interactive mode due to PowerShell 7+ availability" "INFO" "LAUNCHER"
-    )
+REM Parse command line arguments for the orchestrator. -TaskNumbers implies non-interactive
+REM (per CLAUDE.md); AUTO_NONINTERACTIVE otherwise auto-enables it whenever PS7+ was detected.
+SET "ORCH_EXTRA_ARGS="
+IF "%1"=="-TaskNumbers" (
+    SET "ORCH_EXTRA_ARGS= -NonInteractive -TaskNumbers %2"
+) ELSE IF "%1"=="-NonInteractive" (
+    SET "ORCH_EXTRA_ARGS= -NonInteractive"
+) ELSE IF "%AUTO_NONINTERACTIVE%"=="YES" (
+    SET "ORCH_EXTRA_ARGS= -NonInteractive"
+    CALL :LOG_MESSAGE "Auto-enabling non-interactive mode due to PowerShell 7+ availability" "INFO" "LAUNCHER"
 )
-IF "%1"=="-TaskNumbers" SET "PS_ARGS=%PS_ARGS% -TaskNumbers %2"
 
-CALL :LOG_MESSAGE "Launching orchestrator with arguments: %PS_ARGS%" "INFO" "LAUNCHER"
+CALL :LOG_MESSAGE "Launching orchestrator with arguments:!ORCH_EXTRA_ARGS!" "INFO" "LAUNCHER"
 
 REM Setup complete - transitioning to dedicated PowerShell 7 window for better performance and UI
 CALL :LOG_MESSAGE "Setup phase completed - launching dedicated PowerShell 7+ window" "INFO" "LAUNCHER"
@@ -1497,12 +1557,8 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     SET "PS_ARGS=!PS_ARGS!Write-Host 'Launching MaintenanceOrchestrator...' -ForegroundColor Yellow; "
     SET "PS_ARGS=!PS_ARGS!Write-Host ''; "
     
-    REM Check for command line arguments to pass through
-    IF "%1"=="-NonInteractive" (
-        SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%' -NonInteractive; "
-    ) ELSE (
-        SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%'; "
-    )
+    REM Pass through the same non-interactive/-TaskNumbers arguments resolved above
+    SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%'!ORCH_EXTRA_ARGS!; "
     
     SET "PS_ARGS=!PS_ARGS!Write-Host ''; "
     SET "PS_ARGS=!PS_ARGS!Write-Host 'Maintenance session completed. You can close this window or run additional commands.' -ForegroundColor Green; "
@@ -1530,79 +1586,9 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     CALL :LOG_MESSAGE "Please install PowerShell 7+ and restart this script:" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  winget install Microsoft.PowerShell" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "  https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
-    PAUSE
+    TIMEOUT /T 20 >nul 2>&1   & REM was PAUSE - must not block unattended runs
     EXIT /B 1
 )
-
-REM Batch script execution completed - PowerShell 7+ window is now handling all operations
-CALL :LOG_MESSAGE "Batch launcher phase completed successfully" "SUCCESS" "LAUNCHER"
-GOTO :FINAL_CLEANUP
-
-REM -----------------------------------------------------------------------------
-REM Post-Orchestrator Execution Logic: Interactive Menu with Countdown
-REM -----------------------------------------------------------------------------
-:POST_ORCHESTRATOR_MENU
-ECHO.
-ECHO ===============================
-ECHO  Select Task Execution (20s):
-ECHO ===============================
-ECHO 1. Execute all tasks unattended
-ECHO 2. Execute only specific task numbers
-ECHO.
-ECHO Waiting for selection... (defaults to option 1 after 20 seconds)
-CHOICE /C 12 /N /T 20 /D 1 /M "Select option (1-2): "
-SET "NORMAL_CHOICE=%ERRORLEVEL%"
-IF "%NORMAL_CHOICE%"=="2" GOTO :NORMAL_INSERTED
-REM Default or Option 1 selected
-GOTO :EXECUTE_ALL
-
-:NORMAL_INSERTED
-ECHO.
-SET /P TASKNUMS="Enter task numbers (comma-separated, e.g., 1,3,5): "
-IF "%TASKNUMS%"=="" (
-    ECHO No task numbers entered. Executing all tasks...
-    GOTO :EXECUTE_ALL
-)
-GOTO :EXECUTE_INSERTED
-
-:EXECUTE_ALL
-CALL :LOG_MESSAGE "Executing all tasks unattended..." "INFO" "LAUNCHER"
-CD /D "%WORKING_DIR%"
-"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive
-SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
-GOTO :FINAL_CLEANUP
-
-:EXECUTE_INSERTED
-CALL :LOG_MESSAGE "Executing selected tasks: %TASKNUMS%..." "INFO" "LAUNCHER"
-CD /D "%WORKING_DIR%"
-"%PS_EXECUTABLE%" -ExecutionPolicy Bypass -WindowStyle Normal -File "%ORCHESTRATOR_PATH%" -NonInteractive -TaskNumbers "%TASKNUMS%"
-SET "FINAL_EXIT_CODE=!ERRORLEVEL!"
-GOTO :FINAL_CLEANUP
-
-:FINAL_CLEANUP
-REM -----------------------------------------------------------------------------
-REM Post-Execution Cleanup and Reporting
-REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "PowerShell orchestrator final execution completed with exit code: %FINAL_EXIT_CODE%" "INFO" "LAUNCHER"
-
-CALL :LOG_MESSAGE "All logs consolidated in single location: %WORKING_DIR%temp_files\logs\maintenance.log" "SUCCESS" "LAUNCHER"
-
-IF %FINAL_EXIT_CODE% EQU 0 (
-    CALL :LOG_MESSAGE "Maintenance execution completed successfully" "SUCCESS" "LAUNCHER"
-) ELSE (
-    CALL :LOG_MESSAGE "Maintenance execution completed with errors (exit code: %FINAL_EXIT_CODE%)" "WARN" "LAUNCHER"
-)
-
-REM Check for generated reports
-IF EXIST "%WORKING_DIR%temp_files\reports" (
-    FOR %%F IN ("%WORKING_DIR%temp_files\reports\*.html") DO (
-        CALL :LOG_MESSAGE "Generated report: %%~nxF" "INFO" "LAUNCHER"
-    )
-)
-
-CALL :LOG_MESSAGE "Interactive mode - press any key to close" "INFO" "LAUNCHER"
-PAUSE >nul
-EXIT /B %FINAL_EXIT_CODE%
 
 REM -----------------------------------------------------------------------------
 REM End of Script
