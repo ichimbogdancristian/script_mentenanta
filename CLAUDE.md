@@ -145,8 +145,9 @@ the action module switches on):
   manager call can hang an unattended run). Essential-app "already installed" detection tries the
   precise `winget list --id --exact` check before falling back to a name-substring match (not the
   other way around — registry `DisplayName` often doesn't literally contain the baseline's `name`
-  string). Installs are tracked in persisted state (see below) so an app the user deliberately
-  uninstalls afterward isn't silently reinstalled on the next run.
+  string). Nothing survives between runs except the final HTML report (copied to
+  `$env:ORIGINAL_SCRIPT_DIR`, see below), so a missing essential app is queued for install on
+  every run regardless of whether a prior run installed it and the user removed it since.
 - `WindowsUpdates` detects pending updates via three layers: Layer 1 COM API
   (`Windows.Update.Session`) → Layer 2 registry pending/setup-in-progress flags → Layer 3
   event-log analysis.
@@ -195,25 +196,15 @@ belong here, not in the orchestrator.
   `SystemConfiguration`) wrap changes with backup → apply → verify → rollback: capture current
   state, apply via `Set-RegistryValue` / `Invoke-RegistryChangeItem`, verify with
   `Test-RegistryValueApplied`, and roll back automatically if verification fails.
-- **Local overrides + persisted state (survive self-update):** `script.bat`'s self-update
+- **Nothing persists between runs except the final HTML report.** `script.bat`'s self-update
   `RMDIR /S /Q`'s the extracted tree before every real run, so nothing under `$env:MAINT_ROOT`
-  (including `temp_files/`) can persist to the next run. `Initialize-Maintenance` sets up a
-  `maintenance-persist/` folder under `$env:ORIGINAL_SCRIPT_DIR` instead (the stable folder
-  `script.bat` was launched from, e.g. a technician's USB stick — untouched by re-extraction;
-  falls back under `$env:MAINT_ROOT` when running the orchestrator directly with no launcher,
-  which never self-updates anyway). Two things live there:
-  - `maintenance-persist/overrides/<folder>/<file>.json` — mirrors the `config/lists/` layout.
-    `Get-BaselineList` deep-merges it on top of the shipped baseline via `Merge-BaselineData`
-    (hashtables merge key-by-key recursively, arrays concatenate) when present, so a per-machine
-    customization (an extra protected package, an extra essential app) survives self-update
-    without editing the repo. Silently absent = no behavior change.
-  - `maintenance-persist/state/*.json` — small read/write journals via `Get-PersistentState`
-    /`Set-PersistentState` (e.g. `essential-apps-state.json`, which tools Install phases write
-    `InstalledByTool = true` to). Distinct from `Get-DiffList`/`Save-DiffList`
-    (`temp_files/diff/`, intentionally wiped every run) — this is for state that must
-    outlive the run.
-  Failure to create the persist folder (e.g. read-only media) logs a WARN and disables both
-  features for that run rather than aborting.
+  (including `temp_files/`) survives to the next run — and that's intentional, not a gap to work
+  around. There is no per-machine config-override mechanism and no cross-run state/install
+  journal; every run re-derives everything from the shipped `config/lists/` baseline and the
+  live system. The only things that outlive a run are copied to `$env:ORIGINAL_SCRIPT_DIR` (the
+  stable folder `script.bat` was launched from): the HTML report, and the self-updated
+  `script.bat` itself (via `$env:PENDING_SCRIPT_UPDATE`, applied by the orchestrator after the
+  launcher exits — see the self-update note above).
 
 ### Config and generated files
 - `config/settings/main-config.json` — execution/shutdown behavior and per-module `skip*` flags,
@@ -222,15 +213,14 @@ belong here, not in the orchestrator.
   names, essential apps, security baseline, etc.). Baseline JSON commonly has `common` /
   `windows10` / `windows11` sections that Type1 modules merge based on `OSContext`. One merged
   audit may consume several list folders (e.g. SoftwareManagement reads `bloatware`,
-  `essential-apps`, `app-upgrade`). `Get-BaselineList` transparently merges a same-named file
-  from `maintenance-persist/overrides/` on top when present (see "Local overrides + persisted
-  state" above).
+  `essential-apps`, `app-upgrade`). Loaded as-is by `Get-BaselineList` — there is no per-machine
+  override layer; edit these files (and push to `master`) to change behavior on every machine.
 - `config/sysmon/sysmonconfig.xml` — Sysmon configuration applied by SystemConfiguration.
 - `temp_files/` (git-ignored) — `logs/maintenance.log` (the single unified log; the launcher
   migrates its startup log here after extraction), `diff/*-diff.json`, `reports/*.html`, `data/`.
   Created at startup by the launcher/orchestrator and core module. **Wiped every run** by
-  `script.bat`'s self-update — never a place to persist state across runs (use
-  `maintenance-persist/` instead, outside the extracted tree).
+  `script.bat`'s self-update — nothing here (or anywhere under the extracted tree) is meant to
+  survive to the next run.
 
 ## Conventions
 

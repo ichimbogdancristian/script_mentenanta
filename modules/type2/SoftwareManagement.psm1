@@ -243,12 +243,6 @@ function Invoke-SoftwareManagement {
     }
 
     # ─── PHASE 2: INSTALL ────────────────────────────────────────────────────
-    # Tracks apps this tool has successfully installed, so a future audit can tell "user
-    # deliberately uninstalled this" apart from "never installed" and stop re-queueing it -
-    # see Get-PersistentState usage in SoftwareManagementAudit.psm1's essential-apps audit.
-    $installState = Get-PersistentState -FileName 'essential-apps-state.json'
-    $installStateChanged = $false
-
     foreach ($item in $installItems) {
         $name = $item.Name ?? "$item"
         $wingetId = $item.WingetId ?? ''
@@ -290,8 +284,6 @@ function Invoke-SoftwareManagement {
 
             if ($installed) {
                 $processed++
-                $installState[$name] = @{ InstalledByTool = $true; LastInstalled = (Get-Date -Format 'o') }
-                $installStateChanged = $true
             }
             else {
                 Write-Log -Level WARN -Component SOFTWARE -Message "Could not install: $name"
@@ -305,8 +297,6 @@ function Invoke-SoftwareManagement {
             $failed++
         }
     }
-
-    if ($installStateChanged) { Set-PersistentState -FileName 'essential-apps-state.json' -Data $installState }
 
     # ─── PHASE 3: UPGRADE ────────────────────────────────────────────────────
     foreach ($item in $upgradeItems) {

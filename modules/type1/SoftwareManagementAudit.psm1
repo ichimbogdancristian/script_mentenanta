@@ -392,11 +392,6 @@ function Invoke-SoftwareManagementAudit {
             $hasWinget = Test-CommandAvailable 'winget'
             $hasMsOffice = [bool]($installedNames | Where-Object { $_ -match 'microsoft.*(office|word|excel|outlook)' })
 
-            # Tracks which essential apps this tool has successfully installed before, so a
-            # user who deliberately uninstalls one afterwards isn't fought forever (Type2 sets
-            # InstalledByTool = true after a successful install; see essential-apps-state.json).
-            $installState = Get-PersistentState -FileName 'essential-apps-state.json'
-
             foreach ($app in $baselineApps) {
                 $appNameLow = if ($app.name) { $app.name.ToLowerInvariant() } else { continue }
 
@@ -422,12 +417,6 @@ function Invoke-SoftwareManagementAudit {
                     if ($foundByName) { $alreadyInstalled = $true }
                 }
                 if ($alreadyInstalled) { continue }
-
-                $priorState = $installState[$app.name]
-                if ($priorState -and $priorState.InstalledByTool -eq $true) {
-                    Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message "  Skipping reinstall of '$($app.name)' - previously installed by this tool and since removed (treated as intentional)"
-                    continue
-                }
 
                 $diff.Add(@{
                         Action      = 'install'
