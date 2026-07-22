@@ -891,20 +891,13 @@ FOR /F "tokens=*" %%A IN ('powershell -NoProfile -ExecutionPolicy Bypass -Comman
 IF NOT DEFINED SYS_ARCH SET "SYS_ARCH=x64"
 
 REM Download from GitHub API
-powershell -NoProfile -ExecutionPolicy Bypass -Command "
-  try {
-    ^$ProgressPreference = 'SilentlyContinue'
-    ^$headers = @{'User-Agent' = 'WinMaintLauncher/2.0'}
-    ^$rel = Invoke-RestMethod -Headers ^$headers -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest' -TimeoutSec 30
-    ^$asset = ^$rel.assets | Where-Object { ^$_.name -match 'win-!SYS_ARCH!\.msi$' } | Select-Object -First 1
-    if(-not ^$asset){ Write-Host 'ASSET_NOT_FOUND'; exit 2 }
-    Invoke-WebRequest -Headers ^$headers -Uri ^$asset.browser_download_url -OutFile '%WORKING_DIR%pwsh-github.msi' -UseBasicParsing -TimeoutSec 60
-    Write-Host 'DOWNLOAD_SUCCESS'
-  } catch {
-    Write-Host 'DOWNLOAD_FAILED'
-    exit 1
-  }
-" >nul 2>&1
+REM MUST be a single line: cmd.exe does NOT treat an unclosed quote in a plain (or even
+REM parenthesized-block) statement as continuing onto the next physical line - each line
+REM is parsed as its own separate command. The previous multi-line form silently split into
+REM "'try' is not recognized...", "'$ProgressPreference' is not recognized...", etc., and the
+REM line with two unescaped pipes (the Where-Object/Select-Object chain) made cmd.exe hang
+REM indefinitely on an empty pipeline segment - this was the actual launcher "crash".
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference = 'SilentlyContinue'; $headers = @{'User-Agent' = 'WinMaintLauncher/2.0'}; $rel = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest' -TimeoutSec 30; $asset = $rel.assets | Where-Object { $_.name -match 'win-!SYS_ARCH!\.msi$' } | Select-Object -First 1; if(-not $asset){ Write-Host 'ASSET_NOT_FOUND'; exit 2 }; Invoke-WebRequest -Headers $headers -Uri $asset.browser_download_url -OutFile '%WORKING_DIR%pwsh-github.msi' -UseBasicParsing -TimeoutSec 60; Write-Host 'DOWNLOAD_SUCCESS' } catch { Write-Host 'DOWNLOAD_FAILED'; exit 1 }" >nul 2>&1
 
 IF !ERRORLEVEL! EQU 0 (
     IF EXIST "%WORKING_DIR%pwsh-github.msi" (
@@ -986,15 +979,9 @@ IF "!PS7_INSTALL_SUCCESS!"=="NO" (
         )
     ) ELSE (
         CALL :LOG_MESSAGE "Chocolatey not found, bootstrapping..." "INFO" "LAUNCHER"
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "
-          try {
-            ^$ProgressPreference='SilentlyContinue'
-            Set-ExecutionPolicy Bypass -Scope Process -Force
-            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-            iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-            Write-Host 'BOOTSTRAP_SUCCESS'
-          } catch { Write-Host 'BOOTSTRAP_FAILED'; exit 1 }
-        " >nul 2>&1
+        REM MUST be a single line - see the GitHub MSI download comment above for why a
+        REM multi-line -Command string silently breaks (and can hang) cmd.exe.
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')); Write-Host 'BOOTSTRAP_SUCCESS' } catch { Write-Host 'BOOTSTRAP_FAILED'; exit 1 }" >nul 2>&1
 
         IF !ERRORLEVEL! EQU 0 (
             timeout /t 3 >nul
