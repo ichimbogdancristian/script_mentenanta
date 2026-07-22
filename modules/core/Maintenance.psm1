@@ -161,7 +161,8 @@ function Set-LogLevel {
 .SYNOPSIS
     Writes a structured log line to the console (level-gated) and to maintenance.log.
 .DESCRIPTION
-    Format: [yyyy-MM-dd HH:mm:ss] [LEVEL] [COMPONENT] message
+    Format: [HH:mm:ss] [LEVEL] [COMPONENT] message
+    Enhanced with visual symbols and color coding for better readability.
     Console output is gated by the console threshold (default INFO); the file always
     receives everything at/above the file threshold (default DEBUG) via a direct,
     auto-flushed write that does not depend on any transcript being active.
@@ -171,6 +172,8 @@ function Set-LogLevel {
     Uppercase short module tag, e.g. BLOATWARE, CORE, CONFIG.
 .PARAMETER Message
     Free-form message text.
+.PARAMETER Indented
+    If $true, indent the line for sub-items.
 #>
 function Write-Log {
     [CmdletBinding()]
@@ -184,28 +187,37 @@ function Write-Log {
 
         [Parameter(Mandatory)]
         [AllowEmptyString()]
-        [string]$Message
+        [string]$Message,
+
+        [switch]$Indented
     )
 
     $rank = $script:LevelRank[$Level]
-    $ts = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
-    $line = "[$ts] [$Level] [$Component] $Message"
+    $ts = (Get-Date).ToString('HH:mm:ss')
+
+    # Log file format (plain text, no timestamps at start for readability)
+    $fullTs = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+    $logLine = "[$fullTs] [$Level] [$Component] $Message"
+
+    # Console format with visual symbols
+    $symbol, $color = switch ($Level) {
+        'INFO'    { 'ℹ', 'Cyan' }
+        'WARN'    { '⚠', 'Yellow' }
+        'ERROR'   { '✗', 'Red' }
+        'FATAL'   { '✗', 'Red' }
+        'DEBUG'   { '◦', 'DarkGray' }
+        'SUCCESS' { '✓', 'Green' }
+        default   { '•', 'White' }
+    }
 
     if ($rank -ge $script:LogConsoleRank) {
-        $color = switch ($Level) {
-            'INFO' { 'Cyan' }
-            'WARN' { 'Yellow' }
-            'ERROR' { 'Red' }
-            'FATAL' { 'Red' }
-            'DEBUG' { 'DarkGray' }
-            'SUCCESS' { 'Green' }
-            default { 'White' }
-        }
-        Write-Host $line -ForegroundColor $color
+        $indent = if ($Indented) { '  ' } else { '' }
+        $consoleLine = "$indent[$ts] $symbol [$Component] $Message"
+        Write-Host $consoleLine -ForegroundColor $color
     }
 
     if ($script:LogWriter -and $rank -ge $script:LogFileRank) {
-        try { $script:LogWriter.WriteLine($line) } catch { }
+        try { $script:LogWriter.WriteLine($logLine) } catch { }
     }
 }
 
@@ -228,6 +240,7 @@ function Add-LogRaw {
 .SYNOPSIS
     Logs a terminating error as FATAL with detailed context: exception type, message,
     position, stack trace, inner exceptions, and HResult for system errors.
+    Enhanced with visual formatting for better readability.
 .PARAMETER ErrorRecord
     The $_ / ErrorRecord from a catch block or trap.
 .PARAMETER Component
@@ -255,13 +268,13 @@ function Write-LogException {
 
     # HResult for system errors
     if ($exception.HResult) {
-        Write-Log -Level FATAL -Component $Component -Message "HResult: 0x$($exception.HResult.ToString('X8'))"
+        Write-Log -Level FATAL -Component $Component -Message "  └─ HResult: 0x$($exception.HResult.ToString('X8'))" -Indented
     }
 
     # Position information
     if ($ErrorRecord.InvocationInfo -and $ErrorRecord.InvocationInfo.PositionMessage) {
         $pos = ($ErrorRecord.InvocationInfo.PositionMessage -replace "`r?`n", ' | ')
-        Write-Log -Level FATAL -Component $Component -Message "At: $pos"
+        Write-Log -Level FATAL -Component $Component -Message "  └─ At: $pos" -Indented
     }
 
     # Inner exceptions (recursive)
@@ -271,7 +284,7 @@ function Write-LogException {
         while ($innerEx -and $depth -lt 5) {
             $innerType = $innerEx.GetType().FullName
             Write-Log -Level FATAL -Component $Component `
-                -Message "  └─ InnerException[$depth]: [$innerType] $($innerEx.Message)"
+                -Message "  └─ InnerException[$depth]: [$innerType] $($innerEx.Message)" -Indented
             $innerEx = $innerEx.InnerException
             $depth++
         }
@@ -279,8 +292,12 @@ function Write-LogException {
 
     # Stack trace
     if ($ErrorRecord.ScriptStackTrace) {
+        $i = 0
         foreach ($frame in ($ErrorRecord.ScriptStackTrace -split "`r?`n")) {
-            if ($frame.Trim()) { Write-Log -Level FATAL -Component $Component -Message "  stack: $frame" }
+            if ($frame.Trim()) {
+                Write-Log -Level FATAL -Component $Component -Message "  ├─ Stack[$i]: $frame" -Indented
+                $i++
+            }
         }
     }
 
@@ -288,7 +305,7 @@ function Write-LogException {
     $i = 0
     foreach ($e in $Error) {
         if ($i -ge 5) { break }
-        Write-Log -Level DEBUG -Component $Component -Message "Error[$i]: $e"
+        Write-Log -Level DEBUG -Component $Component -Message "  Error[$i]: $e" -Indented
         $i++
     }
 }

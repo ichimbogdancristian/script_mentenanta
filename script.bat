@@ -764,165 +764,225 @@ IF "!WINGET_AVAILABLE!"=="YES" (
     )
 )
 
-REM -----------------------------------------------------------------------------
-REM PowerShell 7 Detection and Installation (Moved after winget setup)
-REM -----------------------------------------------------------------------------
+REM ============================================================================
+REM PowerShell 7 Installation - Enhanced Strategy (v2.0)
+REM Method priority: GitHub MSI (most reliable) → Winget → Chocolatey
+REM Path verification: 4-tier system for all installation types
+REM ============================================================================
+
+REM Phase 1: Comprehensive path verification (4-tier system)
 CALL :LOG_MESSAGE "Checking PowerShell 7 availability..." "INFO" "LAUNCHER"
 
-REM Try multiple detection methods before deciding to install
-SET "PS7_FOUND=NO"
+SET "PS7_EXECUTABLE="
 
-REM Method 1: Direct pwsh.exe command
+REM Priority 1: Standard path (MSI, Chocolatey installations)
+IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
+    "%ProgramFiles%\PowerShell\7\pwsh.exe" -Version >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        SET "PS7_EXECUTABLE=%ProgramFiles%\PowerShell\7\pwsh.exe"
+        CALL :LOG_MESSAGE "PowerShell 7 found at standard path" "SUCCESS" "LAUNCHER"
+        GOTO :PS7_FOUND_COMPLETE
+    )
+)
+
+REM Priority 2: MSIX packages directory (actual location for Winget/Store installs)
+FOR /D %%D IN ("%ProgramFiles%\WindowsApps\Microsoft.PowerShell_*") DO (
+    IF EXIST "%%D\pwsh.exe" (
+        "%%D\pwsh.exe" -Version >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            SET "PS7_EXECUTABLE=%%D\pwsh.exe"
+            CALL :LOG_MESSAGE "PowerShell 7 found at MSIX packages path" "SUCCESS" "LAUNCHER"
+            GOTO :PS7_FOUND_COMPLETE
+        )
+    )
+)
+
+REM Priority 3: PATH-based discovery
 pwsh.exe -Version >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    SET "PS7_FOUND=YES"
-    CALL :LOG_MESSAGE "PowerShell 7 detected via pwsh.exe command" "DEBUG" "LAUNCHER"
-)
-
-REM Method 2: Check default installation path
-IF "%PS7_FOUND%"=="NO" (
-    IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
-        "%ProgramFiles%\PowerShell\7\pwsh.exe" -Version >nul 2>&1
+    FOR /F "tokens=*" %%P IN ('where pwsh.exe 2^>nul') DO (
+        "%%P" -Version >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
-            SET "PS7_FOUND=YES"
-            CALL :LOG_MESSAGE "PowerShell 7 detected at default installation path" "DEBUG" "LAUNCHER"
+            SET "PS7_EXECUTABLE=%%P"
+            CALL :LOG_MESSAGE "PowerShell 7 found via PATH" "SUCCESS" "LAUNCHER"
+            GOTO :PS7_FOUND_COMPLETE
         )
     )
 )
 
-REM Method 3: Check WindowsApps for App Execution Alias
-IF "%PS7_FOUND%"=="NO" (
-    IF EXIST "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" (
-        "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" -Version >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            SET "PS7_FOUND=YES"
-            CALL :LOG_MESSAGE "PowerShell 7 detected via WindowsApps alias" "DEBUG" "LAUNCHER"
-        )
+REM Priority 4: Per-user alias (least reliable in elevated context)
+IF EXIST "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" (
+    "%LocalAppData%\Microsoft\WindowsApps\pwsh.exe" -Version >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        SET "PS7_EXECUTABLE=%LocalAppData%\Microsoft\WindowsApps\pwsh.exe"
+        CALL :LOG_MESSAGE "PowerShell 7 found via WindowsApps alias" "INFO" "LAUNCHER"
+        GOTO :PS7_FOUND_COMPLETE
     )
 )
 
-REM Final check - re-verify PowerShell 7 availability before installation attempts
-pwsh.exe -Version >nul 2>&1
+REM Phase 2: Installation needed - try methods in priority order
+CALL :LOG_MESSAGE "PowerShell 7 not found. Starting installation..." "INFO" "LAUNCHER"
+SET "PS7_INSTALL_SUCCESS=NO"
+
+REM Method 1: GitHub MSI Download (MOST RELIABLE - no dependencies)
+CALL :LOG_MESSAGE "Method 1/3: Attempting GitHub MSI download..." "INFO" "LAUNCHER"
+
+REM Detect architecture
+FOR /F "tokens=*" %%A IN ('powershell -NoProfile -ExecutionPolicy Bypass -Command "if([Environment]::Is64BitOperatingSystem){ Write-Host 'x64' } else { Write-Host 'x86' }" 2^>nul') DO SET "SYS_ARCH=%%A"
+IF NOT DEFINED SYS_ARCH SET "SYS_ARCH=x64"
+
+REM Download from GitHub API
+powershell -NoProfile -ExecutionPolicy Bypass -Command "
+  try {
+    ^$ProgressPreference = 'SilentlyContinue'
+    ^$headers = @{'User-Agent' = 'WinMaintLauncher/2.0'}
+    ^$rel = Invoke-RestMethod -Headers ^$headers -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest' -TimeoutSec 30
+    ^$asset = ^$rel.assets | Where-Object { ^$_.name -match 'win-!SYS_ARCH!\.msi$' } | Select-Object -First 1
+    if(-not ^$asset){ Write-Host 'ASSET_NOT_FOUND'; exit 2 }
+    Invoke-WebRequest -Headers ^$headers -Uri ^$asset.browser_download_url -OutFile '%WORKING_DIR%pwsh-github.msi' -UseBasicParsing -TimeoutSec 60
+    Write-Host 'DOWNLOAD_SUCCESS'
+  } catch {
+    Write-Host 'DOWNLOAD_FAILED'
+    exit 1
+  }
+" >nul 2>&1
+
 IF !ERRORLEVEL! EQU 0 (
-    SET "PS7_FOUND=YES"
-    CALL :LOG_MESSAGE "PowerShell 7 detected - skipping installation" "SUCCESS" "LAUNCHER"
-)
-
-IF "%PS7_FOUND%"=="NO" (
-    CALL :LOG_MESSAGE "PowerShell 7 not found. Attempting installation..." "INFO" "LAUNCHER"
-    SET "INSTALL_STATUS=FAILED"
-    SET "WINGET_LOG=%WORKING_DIR%winget-pwsh-install.log"
-
-    REM Every state check below uses delayed expansion (!VAR!) on purpose. This whole IF-block
-    REM is parsed once, so %INSTALL_STATUS% would be frozen at its parse-time value ("FAILED")
-    REM and a SUCCESSFUL install would still fall through Chocolatey, MSI and finally report
-    REM "all methods failed". !VAR! reads the live value. Do NOT change these back to %VAR%.
-
-    REM 1) Try installing PowerShell via winget (if available)
-    IF "!WINGET_AVAILABLE!"=="YES" (
-        CALL :LOG_MESSAGE "Installing PowerShell 7 via winget..." "INFO" "LAUNCHER"
-        "!WINGET_EXE!" install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements
+    IF EXIST "%WORKING_DIR%pwsh-github.msi" (
+        CALL :LOG_MESSAGE "GitHub MSI downloaded, installing..." "SUCCESS" "LAUNCHER"
+        msiexec /i "%WORKING_DIR%pwsh-github.msi" /qn ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1 ENABLE_PSREMOTING=1 REGISTER_MANIFEST=1 >nul 2>&1
         IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "PowerShell 7 installed successfully via winget" "SUCCESS" "LAUNCHER"
-            SET "INSTALL_STATUS=SUCCESS"
-            REM 5s cooldown + up to 3 retries to discover the freshly-installed pwsh.exe
-            CALL :VERIFY_PS7_AFTER_INSTALL
-        ) ELSE (
-            CALL :LOG_MESSAGE "PowerShell 7 installation via winget failed" "WARN" "LAUNCHER"
-        )
-    ) ELSE (
-        CALL :LOG_MESSAGE "Winget not available for PowerShell 7 installation" "WARN" "LAUNCHER"
-    )
-
-    REM 2) Try Chocolatey (prioritize existing installation or install it first)
-    IF NOT "!INSTALL_STATUS!"=="SUCCESS" (
-        REM Check if Chocolatey is available
-        SET "CHOCO_EXE=choco"
-        IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
-
-        "!CHOCO_EXE!" --version >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "Chocolatey found - installing PowerShell 7..." "INFO" "LAUNCHER"
-            "!CHOCO_EXE!" install powershell-core -y --no-progress
-            IF !ERRORLEVEL! EQU 0 (
-                CALL :LOG_MESSAGE "PowerShell 7 installed successfully via Chocolatey" "SUCCESS" "LAUNCHER"
-                SET "INSTALL_STATUS=SUCCESS"
-                CALL :VERIFY_PS7_AFTER_INSTALL
-            ) ELSE (
-                CALL :LOG_MESSAGE "Chocolatey failed to install PowerShell 7" "WARN" "LAUNCHER"
-            )
-        ) ELSE (
-            CALL :LOG_MESSAGE "Chocolatey not available - attempting Chocolatey installation..." "INFO" "LAUNCHER"
-
-            REM Official Chocolatey bootstrap. TLS 1.2 is enabled via SecurityProtocol -bor 3072
-            REM (community.chocolatey.org rejects older protocols). We deliberately do NOT trust
-            REM the iex exit code - the installer can emit non-fatal errors and still succeed - so
-            REM we refresh PATH and verify choco.exe on disk as the real success signal.
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')) } catch { exit 1 }"
-            ping -n 4 127.0.0.1 >nul 2>&1
+            timeout /t 5 >nul
             CALL :REFRESH_PATH_FROM_REGISTRY
-
-            IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" (
-                SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
-                CALL :LOG_MESSAGE "Chocolatey installed successfully" "SUCCESS" "LAUNCHER"
-
-                CALL :LOG_MESSAGE "Installing PowerShell 7 via newly installed Chocolatey..." "INFO" "LAUNCHER"
-                "!CHOCO_EXE!" install powershell-core -y --no-progress
+            IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
+                "%ProgramFiles%\PowerShell\7\pwsh.exe" -Version >nul 2>&1
                 IF !ERRORLEVEL! EQU 0 (
-                    CALL :LOG_MESSAGE "PowerShell 7 installed successfully via newly installed Chocolatey" "SUCCESS" "LAUNCHER"
-                    SET "INSTALL_STATUS=SUCCESS"
-                    CALL :VERIFY_PS7_AFTER_INSTALL
-                ) ELSE (
-                    CALL :LOG_MESSAGE "PowerShell 7 installation failed even with fresh Chocolatey" "WARN" "LAUNCHER"
+                    SET "PS7_EXECUTABLE=%ProgramFiles%\PowerShell\7\pwsh.exe"
+                    SET "PS7_INSTALL_SUCCESS=YES"
+                    CALL :LOG_MESSAGE "GitHub MSI installation verified" "SUCCESS" "LAUNCHER"
                 )
-            ) ELSE (
-                CALL :LOG_MESSAGE "Chocolatey installation failed (choco.exe not found after bootstrap) - proceeding to MSI fallback" "WARN" "LAUNCHER"
             )
         )
-    )
-
-    REM 3) MSI fallback from GitHub Releases (latest stable PowerShell)
-    IF NOT "!INSTALL_STATUS!"=="SUCCESS" (
-        CALL :LOG_MESSAGE "Attempting PowerShell 7 MSI fallback from GitHub Releases..." "INFO" "LAUNCHER"
-        DEL /Q "%WORKING_DIR%pwsh.msi" >nul 2>&1
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; $headers=@{ 'User-Agent'='WinMaintLauncher' }; $arch = if([Environment]::Is64BitOperatingSystem){ 'x64' } else { 'x86' }; $rel = Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/PowerShell/PowerShell/releases/latest'; $asset = $rel.assets | Where-Object { $_.name -match ('win-' + $arch + '\\.msi$') } | Select-Object -First 1; if(-not $asset){ Write-Host 'ASSET_NOT_FOUND'; exit 2 }; $url = $asset.browser_download_url; Invoke-WebRequest -Headers $headers -Uri $url -OutFile '%WORKING_DIR%pwsh.msi'; Write-Host 'MSI_DOWNLOADED' } catch { Write-Host 'MSI_DOWNLOAD_FAILED'; exit 1 }" >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "PowerShell 7 MSI downloaded. Installing silently..." "INFO" "LAUNCHER"
-            msiexec /i "%WORKING_DIR%pwsh.msi" /qn ADD_EXPLORER_CONTEXT_MENU_OPENPOWERSHELL=1 ENABLE_PSREMOTING=1 REGISTER_MANIFEST=1 >nul 2>&1
-            IF !ERRORLEVEL! EQU 0 (
-                CALL :LOG_MESSAGE "PowerShell 7 installed successfully via MSI" "SUCCESS" "LAUNCHER"
-                SET "INSTALL_STATUS=SUCCESS"
-                CALL :VERIFY_PS7_AFTER_INSTALL
-            ) ELSE (
-                CALL :LOG_MESSAGE "PowerShell 7 MSI installation failed" "ERROR" "LAUNCHER"
-            )
-        ) ELSE (
-            CALL :LOG_MESSAGE "Failed to download PowerShell 7 MSI from GitHub (network or API blocked)" "WARN" "LAUNCHER"
-        )
-    )
-
-    REM Post-install result. VERIFY_PS7_AFTER_INSTALL already ran the 5s-cooldown / 3-retry
-    REM discovery in-place, so we do NOT relaunch the whole script (the old nested-restart via
-    REM START /WAIT spawned extra windows and broke unattended runs). The exhaustive
-    REM PS_EXECUTABLE detection further below retries discovery once more anyway.
-    IF "!INSTALL_STATUS!"=="SUCCESS" (
-        IF "!PS7_FOUND!"=="YES" (
-            CALL :LOG_MESSAGE "PowerShell 7 installed and discovered successfully" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "PowerShell 7 installed but not yet discoverable after retries - later detection will retry" "WARN" "LAUNCHER"
-        )
-    ) ELSE (
-        CALL :LOG_MESSAGE "All automated installation methods for PowerShell 7 failed." "ERROR" "LAUNCHER"
-        CALL :LOG_MESSAGE "Troubleshooting tips:" "ERROR" "LAUNCHER"
-        CALL :LOG_MESSAGE " - Ensure winget can access sources: winget source list / reset --force / update" "ERROR" "LAUNCHER"
-        CALL :LOG_MESSAGE " - Update App Installer from Microsoft Store (for winget updates)" "ERROR" "LAUNCHER"
-        CALL :LOG_MESSAGE " - Check corporate proxy/firewall settings for GitHub and CDN access" "ERROR" "LAUNCHER"
-        CALL :LOG_MESSAGE " - Manually install from https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
+        DEL /Q "%WORKING_DIR%pwsh-github.msi" >nul 2>&1
     )
 ) ELSE (
-    FOR /F "tokens=*" %%i IN ('pwsh.exe -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO SET PS7_VERSION=%%i
-    CALL :LOG_MESSAGE "PowerShell 7 available: !PS7_VERSION!" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "GitHub API download failed (network or GitHub blocked)" "WARN" "LAUNCHER"
 )
+
+REM Method 2: Winget (if available and GitHub failed)
+IF "!PS7_INSTALL_SUCCESS!"=="NO" IF "!WINGET_AVAILABLE!"=="YES" (
+    CALL :LOG_MESSAGE "Method 2/3: Attempting Winget installation..." "INFO" "LAUNCHER"
+    "!WINGET_EXE!" install Microsoft.PowerShell --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        timeout /t 5 >nul
+        CALL :REFRESH_PATH_FROM_REGISTRY
+
+        REM Check all possible locations for Winget installation
+        IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
+            "%ProgramFiles%\PowerShell\7\pwsh.exe" -Version >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 (
+                SET "PS7_EXECUTABLE=%ProgramFiles%\PowerShell\7\pwsh.exe"
+                SET "PS7_INSTALL_SUCCESS=YES"
+                CALL :LOG_MESSAGE "Winget installation verified at standard path" "SUCCESS" "LAUNCHER"
+            )
+        ) ELSE (
+            FOR /D %%D IN ("%ProgramFiles%\WindowsApps\Microsoft.PowerShell_*") DO (
+                IF EXIST "%%D\pwsh.exe" (
+                    "%%D\pwsh.exe" -Version >nul 2>&1
+                    IF !ERRORLEVEL! EQU 0 (
+                        SET "PS7_EXECUTABLE=%%D\pwsh.exe"
+                        SET "PS7_INSTALL_SUCCESS=YES"
+                        CALL :LOG_MESSAGE "Winget installation verified at MSIX path" "SUCCESS" "LAUNCHER"
+                    )
+                )
+            )
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "Winget installation failed" "WARN" "LAUNCHER"
+    )
+)
+
+REM Method 3: Chocolatey (last resort)
+IF "!PS7_INSTALL_SUCCESS!"=="NO" (
+    CALL :LOG_MESSAGE "Method 3/3: Attempting Chocolatey installation..." "INFO" "LAUNCHER"
+
+    SET "CHOCO_EXE=choco"
+    IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" SET "CHOCO_EXE=%ProgramData%\chocolatey\bin\choco.exe"
+
+    "!CHOCO_EXE!" --version >nul 2>&1
+    IF !ERRORLEVEL! EQU 0 (
+        CALL :LOG_MESSAGE "Chocolatey found, installing PowerShell..." "INFO" "LAUNCHER"
+        "!CHOCO_EXE!" install powershell-core -y --no-progress >nul 2>&1
+        IF !ERRORLEVEL! EQU 0 (
+            timeout /t 5 >nul
+            CALL :REFRESH_PATH_FROM_REGISTRY
+            IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
+                "%ProgramFiles%\PowerShell\7\pwsh.exe" -Version >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 (
+                    SET "PS7_EXECUTABLE=%ProgramFiles%\PowerShell\7\pwsh.exe"
+                    SET "PS7_INSTALL_SUCCESS=YES"
+                    CALL :LOG_MESSAGE "Chocolatey installation verified" "SUCCESS" "LAUNCHER"
+                )
+            )
+        )
+    ) ELSE (
+        CALL :LOG_MESSAGE "Chocolatey not found, bootstrapping..." "INFO" "LAUNCHER"
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "
+          try {
+            ^$ProgressPreference='SilentlyContinue'
+            Set-ExecutionPolicy Bypass -Scope Process -Force
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+            iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+            Write-Host 'BOOTSTRAP_SUCCESS'
+          } catch { Write-Host 'BOOTSTRAP_FAILED'; exit 1 }
+        " >nul 2>&1
+
+        IF !ERRORLEVEL! EQU 0 (
+            timeout /t 3 >nul
+            CALL :REFRESH_PATH_FROM_REGISTRY
+            IF EXIST "%ProgramData%\chocolatey\bin\choco.exe" (
+                CALL :LOG_MESSAGE "Chocolatey bootstrapped, installing PowerShell..." "SUCCESS" "LAUNCHER"
+                "%ProgramData%\chocolatey\bin\choco.exe" install powershell-core -y --no-progress >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 (
+                    timeout /t 5 >nul
+                    CALL :REFRESH_PATH_FROM_REGISTRY
+                    IF EXIST "%ProgramFiles%\PowerShell\7\pwsh.exe" (
+                        "%ProgramFiles%\PowerShell\7\pwsh.exe" -Version >nul 2>&1
+                        IF !ERRORLEVEL! EQU 0 (
+                            SET "PS7_EXECUTABLE=%ProgramFiles%\PowerShell\7\pwsh.exe"
+                            SET "PS7_INSTALL_SUCCESS=YES"
+                            CALL :LOG_MESSAGE "Chocolatey installation verified" "SUCCESS" "LAUNCHER"
+                        )
+                    )
+                )
+            ) ELSE (
+                CALL :LOG_MESSAGE "Chocolatey bootstrap completed but choco.exe not found" "ERROR" "LAUNCHER"
+            )
+        ) ELSE (
+            CALL :LOG_MESSAGE "Chocolatey bootstrap failed" "ERROR" "LAUNCHER"
+        )
+    )
+)
+
+REM Phase 3: Final result
+IF "!PS7_INSTALL_SUCCESS!"=="YES" (
+    FOR /F "tokens=*" %%V IN ('"!PS7_EXECUTABLE!" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO (
+        CALL :LOG_MESSAGE "PowerShell 7 installation complete (version %%V)" "SUCCESS" "LAUNCHER"
+    )
+    GOTO :PS7_COMPLETE
+) ELSE (
+    CALL :LOG_MESSAGE "All PowerShell 7 installation methods failed" "ERROR" "LAUNCHER"
+    CALL :LOG_MESSAGE "Please manually install from: https://github.com/PowerShell/PowerShell/releases" "ERROR" "LAUNCHER"
+    PAUSE
+    EXIT /B 1
+)
+
+:PS7_FOUND_COMPLETE
+FOR /F "tokens=*" %%V IN ('"!PS7_EXECUTABLE!" -Command "$PSVersionTable.PSVersion.ToString()" 2^>nul') DO (
+    CALL :LOG_MESSAGE "PowerShell 7 available (version %%V)" "SUCCESS" "LAUNCHER"
+)
+
+:PS7_COMPLETE
 
 REM -----------------------------------------------------------------------------
 REM PowerShell Module Dependencies (PSWindowsUpdate for Windows Update management)

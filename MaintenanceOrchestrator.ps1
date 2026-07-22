@@ -75,13 +75,16 @@ Write-Host ""
 
 #endregion
 
-#region ─── LOAD CORE MODULE ──────────────────────────────────────────────────
+#region ─── LOAD CORE MODULES ────────────────────────────────────────────────
 
 $CorePath = Join-Path $ProjectRoot 'modules\core\Maintenance.psm1'
+$UIPath = Join-Path $ProjectRoot 'modules\core\ConsoleUI.psm1'
+
 if (-not (Test-Path $CorePath)) {
     Write-Host "[ERROR] Core module not found: $CorePath" -ForegroundColor Red
     exit 1
 }
+
 # The core logger lives inside this module, so a load failure can't be logged through
 # it — capture it directly to maintenance.log and the console before bailing out.
 try {
@@ -97,6 +100,16 @@ catch {
         Write-Host "[WARN] Could not write to log file: $_" -ForegroundColor Yellow
     }
     exit 1
+}
+
+# Load UI module for enhanced console output (optional - provides visual enhancements)
+if (Test-Path $UIPath) {
+    try {
+        Import-Module $UIPath -Force -Global -WarningAction SilentlyContinue
+    }
+    catch {
+        Write-Log -Level WARN -Component ORCH -Message "UI module import failed (continuing with basic output): $_"
+    }
 }
 
 # Initialise (sets env vars, creates temp dirs, opens/append maintenance.log). The
