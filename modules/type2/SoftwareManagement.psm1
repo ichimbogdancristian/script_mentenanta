@@ -336,8 +336,24 @@ function Invoke-SoftwareManagement {
                         $upgraded = $true
                     }
                     else {
-                        Write-Log -Level INFO -Component SOFTWARE -Message "Not managed by winget (installed outside winget) — skipping upgrade: $name"
-                        $notWingetManaged = $true
+                        # Both --id and --name apply winget's strict ARP-correlation match, which
+                        # can fail for the same package that the bare/positional query resolves
+                        # fine (that's how it was found in `winget upgrade --include-unknown` in
+                        # the first place - see Get-WingetUpgrade). The positional query argument
+                        # uses the looser name/moniker/tag search winget uses for `list`/`search`,
+                        # not the correlation index, so it's a genuinely different match path -
+                        # try it before concluding the package is unmanaged.
+                        $queryArgs = @('upgrade', $name, '--silent', '--accept-package-agreements',
+                            '--accept-source-agreements', '--disable-interactivity')
+                        $queryExitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) -ArgumentList $queryArgs
+                        if ($queryExitCode -in 0, -1978335189) {
+                            Write-Log -Level SUCCESS -Component SOFTWARE -Message "Upgraded (winget, by query after --id/--name matching bug): $name"
+                            $upgraded = $true
+                        }
+                        else {
+                            Write-Log -Level INFO -Component SOFTWARE -Message "Not managed by winget (installed outside winget) — skipping upgrade: $name"
+                            $notWingetManaged = $true
+                        }
                     }
                 }
                 else {

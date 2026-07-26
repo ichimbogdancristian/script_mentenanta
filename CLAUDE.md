@@ -162,7 +162,7 @@ the action module switches on):
   it is the filename stem under `temp_files/diff/<DiffKey>-diff.json`.
 
 ### Core modules
-There are two modules under `modules/core/`. [Maintenance.psm1](modules/core/Maintenance.psm1)
+There are three modules under `modules/core/`. [Maintenance.psm1](modules/core/Maintenance.psm1)
 is imported `-Global` and provides all shared infrastructure — do not duplicate these elsewhere:
 `Write-Log` (structured `[ts] [LEVEL] [COMPONENT] msg`, written **directly** to the single
 `maintenance.log` via an auto-flushed `StreamWriter` opened with `FileShare.ReadWrite` so the
@@ -183,6 +183,10 @@ helpers render per-module cards, the system overview, the SystemInventory/Restor
 sections, and the embedded log console (`ConvertFrom-MaintenanceLog` / `Build-LogConsole` parse the
 structured `maintenance.log` into the collapsible in-report console). Report markup/styling changes
 belong here, not in the orchestrator.
+
+[ConsoleUI.psm1](modules/core/ConsoleUI.psm1) is imported only by the orchestrator and owns
+interactive console formatting (section headers, status symbols, progress bars, spinners,
+countdowns). Used for the Stage 1 menu and stage banners; not used by Type1/Type2 modules.
 
 - **AppX compatibility layer:** PS7 Core's Appx cmdlets are unreliable, so `*Compat` functions
   (`Get-AppxPackageCompat`, `Remove-AppxPackageCompat`, etc.) delegate AppX operations to
