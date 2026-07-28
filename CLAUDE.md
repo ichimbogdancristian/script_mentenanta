@@ -10,6 +10,65 @@ orchestrator that runs a pipeline of audit + action modules and produces a singl
 self-contained HTML report. It is designed to run on freshly installed machines
 that may only have PowerShell 5.1 available at first.
 
+## THE OPERATING CONTRACT — read this before changing anything
+
+This project has one governing requirement that overrides convenience, tidiness, and
+every other design preference: **it must run start-to-finish, unattended, on any
+Windows 10/11 machine, with nobody watching.** The intended deployment is exactly this:
+
+1. `script.bat` sits alone in a folder — that is the entire installed footprint.
+2. A monthly Task Scheduler job (`WindowsMaintenanceAutomation`, 20th @ 01:00, SYSTEM,
+   `/RL HIGHEST`) launches it. `script.bat` also (re)registers that task itself, so the
+   system is self-perpetuating from a single file.
+3. On launch it verifies its own prerequisites (admin → PS7 → winget) and self-heals what
+   it can, so the essential pipeline can run without a human.
+4. It downloads the current `master` zip from GitHub and extracts it **next to itself**
+   into `script_mentenanta-master\`.
+5. It runs the orchestrator (five stages) out of that extracted copy.
+6. Stage 5 deletes the extracted folder entirely, leaving **only `script.bat` and the HTML
+   report** behind for the next month.
+
+**Anything that can block waiting for a human is a bug**, not a UX choice. Concretely, and
+verified in the current code:
+
+- **No `PAUSE`, `SET /P`, or `CHOICE` anywhere in `script.bat`.** Every abort path uses
+  `TIMEOUT /T n >nul 2>&1` (which returns immediately when stdin is redirected) and then
+  `EXIT /B <code>`. If you add an error path, follow that pattern — a `PAUSE` on a SYSTEM
+  task hangs the job forever with no visible window.
+- **The one `Read-Host`** (Stage 1 menu) is unreachable unattended: it sits behind a
+  `[Console]::KeyAvailable` check, which throws with no console and is caught → treated as
+  "no key". Every timed prompt auto-proceeds on timeout; none require input to continue.
+- **`-NonInteractive` is passed explicitly by the scheduled tasks**, never derived from
+  environment sniffing. See the launcher notes below for why deriving it broke the menu.
+- **`-NoExit` is interactive-only.** It is deliberately omitted for unattended runs. Leaving
+  it on under Task Scheduler orphans a `pwsh` host at a prompt in session 0 — one more every
+  month — and because that host's CWD is the extracted folder, the *next* run's
+  `RMDIR /S /Q` of that folder fails and the launcher aborts with `EXIT /B 3`. One stray
+  `-NoExit` therefore degrades into "the monthly task silently stops working forever".
+- **Package/installer invocations must be silent** (`--silent --disable-interactivity
+  --accept-package-agreements --accept-source-agreements`, `msiexec /qn`,
+  `Install-WindowsUpdate -Confirm:$false`) and go through the timeout-guarded
+  `Invoke-ExternalPackageCommand` so no package manager can hang the run.
+
+**Requirement tiers** (what aborts vs. what degrades):
+
+| Requirement | Missing → | Why |
+|---|---|---|
+| Administrator | self-elevate via UAC, else `EXIT /B 1` | Already satisfied under the SYSTEM task |
+| Network + GitHub reachable | `EXIT /B 3`, run does nothing | Hard: only `script.bat` persists, so there is no local copy to fall back to |
+| PowerShell 7 | `EXIT /B 1` | Hard: the orchestrator is `#Requires -Version 7.0` |
+| winget | `WARN`, run continues | Soft: only degrades SoftwareManagement/Sysmon |
+
+**What may be left behind.** On a clean run: `script.bat` + the HTML report, nothing else
+(`update.zip` is deleted after extraction, and `maintenance.log` is *moved into* the
+extracted tree so it dies with it). If the orchestrator crashes, its fatal handler exits
+without cleanup and the extracted tree survives — that is self-healing, because the next
+run's `:DOWNLOAD_REPOSITORY` step `RMDIR /S /Q`s it before extracting. Do not "fix" that by
+adding cleanup to the crash path at the cost of losing the crash evidence.
+
+When a change would trade unattended reliability for interactivity, polish, or a nicer
+console experience, unattended reliability wins.
+
 ## Running
 
 There is no build step and no test framework. The system is executed, not compiled.
@@ -68,7 +127,17 @@ install/verify → launch `MaintenanceOrchestrator.ps1` under `pwsh`.
   launcher refuses to run at all without PS7, keying off it made `-NonInteractive` unconditional
   and silently suppressed the Stage 1 module menu on every run. The scheduled tasks
   (monthly-as-SYSTEM, ONLOGON resume) therefore pass `-NonInteractive` **explicitly** in their
-  `/TR` command line.
+  `/TR` command line. Interactivity is safe here precisely because the menu auto-runs on a 10s
+  timeout — see the operating contract above.
+- **Scheduled-task convergence:** the monthly task is the only unattended entry point, so the
+  launcher does not just check *whether* it exists — it checks whether the registered
+  `Task To Run` actually contains `-NonInteractive` and **re-creates it (`/F`) when it does
+  not**. Without that, any machine whose task was registered by an older `script.bat` (whose
+  `/TR` had no arguments) would keep running interactively as SYSTEM forever, since the
+  "task already exists" branch would never update it.
+- **`ORCH_EXTRA_ARGS` doubles as the interactive/unattended switch** for building `PS_ARGS`
+  (`IF DEFINED ORCH_EXTRA_ARGS`). `SET "VAR="` undefines a batch variable, so "no extra args"
+  is exactly "interactive". That is what gates `-NoExit`.
 
 ### Orchestrator: five stages
 [MaintenanceOrchestrator.ps1](MaintenanceOrchestrator.ps1) appends to the single unified
@@ -284,6 +353,15 @@ countdowns). Used for the Stage 1 menu and stage banners; not used by Type1/Type
   `Write-Host` in the orchestrator is reserved for the user-facing stage banners / menus.
 - Reboot is only ever decided in two places: `script.bat` (pending Windows Update at startup)
   and Stage 5 cleanup. Individual modules signal a need via `RebootRequired`; they must not reboot.
+- **Modules must never prompt or block.** No `Read-Host`, no `-Confirm`, no `PAUSE`, no GUI
+  installer. Pass `-Confirm:$false`/`--silent`/`/qn` explicitly rather than relying on a
+  preference variable, and route every external process through the timeout-guarded
+  `Invoke-ExternalPackageCommand`. A module that waits for input hangs the monthly SYSTEM task
+  with no window to close — see the operating contract at the top.
+- **A module failing must not fail the run.** Modules return `Failed`/`Warning` in their
+  `New-ModuleResult`; they don't throw out to the orchestrator. Best-effort work (opportunistic
+  space reclamation, report-only gathering) should degrade to `Warning` and let the pipeline
+  continue rather than being counted as a hard failure.
 
 ## Consolidation note
 

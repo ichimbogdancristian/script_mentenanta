@@ -386,16 +386,34 @@ REM Create/Verify monthly maintenance scheduled task before continuing
 SET "TASK_NAME=WindowsMaintenanceAutomation"
 CALL :LOG_MESSAGE "Ensuring monthly maintenance task exists (20th day 01:00)..." "INFO" "LAUNCHER"
 
+REM The monthly task is the project's ONLY unattended entry point, so its command line must
+REM carry -NonInteractive. Simply skipping creation when a task already exists would strand
+REM every machine that registered one with an older script.bat (whose /TR had no arguments):
+REM it would keep running in interactive mode as SYSTEM forever. So verify the registered
+REM command and RE-CREATE it when the flag is missing - /F makes that idempotent.
+SET "TASK_NEEDS_CREATE=YES"
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "Monthly scheduled task exists: %TASK_NAME%" "SUCCESS" "LAUNCHER"
+    SET "TASK_NEEDS_CREATE=NO"
+    FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST /V 2^>nul ^| findstr /C:"Task To Run"') DO (
+        ECHO %%i | findstr /I /C:"-NonInteractive" >nul 2>&1
+        IF ERRORLEVEL 1 SET "TASK_NEEDS_CREATE=STALE"
+    )
+)
+
+IF "!TASK_NEEDS_CREATE!"=="NO" (
+    CALL :LOG_MESSAGE "Monthly scheduled task exists and is unattended-ready: %TASK_NAME%" "SUCCESS" "LAUNCHER"
     FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /R /C:"Task To Run" /C:"Next Run Time"') DO (
         CALL :LOG_MESSAGE "Monthly task detail: %%i" "INFO" "LAUNCHER"
     )
 ) ELSE (
+    IF "!TASK_NEEDS_CREATE!"=="STALE" (
+        CALL :LOG_MESSAGE "Monthly task exists but its command line lacks -NonInteractive (registered by an older script.bat) - re-creating it" "WARN" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Creating monthly scheduled task: %TASK_NAME%" "INFO" "LAUNCHER"
+    )
     REM -NonInteractive is explicit: this runs as SYSTEM at 01:00 with no console attached,
     REM so the Stage 1 menu/countdown must be skipped outright rather than polled for keys.
-    CALL :LOG_MESSAGE "Creating monthly scheduled task: %TASK_NAME%" "INFO" "LAUNCHER"
     schtasks /Create ^
         /SC MONTHLY ^
         /MO 1 ^
@@ -407,7 +425,7 @@ IF !ERRORLEVEL! EQU 0 (
         /RU SYSTEM ^
         /F >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "Monthly scheduled task created successfully" "SUCCESS" "LAUNCHER"
+        CALL :LOG_MESSAGE "Monthly scheduled task registered successfully" "SUCCESS" "LAUNCHER"
         FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /R /C:"Task To Run" /C:"Next Run Time"') DO (
             CALL :LOG_MESSAGE "Monthly task detail: %%i" "INFO" "LAUNCHER"
         )
@@ -1542,20 +1560,30 @@ REM Critical: Use PowerShell 7+ (pwsh.exe) for MaintenanceOrchestrator.ps1 due t
 IF "%AUTO_NONINTERACTIVE%"=="YES" (
     CALL :LOG_MESSAGE "Launching PowerShell 7+ in dedicated window for optimal experience" "SUCCESS" "LAUNCHER"
     
-    REM Prepare arguments for the new PowerShell window
-    SET "PS_ARGS=-ExecutionPolicy Bypass -NoExit -Command "
+    REM Prepare arguments for the new PowerShell window.
+    REM
+    REM -NoExit is INTERACTIVE-ONLY. It keeps the pwsh host sitting at a prompt after the
+    REM orchestrator returns, which is what you want when a human is watching, but under the
+    REM monthly Task Scheduler run (SYSTEM, session 0, no visible window) it leaves an
+    REM orphaned pwsh process alive forever - one more every month - and the task never
+    REM really finishes. Unattended runs must let the host exit on its own.
+    IF DEFINED ORCH_EXTRA_ARGS (
+        SET "PS_ARGS=-ExecutionPolicy Bypass -NonInteractive -Command "
+    ) ELSE (
+        SET "PS_ARGS=-ExecutionPolicy Bypass -NoExit -Command "
+    )
     SET "PS_ARGS=!PS_ARGS!& { "
     SET "PS_ARGS=!PS_ARGS!Set-Location '%WORKING_DIR%'; "
     SET "PS_ARGS=!PS_ARGS!Write-Host 'Windows Maintenance Automation - PowerShell 7+ Mode' -ForegroundColor Green; "
     SET "PS_ARGS=!PS_ARGS!Write-Host 'Working Directory: %WORKING_DIR%' -ForegroundColor Cyan; "
     SET "PS_ARGS=!PS_ARGS!Write-Host 'Launching MaintenanceOrchestrator...' -ForegroundColor Yellow; "
     SET "PS_ARGS=!PS_ARGS!Write-Host ''; "
-    
+
     REM Pass through the same non-interactive/-TaskNumbers arguments resolved above
     SET "PS_ARGS=!PS_ARGS!& '%ORCHESTRATOR_PATH%'!ORCH_EXTRA_ARGS!; "
-    
+
     SET "PS_ARGS=!PS_ARGS!Write-Host ''; "
-    SET "PS_ARGS=!PS_ARGS!Write-Host 'Maintenance session completed. You can close this window or run additional commands.' -ForegroundColor Green; "
+    SET "PS_ARGS=!PS_ARGS!Write-Host 'Maintenance session completed.' -ForegroundColor Green; "
     SET "PS_ARGS=!PS_ARGS!}"
     
     REM Write all remaining launcher messages BEFORE START so the bootstrap log
