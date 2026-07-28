@@ -14,6 +14,35 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
 }
 
+<#
+.SYNOPSIS
+    Reduces any package identifier to the bare AppX package Name.
+.DESCRIPTION
+    The audit emits two different identifier shapes for the same logical package:
+      * Source 1 (AppX)        -> the Name only, e.g. Microsoft.XboxGamingOverlay
+      * Source 2 (Provisioned) -> the full PackageName, e.g.
+                                  Microsoft.XboxGamingOverlay_7.325.11061.0_neutral_~_8wekyb3d8bbwe
+    `Get-AppxPackage -Name` filters on the Name property ONLY, so handing it the second
+    shape matches nothing - not even wrapped in wildcards, because Name is the SHORTER
+    string. That is why provisioned-sourced bloatware was only ever deprovisioned and
+    stayed installed for existing users while the module logged "Removal succeeded".
+
+    MSIX package names cannot contain '_' (allowed set is [A-Za-z0-9.-]) and the segment
+    after the first '_' is the version, so splitting at the first '_' that precedes a digit
+    is unambiguous.
+.OUTPUTS
+    [string] the Name segment, or the input unchanged when it is already a bare Name.
+#>
+function Get-AppxNameStem {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([string]$Identifier)
+
+    if (-not $Identifier) { return $Identifier }
+    if ($Identifier -match '^([A-Za-z0-9.\-]+?)_\d') { return $Matches[1] }
+    return $Identifier
+}
+
 function Remove-BloatwareLayered {
     param(
         [string]$PackageName,
@@ -26,36 +55,57 @@ function Remove-BloatwareLayered {
 
     Write-Log -Level INFO -Component SOFTWARE -Message "  Attempting layered removal of: $PackageName"
 
+    # Both the installed copy AND the provisioning must go: Layer 1 uninstalls it for existing
+    # users, Layer 2 stops it returning for new ones. They are NOT alternatives, so neither is
+    # gated on $removed.
+    $nameStem = Get-AppxNameStem -Identifier $PackageName
+
     # Layer 1: AppX removal (current user + all users)
     try {
-        $pkg = Get-AppxPackageCompat -Name $PackageName -AllUsers -ErrorAction SilentlyContinue
+        # Match on the Name stem - see Get-AppxNameStem for why the raw diff identifier fails.
+        $pkg = Get-AppxPackageCompat -Name $nameStem -AllUsers -ErrorAction SilentlyContinue
         if (-not $pkg) {
-            $pkg = Get-AppxPackageCompat -Name "*$PackageName*" -AllUsers -ErrorAction SilentlyContinue
+            $pkg = Get-AppxPackageCompat -Name "*$nameStem*" -AllUsers -ErrorAction SilentlyContinue
         }
         if ($pkg) {
             $pkg | ForEach-Object {
                 Remove-AppxPackageCompat -PackageFullName $_.PackageFullName -AllUsers -ErrorAction Continue
             }
-            Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 1: Removed AppX"
+            Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 1: Removed AppX ($nameStem)"
             $attempts += 'AppX'
             $removed = $true
+        }
+        else {
+            Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 1: no installed AppX package matching '$nameStem'"
         }
     }
     catch {
         Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 1 (AppX) skipped: $_"
     }
 
-    # Layer 2: Provisioned package removal (prevents reinstall on new login)
+    # Layer 2: Provisioned package removal (stops it coming back for NEW user profiles).
+    # NOTE: deprovisioning does NOT uninstall the package for existing users - that is
+    # Layer 1's job. Reporting overall success off this layer alone is what made the module
+    # claim Xbox apps were removed while `winget list` still showed them installed.
     try {
-        $prov = Get-AppxProvisionedPackageCompat -ErrorAction SilentlyContinue |
-            Where-Object { $_.PackageName -like "*$PackageName*" }
-        if ($prov) {
-            $prov | ForEach-Object {
-                $null = Remove-AppxProvisionedPackageCompat -PackageName $_.PackageName -ErrorAction Continue
+        $prov = @(Get-AppxProvisionedPackageCompat -ErrorAction SilentlyContinue |
+            Where-Object { $_.PackageName -like "*$nameStem*" })
+        if ($prov.Count -gt 0) {
+            $deprovisioned = 0
+            foreach ($p in $prov) {
+                # The wrapper now verifies against the live provisioned list and returns the
+                # real outcome (it used to hard-code $true).
+                if (Remove-AppxProvisionedPackageCompat -PackageName $p.PackageName) { $deprovisioned++ }
+                else { Write-Log -Level WARN -Component SOFTWARE -Message "    Layer 2: deprovision FAILED for $($p.PackageName)" }
             }
-            Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 2: Removed Provisioned"
-            $attempts += 'Provisioned'
-            $removed = $true
+            if ($deprovisioned -gt 0) {
+                Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 2: Deprovisioned $deprovisioned package(s)"
+                $attempts += 'Provisioned'
+                $removed = $true
+            }
+        }
+        else {
+            Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 2: no provisioned package matching '$nameStem'"
         }
     }
     catch {
@@ -162,14 +212,34 @@ function Remove-BloatwareLayered {
         }
     }
 
+    # ── Post-removal validation ──────────────────────────────────────────────────
+    # Confirm against live system state instead of trusting the layers' own reports. A
+    # package that is merely DEPROVISIONED is still installed for every existing user, so
+    # it has not actually been removed - saying otherwise is how this module reported five
+    # Xbox apps as removed while they were all still listed by `winget list`.
     if ($removed) {
-        Write-Log -Level SUCCESS -Component SOFTWARE -Message "  Removal succeeded via: $($attempts -join ' -> ')"
+        $stillInstalled = $null
+        try {
+            $stillInstalled = @(Get-AppxPackageCompat -Name $nameStem -AllUsers -ErrorAction SilentlyContinue)
+        }
+        catch {
+            Write-Log -Level DEBUG -Component SOFTWARE -Message "    Post-removal check failed: $_"
+        }
+
+        if ($stillInstalled -and $stillInstalled.Count -gt 0) {
+            $removed = $false
+            Write-Log -Level WARN -Component SOFTWARE `
+                -Message "  Still installed after $($attempts -join ' -> ') - deprovisioning alone does not uninstall it for existing users: $nameStem"
+        }
+        else {
+            Write-Log -Level SUCCESS -Component SOFTWARE -Message "  Removal verified via: $($attempts -join ' -> ')"
+        }
     }
-    else {
+
+    if (-not $removed -and $attempts.Count -eq 0) {
         # NOTE: 'default' is not a PowerShell command - the old '| default ''none''' threw inside
         # the string interpolation on every not-found package, turning a clean WARN into an ERROR.
-        $attemptedText = if ($attempts.Count -gt 0) { $attempts -join ', ' } else { 'none' }
-        Write-Log -Level WARN -Component SOFTWARE -Message "  Not found (attempted: $attemptedText)"
+        Write-Log -Level WARN -Component SOFTWARE -Message "  Not found (attempted: none)"
     }
 
     return $removed

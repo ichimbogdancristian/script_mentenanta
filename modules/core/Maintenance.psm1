@@ -1001,9 +1001,12 @@ function Get-AppxProvisionedPackageCompat {
 
     $result = [System.Collections.Generic.List[hashtable]]::new()
 
-    # Try PowerShell method first (PS5.1 via AppX module)
+    # Try PowerShell method first (PS5.1 via AppX module).
+    # -Online is MANDATORY: without it the cmdlet cannot bind a parameter set at all and
+    # fails with "Parameter set cannot be resolved using the specified named parameters",
+    # so this path silently produced nothing and every call fell through to DISM below.
     try {
-        $cmd = 'Get-AppxProvisionedPackage -ErrorAction Stop | Select-Object PackageName, DisplayName'
+        $cmd = 'Get-AppxProvisionedPackage -Online -ErrorAction Stop | Select-Object PackageName, DisplayName'
         $raw = Invoke-AppxInWinPS -ScriptBlock $cmd
         if ($raw) {
             @($raw) | ForEach-Object {
@@ -1050,23 +1053,40 @@ function Remove-AppxProvisionedPackageCompat {
         [string]$PackageName
     )
 
-    # Try PowerShell method first
-    try {
-        $cmd = "Get-AppxProvisionedPackage -ErrorAction SilentlyContinue | Where-Object { `$_.PackageName -match [regex]::Escape('$PackageName') } | Remove-AppxProvisionedPackage -ErrorAction Stop"
-        Invoke-AppxInWinPS -ScriptBlock $cmd
-        return $true
+    # Return value is VERIFIED against the live provisioned list, never assumed.
+    #
+    # This function used to `return $true` immediately after invoking the PS path. Two
+    # things made that a guaranteed false positive:
+    #   1. The command omitted -Online, so Get/Remove-AppxProvisionedPackage could not even
+    #      bind a parameter set ("Parameter set cannot be resolved") and removed nothing.
+    #   2. Invoke-AppxInWinPS shells out to powershell.exe with 2>$null; a failing CHILD
+    #      PROCESS does not raise a PowerShell exception, so the catch never fired.
+    # Callers therefore logged "Removed Provisioned" for packages that were still fully
+    # provisioned AND still installed, and the correct DISM fallback below was dead code.
+    $stillProvisioned = {
+        $current = Get-AppxProvisionedPackageCompat -ErrorAction SilentlyContinue
+        return [bool](@($current) | Where-Object { $_.PackageName -eq $PackageName })
     }
-    catch { Write-Verbose "PowerShell removal failed: $_" }
 
-    # Fallback: DISM
+    # Attempt 1: PS5.1 AppX module (needs -Online, and elevation).
+    try {
+        $cmd = "Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | " +
+        "Where-Object { `$_.PackageName -eq '$PackageName' } | " +
+        "Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue"
+        Invoke-AppxInWinPS -ScriptBlock $cmd
+    }
+    catch { Write-Verbose "PowerShell provisioned removal failed: $_" }
+
+    if (-not (& $stillProvisioned)) { return $true }
+
+    # Attempt 2: DISM (works on SKUs/contexts where the AppX module misbehaves).
     try {
         $dismExe = Join-Path $env:SystemRoot 'System32\dism.exe'
-        $null = & $dismExe /Online /Remove-ProvisionedAppxPackage /PackageName:"$PackageName" 2>&1
-        if ($LASTEXITCODE -eq 0) { return $true }
+        $null = & $dismExe /Online /Remove-ProvisionedAppxPackage /PackageName:"$PackageName" /Quiet /NoRestart 2>&1
     }
-    catch { Write-Verbose "DISM removal failed: $_" }
+    catch { Write-Verbose "DISM provisioned removal failed: $_" }
 
-    return $false
+    return (-not (& $stillProvisioned))
 }
 
 #endregion
