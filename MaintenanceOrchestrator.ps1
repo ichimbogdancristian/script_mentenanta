@@ -8,7 +8,7 @@
 .DESCRIPTION
     Coordinates all maintenance tasks in five stages:
 
-    Stage 1 – System Inventory (Type1 modules, interactive menu, 10 s countdown)
+    Stage 1 – System Audit    (Type1 modules, interactive menu, 10 s countdown)
     Stage 2 – Diff Analysis   (determine which Type2 modules have work to do)
     Stage 3 – Maintenance     (Type2 modules; skipped automatically if diff is empty)
     Stage 4 – Report          (HTML report generated, copied to script.bat folder)
@@ -146,10 +146,11 @@ try {
     # DiffKey must match the -ModuleName used in Save-DiffList / Get-DiffList.
     #
     # Array ORDER = Stage 1 audit/menu order (Num is unrelated to position - selection via
-    # -TaskNumbers/the menu matches on Num, not array index). Actionable pairs (1-4, 7) run
-    # first so the decisions that gate Stage 3 are made before any time is spent on the
-    # report-only audits (5, 6) - if the circuit breaker trips or a run is cut short, it's
-    # the report-only work that gets sacrificed, not the audits Stage 3 depends on.
+    # -TaskNumbers/the menu matches on Num, not array index). Every pair is now actionable:
+    # the former report-only audits (SystemInventory, SystemHealth) and the RestorePoint pair
+    # were folded into the SystemConfiguration pair in v7.0, so there is no longer a
+    # report-only tail to order around.
+    #
     # Stage 3's own execution order is independent of this array - see the explicit
     # $Stage3Order sort applied to $actionNeeded in Stage 3, below.
 
@@ -166,7 +167,7 @@ try {
         },
         @{
             Num        = 2
-            Label      = 'System Configuration (Security/Privacy/Optimization)'
+            Label      = 'System Configuration (Restore Point/Security/Privacy/Optimization)'
             DiffKey    = 'SystemConfiguration'
             Type1File  = 'modules\type1\SystemConfigurationAudit.psm1'
             Type1Func  = 'Invoke-SystemConfigurationAudit'
@@ -193,36 +194,6 @@ try {
             Type2File  = 'modules\type2\WindowsUpdates.psm1'
             Type2Func  = 'Invoke-WindowsUpdate'
             ConfigSkip = 'skipWindowsUpdates'
-        },
-        @{
-            Num        = 7
-            Label      = 'Restore Point Management (Create/Consolidate)'
-            DiffKey    = 'RestorePoint'
-            Type1File  = 'modules\type1\RestorePointAudit.psm1'
-            Type1Func  = 'Invoke-RestorePointAudit'
-            Type2File  = 'modules\type2\RestorePointManagement.psm1'
-            Type2Func  = 'Invoke-RestorePointManagement'
-            ConfigSkip = 'skipRestorePointManagement'
-        },
-        @{
-            Num        = 5
-            Label      = 'System Inventory (report only)'
-            DiffKey    = 'SystemInventory'
-            Type1File  = 'modules\type1\SystemInventory.psm1'
-            Type1Func  = 'Invoke-SystemInventory'
-            Type2File  = ''   # No Type2 pair
-            Type2Func  = ''
-            ConfigSkip = ''
-        },
-        @{
-            Num        = 6
-            Label      = 'System Health (Events, Defender, Exclusions - report only)'
-            DiffKey    = 'SystemHealth'
-            Type1File  = 'modules\type1\SystemHealthAudit.psm1'
-            Type1Func  = 'Invoke-SystemHealthAudit'
-            Type2File  = ''   # No Type2 pair
-            Type2Func  = ''
-            ConfigSkip = ''
         }
     )
 
@@ -280,19 +251,38 @@ try {
         [CmdletBinding()]
         param()
 
-        Clear-Host
-        Write-Host ""
-        Write-Host "  ┌─────────────────────────────────────────────────────────┐" -ForegroundColor DarkCyan
-        Write-Host "  │         STAGE 1 — SYSTEM INVENTORY                     │" -ForegroundColor White
-        Write-Host "  ├─────────────────────────────────────────────────────────┤" -ForegroundColor DarkCyan
-        Write-Host "  │  0  - Run ALL modules (default)                         │" -ForegroundColor Green
+        $title = 'STAGE 1 - SYSTEM AUDIT'
+        $hint = 'Comma-separated for multiple, e.g. 1,3'
+
+        $rows = @(@{ Text = '0  - Run ALL modules (default)'; Color = 'Green' })
         foreach ($pair in $ModulePairs) {
-            $line = "  │  $($pair.Num)  - $($pair.Label)"
-            Write-Host ($line.PadRight(60) + '│') -ForegroundColor Cyan
+            $rows += @{ Text = "$($pair.Num)  - $($pair.Label)"; Color = 'Cyan' }
         }
-        Write-Host "  ├─────────────────────────────────────────────────────────┤" -ForegroundColor DarkCyan
-        Write-Host "  │  Comma-separated for multiple: e.g. 1,3,5              │" -ForegroundColor DarkGray
-        Write-Host "  └─────────────────────────────────────────────────────────┘" -ForegroundColor DarkCyan
+
+        # Box width follows the longest line. The previous hard-coded PadRight(60) silently
+        # broke the border the moment a label grew past it - which is exactly what happened
+        # when the module labels were renamed - so the width is derived instead.
+        $inner = ((@($title, $hint) + @($rows | ForEach-Object { $_.Text })) |
+            Measure-Object -Property Length -Maximum).Maximum + 4
+        $bar = '─' * $inner
+
+        # Clear-Host throws when no real console is attached (a SYSTEM scheduled task, or
+        # stdout redirected). Interactive mode can still be reached in those contexts - e.g.
+        # a monthly task registered by an older script.bat that predates the explicit
+        # -NonInteractive argument - and an unguarded Clear-Host there would escape to the
+        # orchestrator's fatal handler and kill the whole run over cosmetics.
+        try { Clear-Host } catch { $null = $_ }
+
+        Write-Host ""
+        Write-Host "  ┌$bar┐" -ForegroundColor DarkCyan
+        Write-Host ("  │  " + $title.PadRight($inner - 2) + '│') -ForegroundColor White
+        Write-Host "  ├$bar┤" -ForegroundColor DarkCyan
+        foreach ($r in $rows) {
+            Write-Host ("  │  " + $r.Text.PadRight($inner - 2) + '│') -ForegroundColor $r.Color
+        }
+        Write-Host "  ├$bar┤" -ForegroundColor DarkCyan
+        Write-Host ("  │  " + $hint.PadRight($inner - 2) + '│') -ForegroundColor DarkGray
+        Write-Host "  └$bar┘" -ForegroundColor DarkCyan
         Write-Host ""
     }
 
@@ -363,7 +353,7 @@ try {
     $selectedPairs = $null   # $null = all
 
     Write-Host ""
-    Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 1 : SYSTEM INVENTORY  ━━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
+    Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 1 : SYSTEM AUDIT  ━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
     Write-Log -Level INFO -Component ORCH -Message "Stage 1 started"
 
     if ($TaskNumbers) {
@@ -492,16 +482,18 @@ try {
     #region ─── STAGE 3: MAINTENANCE (Type2) ──────────────────────────────────────
 
     # Execute in a deliberate order, independent of Stage 1/2 order:
-    #   1. RestorePoint FIRST - RestorePointAudit unconditionally queues a 'create' action every
-    #      run, and it's only a useful rollback safety net if taken BEFORE the other Type2
-    #      modules start mutating the system, not after.
-    #   2. SystemConfiguration - hardening (incl. re-enabling Defender if found off).
-    #   3. SoftwareManagement - bloatware removal, essential-app installs, upgrades.
-    #   4. WindowsUpdates.
-    #   5. DiskCleanup LAST so it sweeps up the temp/cache/component-store residue this run's
+    #   1. SystemConfiguration FIRST. It owns the restore point (merged in v7.0) and creates it
+    #      as its own first action, so putting this module first is what keeps the rollback
+    #      safety net ahead of every other module's changes. It then applies hardening, so
+    #      Defender/firewall are back on (and Sysmon logging) while the modules below run.
+    #      Because its audit always queues a restore point 'create', this pair's diff is never
+    #      empty and Stage 2 always schedules it.
+    #   2. SoftwareManagement - bloatware removal, essential-app installs, upgrades.
+    #   3. WindowsUpdates.
+    #   4. DiskCleanup LAST so it sweeps up the temp/cache/component-store residue this run's
     #      own actions just produced (installer downloads, WU download cache, etc.) instead of
     #      running before them and being immediately re-dirtied.
-    $Stage3Order = @('RestorePoint', 'SystemConfiguration', 'SoftwareManagement', 'WindowsUpdates', 'DiskCleanup')
+    $Stage3Order = @('SystemConfiguration', 'SoftwareManagement', 'WindowsUpdates', 'DiskCleanup')
     $actionNeeded = @($actionNeeded | Sort-Object { $i = $Stage3Order.IndexOf($_.DiffKey); if ($i -lt 0) { 999 } else { $i } })
 
     Write-Host ""

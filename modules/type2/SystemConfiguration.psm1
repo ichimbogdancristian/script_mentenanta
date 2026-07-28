@@ -1,14 +1,22 @@
 #Requires -Version 7.0
 <#
-.SYNOPSIS    System Configuration - Type 2 (Consolidated Security + Telemetry + Optimization)
+.SYNOPSIS    System Configuration - Type 2 (Restore point + Security + Telemetry + Optimization)
 .DESCRIPTION Applies all system-state changes identified by SystemConfigurationAudit.
              Dispatches each diff item on its ConfigType then Type:
+               restorepoint -> create | remove   (Action discriminator)
                security     -> registry | defender | firewall | sysmon
                telemetry    -> service | registry | scheduledtask
                optimization -> service | powerplan | startup | visualfx | background
+
+             Items are NOT applied in diff order. Get-ConfigItemRank sorts them into the
+             order the changes actually have to happen in - restore point creation first
+             (it is the rollback safety net for everything after it), restore point pruning
+             last (it is destructive and irreversible). See that function for the full
+             rationale.
+
              Sysmon is installed via winget (Microsoft.Sysinternals.Sysmon) and configured
              with config/sysmon/sysmonconfig.xml.
-.NOTES       Module Type: Type2 | DiffKey: SystemConfiguration | Version: 6.0 (Consolidated)
+.NOTES       Module Type: Type2 | DiffKey: SystemConfiguration | Version: 7.0 (Consolidated)
 #>
 
 $_corePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\Maintenance.psm1'
@@ -189,6 +197,157 @@ function Install-SysmonWithConfig {
     return $false
 }
 
+<#
+.SYNOPSIS
+    Creates a system restore point (PowerShell 7 compatible).
+.DESCRIPTION
+    Deliberately does NOT use Checkpoint-Computer / Enable-ComputerRestore: those
+    *-Computer restore cmdlets ship only with Windows PowerShell 5.1 and do not exist in
+    PowerShell 7, which is the only shell this project runs modules under. Everything here
+    goes through the root/default:SystemRestore WMI class via Invoke-CimMethod instead.
+
+    Windows also rate-limits restore point creation to one per 24h by default, which would
+    silently turn "create a restore point every run" into "create one the first run this
+    day". SystemRestorePointCreationFrequency=0 lifts that limit so the safety net is
+    actually taken on every run.
+.OUTPUTS
+    [bool] $true when a restore point was created.
+#>
+function New-SystemRestorePoint {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)] [string]$Description
+    )
+
+    # Make sure protection is on for the system drive; a disabled System Restore makes
+    # CreateRestorePoint fail with an unhelpful generic error.
+    $sysDrive = "$($env:SystemDrive)\"
+    try {
+        $null = Invoke-CimMethod -Namespace 'root/default' -ClassName 'SystemRestore' `
+            -MethodName 'Enable' -Arguments @{ Drive = $sysDrive } -ErrorAction Stop
+        Write-Log -Level DEBUG -Component CONFIG -Message "System Restore enabled for $sysDrive"
+    }
+    catch {
+        Write-Log -Level DEBUG -Component CONFIG -Message "Could not enable System Restore for $sysDrive (may already be on): $_"
+    }
+
+    # Lift the once-per-24h throttle (see function help).
+    try {
+        $null = Set-RegistryValue -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore' `
+            -Name 'SystemRestorePointCreationFrequency' -Value 0 -Type DWord
+    }
+    catch {
+        Write-Log -Level DEBUG -Component CONFIG -Message "Could not clear restore point creation frequency limit: $_"
+    }
+
+    try {
+        # RestorePointType 12 = MODIFY_SETTINGS, EventType 100 = BEGIN_SYSTEM_CHANGE.
+        $res = Invoke-CimMethod -Namespace 'root/default' -ClassName 'SystemRestore' `
+            -MethodName 'CreateRestorePoint' `
+            -Arguments @{ Description = $Description; RestorePointType = [uint32]12; EventType = [uint32]100 } `
+            -ErrorAction Stop
+
+        if ($res.ReturnValue -eq 0) {
+            Write-Log -Level SUCCESS -Component CONFIG -Message "Restore point created: $Description"
+            return $true
+        }
+        Write-Log -Level WARN -Component CONFIG -Message "CreateRestorePoint returned $($res.ReturnValue) - no restore point created"
+        return $false
+    }
+    catch {
+        Write-Log -Level ERROR -Component CONFIG -Message "Failed to create restore point: $_"
+        return $false
+    }
+}
+
+<#
+.SYNOPSIS
+    Deletes one shadow copy / restore point by its Win32_ShadowCopy ID.
+.DESCRIPTION
+    PowerShell 7 compatible. Remove-CimInstance replaces the PS5.1-only
+    Get-WmiObject | Remove-WmiObject pairing; vssadmin is the fallback for the cases
+    where the CIM delete is refused.
+.OUTPUTS
+    [bool] $true when the shadow copy is gone.
+#>
+function Remove-SystemRestorePoint {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)] [string]$ShadowId
+    )
+
+    try {
+        $shadow = Get-CimInstance -ClassName Win32_ShadowCopy -ErrorAction Stop |
+        Where-Object { $_.ID -eq $ShadowId } | Select-Object -First 1
+        if (-not $shadow) {
+            Write-Log -Level DEBUG -Component CONFIG -Message "Shadow copy $ShadowId already gone"
+            return $true
+        }
+        Remove-CimInstance -InputObject $shadow -ErrorAction Stop
+        Write-Log -Level SUCCESS -Component CONFIG -Message "Removed restore point $ShadowId"
+        return $true
+    }
+    catch {
+        Write-Log -Level DEBUG -Component CONFIG -Message "CIM delete failed for $ShadowId ($_) - trying vssadmin"
+    }
+
+    try {
+        $vssadmin = Join-Path $env:SystemRoot 'System32\vssadmin.exe'
+        $exit = Invoke-ExternalPackageCommand -FilePath $vssadmin `
+            -ArgumentList @('delete', 'shadows', "/Shadow=$ShadowId", '/Quiet')
+        if ($exit -eq 0) {
+            Write-Log -Level SUCCESS -Component CONFIG -Message "Removed restore point $ShadowId (vssadmin)"
+            return $true
+        }
+        Write-Log -Level WARN -Component CONFIG -Message "vssadmin delete returned exit $exit for $ShadowId"
+        return $false
+    }
+    catch {
+        Write-Log -Level WARN -Component CONFIG -Message "Could not remove restore point ${ShadowId}: $_"
+        return $false
+    }
+}
+
+<#
+.SYNOPSIS
+    Execution rank for a diff item - defines the order Type2 applies changes in.
+.DESCRIPTION
+    The diff arrives in audit order, which is NOT the order these changes should be
+    applied in. Ranking:
+
+      0  restore point CREATE  - the rollback safety net. Must be taken before ANY other
+                                 change in this run, otherwise it is a snapshot of an
+                                 already-modified system and useless for rollback.
+      1  security             - Defender/firewall/hardening. Runs early so protection is
+                                 back on (and Sysmon is logging) while the rest of the run
+                                 and the later Type2 modules mutate the machine.
+      2  telemetry            - privacy services/registry/tasks. Pure policy, no dependants.
+      3  optimization         - services, power plan, startup, visual fx. Last of the
+                                 mutations: disabling services here must not race the
+                                 security phase re-enabling one of them.
+      4  restore point REMOVE - pruning old restore points is destructive and irreversible,
+                                 so it happens only after every change above has succeeded.
+                                 Pruning first would throw away the very rollback targets
+                                 we would need if this run went wrong.
+.OUTPUTS
+    [int] sort rank.
+#>
+function Get-ConfigItemRank {
+    [CmdletBinding()]
+    [OutputType([int])]
+    param([Parameter(Mandatory)] $Item)
+
+    switch ($Item.ConfigType) {
+        'restorepoint' { if ($Item.Action -eq 'create') { return 0 } else { return 4 } }
+        'security' { return 1 }
+        'telemetry' { return 2 }
+        'optimization' { return 3 }
+        default { return 3 }
+    }
+}
+
 function Invoke-SystemConfiguration {
     [CmdletBinding()]
     [OutputType([hashtable])]
@@ -197,7 +356,7 @@ function Invoke-SystemConfiguration {
     )
 
     $null = $OSContext  # Type2 interface parameter, may be used by future optimizations
-    Write-Log -Level INFO -Component CONFIG -Message 'Starting system configuration (security + telemetry + optimization)'
+    Write-Log -Level INFO -Component CONFIG -Message 'Starting system configuration (restore point + security + telemetry + optimization)'
 
     $diff = Get-DiffList -ModuleName 'SystemConfiguration'
     if (-not $diff -or $diff.Count -eq 0) {
@@ -206,12 +365,20 @@ function Invoke-SystemConfiguration {
     }
 
     $processed = 0; $failed = 0; $errors = @(); $rebootNeeded = $false
+    $rpCreated = 0; $rpRemoved = 0
 
+    $restorePointItems = @($diff | Where-Object { $_.ConfigType -eq 'restorepoint' })
     $securityItems = @($diff | Where-Object { $_.ConfigType -eq 'security' })
     $telemetryItems = @($diff | Where-Object { $_.ConfigType -eq 'telemetry' })
     $optimizationItems = @($diff | Where-Object { $_.ConfigType -eq 'optimization' })
 
-    Write-Log -Level INFO -Component CONFIG -Message "Applying $($diff.Count) change(s): $($securityItems.Count) security, $($telemetryItems.Count) telemetry, $($optimizationItems.Count) optimization"
+    Write-Log -Level INFO -Component CONFIG -Message "Applying $($diff.Count) change(s): $($restorePointItems.Count) restore point, $($securityItems.Count) security, $($telemetryItems.Count) telemetry, $($optimizationItems.Count) optimization"
+
+    # Apply in deliberate phase order rather than the order the audit happened to emit
+    # items in - see Get-ConfigItemRank for why each phase sits where it does. -Stable keeps
+    # the audit's within-phase ordering intact (Sort-Object is otherwise unstable and would
+    # shuffle, for example, registry items relative to each other).
+    $orderedDiff = @($diff | Sort-Object -Stable -Property @{ Expression = { Get-ConfigItemRank -Item $_ } })
 
     # Backup pre-change security state for audit/rollback
     if ($securityItems.Count -gt 0) {
@@ -229,7 +396,7 @@ function Invoke-SystemConfiguration {
         catch { Write-Log -Level WARN -Component CONFIG -Message "Could not back up pre-change state: $_" }
     }
 
-    foreach ($item in $diff) {
+    foreach ($item in $orderedDiff) {
         $name = $item.Name ?? "$item"
         $configType = $item.ConfigType ?? 'unknown'
         $type = $item.Type ?? 'registry'
@@ -239,6 +406,41 @@ function Invoke-SystemConfiguration {
             $backup = $null
 
             switch ($configType) {
+                # ─── RESTORE POINT ───────────────────────────────────────────
+                # 'create' is ranked first and 'remove' last (Get-ConfigItemRank), so by the
+                # time a delete runs every other change in this run has already been applied.
+                'restorepoint' {
+                    switch ($item.Action) {
+                        'create' {
+                            $desc = $item.Description ?? "Maintenance: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+                            $changed = New-SystemRestorePoint -Description $desc
+                            if ($changed) { $rpCreated++ }
+                            else {
+                                # The safety net failing is worth surfacing, but it must not
+                                # stop the maintenance run the user asked for.
+                                $errors += "[RestorePoint] Could not create restore point '$desc'"
+                                $failed++
+                            }
+                        }
+                        'remove' {
+                            $shadowId = $item.ShadowId
+                            if (-not $shadowId) {
+                                Write-Log -Level WARN -Component CONFIG -Message "Restore point item has no ShadowId: $name"
+                                $errors += "[No ShadowId] $name"; $failed++
+                            }
+                            else {
+                                $changed = Remove-SystemRestorePoint -ShadowId $shadowId
+                                if ($changed) { $rpRemoved++ }
+                                else { $errors += "[RestorePoint] Could not remove $shadowId"; $failed++ }
+                            }
+                        }
+                        default {
+                            Write-Log -Level WARN -Component CONFIG -Message "Unknown restore point action '$($item.Action)': $name"
+                            $errors += "[Unknown action] $name"; $failed++
+                        }
+                    }
+                }
+
                 # ─── SECURITY ────────────────────────────────────────────────
                 'security' {
                     switch ($type) {
@@ -463,11 +665,15 @@ function Invoke-SystemConfiguration {
     }
 
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
-    Write-Log -Level INFO -Component CONFIG -Message "Done: $processed applied, $failed failed, Reboot: $(if ($rebootNeeded) { 'Yes' } else { 'No' })"
+    Write-Log -Level INFO -Component CONFIG -Message "Done: $processed applied, $failed failed, restore points +$rpCreated/-$rpRemoved, Reboot: $(if ($rebootNeeded) { 'Yes' } else { 'No' })"
 
     return New-ModuleResult -ModuleName 'SystemConfiguration' -Status $status -ModuleType 'Type2' `
         -ItemsDetected $diff.Count -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors `
-        -RebootRequired $rebootNeeded
+        -Message "$processed change(s) applied: restore points +$rpCreated/-$rpRemoved, $($securityItems.Count) security, $($telemetryItems.Count) telemetry, $($optimizationItems.Count) optimization" `
+        -RebootRequired $rebootNeeded -ExtraData @{
+        RestorePointsCreated = $rpCreated
+        RestorePointsRemoved = $rpRemoved
+    }
 }
 
 Export-ModuleMember -Function 'Invoke-SystemConfiguration'

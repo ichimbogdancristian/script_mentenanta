@@ -8,6 +8,7 @@
     }
   },
   "modules": {
+    "_comment": "skipSoftwareManagement/skipSystemConfiguration/skipDiskCleanup/skipWindowsUpdates gate a whole Type1+Type2 pair (checked by the orchestrator in Stage 2). skipSystemHealth and skipRestorePointManagement gate SUB-FEATURES of the SystemConfiguration pair (checked inside SystemConfigurationAudit): they turn off the health report and the restore point create/prune respectively, without disabling the rest of the configuration work. NOTE: skipRestorePointManagement true removes this run's rollback safety net AND can leave the SystemConfiguration diff empty, in which case Stage 3 skips the pair entirely.",
     "skipSoftwareManagement": false,
     "skipSystemConfiguration": false,
     "skipDiskCleanup": false,

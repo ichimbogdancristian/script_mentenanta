@@ -343,12 +343,15 @@ IF /I "%RESTART_NEEDED_WU%"=="YES" (
     REM Ensure any previous startup task is removed
     schtasks /Delete /TN "%STARTUP_TASK_NAME%" /F >nul 2>&1
 
-    REM Create startup task to resume after user logon with admin rights
+    REM Create startup task to resume after user logon with admin rights.
+    REM -NonInteractive is explicit: this is an automatic resume of an interrupted run, and
+    REM the launcher no longer forces non-interactive mode on every invocation (that is what
+    REM used to suppress the Stage 1 menu for real, user-started runs).
     CALL :LOG_MESSAGE "Creating ONLOGON startup task with script: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
     schtasks /Create ^
         /SC ONLOGON ^
         /TN "%STARTUP_TASK_NAME%" ^
-        /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\"" ^
+        /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\" -NonInteractive" ^
         /RL HIGHEST ^
         /RU "%USERNAME%" ^
         /DELAY 0001:00 ^
@@ -390,13 +393,15 @@ IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Monthly task detail: %%i" "INFO" "LAUNCHER"
     )
 ) ELSE (
+    REM -NonInteractive is explicit: this runs as SYSTEM at 01:00 with no console attached,
+    REM so the Stage 1 menu/countdown must be skipped outright rather than polled for keys.
     CALL :LOG_MESSAGE "Creating monthly scheduled task: %TASK_NAME%" "INFO" "LAUNCHER"
     schtasks /Create ^
         /SC MONTHLY ^
         /MO 1 ^
         /D 20 ^
         /TN "%TASK_NAME%" ^
-        /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\"" ^
+        /TR "\"%SCHEDULED_TASK_SCRIPT_PATH%\" -NonInteractive" ^
         /ST 01:00 ^
         /RL HIGHEST ^
         /RU SYSTEM ^
@@ -1509,15 +1514,22 @@ REM [REMOVED: Legacy PowerShell 7+ orchestrator check. Now handled by consolidat
 CALL :LOG_MESSAGE "Using PowerShell 7+ for orchestrator execution" "SUCCESS" "LAUNCHER"
 
 REM Parse command line arguments for the orchestrator. -TaskNumbers implies non-interactive
-REM (per CLAUDE.md); AUTO_NONINTERACTIVE otherwise auto-enables it whenever PS7+ was detected.
+REM (per CLAUDE.md).
+REM
+REM NOTE: this used to also add -NonInteractive whenever AUTO_NONINTERACTIVE was YES. That
+REM variable does NOT mean "run unattended" - it is set at every PowerShell 7 DETECTION site
+REM below and simply means "a usable pwsh.exe was found". Since the launcher refuses to run
+REM the orchestrator at all without PS7 (see the IF below), it was always YES on every real
+REM run, so -NonInteractive was passed unconditionally and the orchestrator's Stage 1 module
+REM menu / 10s countdown never appeared. Unattended callers (the scheduled tasks created
+REM above) now pass -NonInteractive explicitly instead.
 SET "ORCH_EXTRA_ARGS="
 IF "%1"=="-TaskNumbers" (
     SET "ORCH_EXTRA_ARGS= -NonInteractive -TaskNumbers %2"
 ) ELSE IF "%1"=="-NonInteractive" (
     SET "ORCH_EXTRA_ARGS= -NonInteractive"
-) ELSE IF "%AUTO_NONINTERACTIVE%"=="YES" (
-    SET "ORCH_EXTRA_ARGS= -NonInteractive"
-    CALL :LOG_MESSAGE "Auto-enabling non-interactive mode due to PowerShell 7+ availability" "INFO" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "Interactive mode - Stage 1 module menu will be shown (10s countdown)" "INFO" "LAUNCHER"
 )
 
 CALL :LOG_MESSAGE "Launching orchestrator with arguments:!ORCH_EXTRA_ARGS!" "INFO" "LAUNCHER"

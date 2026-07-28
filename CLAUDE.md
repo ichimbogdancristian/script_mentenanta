@@ -61,6 +61,14 @@ install/verify → launch `MaintenanceOrchestrator.ps1` under `pwsh`.
   handing off it clears `LOG_FILE` so the launcher stops writing once the orchestrator owns the
   file. `ORIGINAL_SCRIPT_DIR` tells the orchestrator where to copy the final HTML report (the
   folder the user launched from, e.g. a USB drive).
+- **Interactive by default:** the launcher passes `-NonInteractive` to the orchestrator **only**
+  when the user passed `-NonInteractive`/`-TaskNumbers` to `script.bat` itself. It must never
+  derive that flag from `AUTO_NONINTERACTIVE`: despite the name, that variable is set at every
+  PowerShell-7 *detection* site and just means "a usable `pwsh.exe` was found". Since the
+  launcher refuses to run at all without PS7, keying off it made `-NonInteractive` unconditional
+  and silently suppressed the Stage 1 module menu on every run. The scheduled tasks
+  (monthly-as-SYSTEM, ONLOGON resume) therefore pass `-NonInteractive` **explicitly** in their
+  `/TR` command line.
 
 ### Orchestrator: five stages
 [MaintenanceOrchestrator.ps1](MaintenanceOrchestrator.ps1) appends to the single unified
@@ -71,19 +79,24 @@ reading the file mid-run). The orchestrator wraps the whole body in a fatal-capt
 `try/catch/finally` (any uncaught error is written to `maintenance.log` with a stack trace; the
 log is always closed via `Close-LogFile` in `finally`), then:
 
-1. **Stage 1 – Inventory (Type1):** interactive menu with a 10s auto-run countdown; runs
+1. **Stage 1 – Audit (Type1):** interactive menu with a 10s auto-run countdown; runs
    audit modules. A circuit breaker aborts the stage after 3 consecutive module failures.
    Buffered keystrokes are drained (`Clear-PendingConsoleInput`) before each timed prompt so a
    stray key from an earlier unattended stage can't trigger a phantom selection/abort.
+   The menu is only shown when `-NonInteractive` is absent — see the "interactive by default"
+   note under the launcher, above. Its box width is derived from the longest label rather than
+   hard-coded, and `Clear-Host` is guarded so a console-less host can't kill the run.
 2. **Stage 2 – Diff analysis:** for each pair, reads the diff list the Type1 module saved;
    only pairs with a non-empty diff (and not skipped by config) are queued. Each pair is
    wrapped so one bad diff/config entry can't abort the stage.
 3. **Stage 3 – Maintenance (Type2):** runs only the queued action modules, in a deliberate
-   order (`$Stage3Order`: **RestorePoint first** — it unconditionally queues a `create` action
-   every run, and is only a useful rollback safety net if taken before anything else mutates the
-   system — then SystemConfiguration → SoftwareManagement → WindowsUpdates →
-   **DiskCleanup last**, so it sweeps up residue the earlier actions created). If no diffs, no
-   changes are made.
+   order (`$Stage3Order`: **SystemConfiguration first** — it owns the restore point and takes it
+   as its own first action, keeping the rollback safety net ahead of every other module's
+   changes, and it then re-hardens Defender/firewall before the rest of the run — then
+   SoftwareManagement → WindowsUpdates → **DiskCleanup last**, so it sweeps up residue the
+   earlier actions created). If no diffs, no changes are made. Note SystemConfiguration's diff
+   is never empty in practice (it always queues a restore point), so it effectively runs every
+   time.
 4. **Stage 4 – Report:** generates the HTML report embedding `maintenance.log` (read live — the
    log is a direct-write, auto-flushed stream opened with `FileShare.ReadWrite`, so the report
    reads it while it is still being written), then copies it to the launcher folder.
@@ -96,9 +109,9 @@ log is always closed via `Close-LogFile` in `finally`), then:
 ### `$ModulePairs`: the source of truth
 `$ModulePairs` in the orchestrator declares what actually runs — array **order** is the Stage 1
 audit/menu order; `Num` is the stable selection id used by `-TaskNumbers` and the menu (they match
-on `Num`, not array index). Actionable pairs (1–4, 7) are ordered before the report-only audits
-(5, 6) so gating decisions are made first and, if a run is cut short, it's report-only work that's
-sacrificed. Stage 3's execution order is separate (`$Stage3Order`, above).
+on `Num`, not array index). All four pairs are actionable; there is no report-only tail to order
+around since the former report-only audits were folded into `SystemConfiguration` (see
+"Consolidation note"). Stage 3's execution order is separate (`$Stage3Order`, above).
 
 ### Type1 / Type2 module-pair model
 The heart of the design. Every maintenance concern is a **pair**: a Type1 *audit* module
@@ -114,14 +127,38 @@ the action module switches on):
 | # | Pair | DiffKey | Type2 | Discriminator | Covers |
 |---|---|---|---|---|---|
 | 1 | SoftwareManagement | `SoftwareManagement` | ✅ | `Action` = remove/install/upgrade | bloatware removal (40+ MS Store apps), essential-app install, app upgrade |
-| 2 | SystemConfiguration | `SystemConfiguration` | ✅ | `ConfigType` = security/telemetry/optimization | Defender/firewall/security registry + **Sysmon**, privacy services/registry/tasks, services/power/startup/visual-fx |
+| 2 | SystemConfiguration | `SystemConfiguration` | ✅ | `ConfigType` = restorepoint/security/telemetry/optimization | restore point create+prune, Defender/firewall/security registry + **Sysmon**, privacy services/registry/tasks, services/power/startup/visual-fx, **plus the report-only inventory + health datasets** |
 | 3 | DiskCleanup | `DiskCleanup` | ✅ | `Type` = temp/browser/update/bin | temp/browser cache/cookies, DISM component store, recycle-bin cleanup |
 | 4 | WindowsUpdates | `WindowsUpdates` | ✅ | — | Windows Update detection (3-layer: COM/Registry/EventLog) and installation |
-| 5 | SystemInventory | `SystemInventory` | — | — | OS/CPU/Memory/Disk/Network inventory (report only, no actions) |
-| 6 | SystemHealth | `SystemHealth` | — | — | Event log analysis, Defender incidents, exclusions (report only, no actions) |
-| 7 | RestorePoint | `RestorePoint` | ✅ | `Action` = create/remove | System restore point management and consolidation |
+
+**`SystemConfiguration` internal ordering (the important part).** Both halves of this pair run
+their work in a deliberate order, not the order items happen to appear:
+
+- **Type1 `SystemConfigurationAudit`** runs *Phase A* (restore point → security → telemetry →
+  optimization) and **calls `Save-DiffList` at the end of Phase A**, then runs *Phase B*, the
+  slow report-only gathering (inventory, then health — `Get-WinEvent` over 30 days of
+  System/Application/Security). Persisting the diff before Phase B means a failure while
+  collecting report data can never cost the run the diff Stage 3 depends on; Phase B failures
+  downgrade the result to `Warning` instead of `Failed`.
+- **Type2 `SystemConfiguration`** sorts the diff through `Get-ConfigItemRank` before applying
+  anything: **restore point `create` (0) → security (1) → telemetry (2) → optimization (3) →
+  restore point `remove` (4)**. Creation must precede every other mutation or the snapshot is
+  of an already-modified system and useless for rollback; pruning is destructive and
+  irreversible so it happens only after everything else has succeeded — pruning first would
+  discard the very rollback targets a failed run would need. `Sort-Object -Stable` keeps the
+  audit's within-phase ordering.
+- The audit queues the restore point `create` item **unconditionally** (unless
+  `skipRestorePointManagement`), which is also what guarantees this pair's diff is never empty,
+  so Stage 2 always schedules its Type2 and the safety net is taken every run.
 
 **Notable implementations:**
+- `SystemConfiguration` creates/deletes restore points through the **`root/default:SystemRestore`
+  WMI class via `Invoke-CimMethod`**, never `Checkpoint-Computer` / `Get-ComputerRestorePoint` /
+  `Get-WmiObject`: those are Windows PowerShell 5.1-only and simply do not exist in PS7, which is
+  the only shell modules run under (the pre-consolidation `RestorePointManagement.psm1` used all
+  three and failed at runtime). It also clears
+  `SystemRestorePointCreationFrequency`, or Windows' default one-per-24h throttle would silently
+  turn "a restore point every run" into "one per day".
 - `SystemConfiguration` installs **Sysinternals Sysmon** via winget (`Microsoft.Sysinternals.Sysmon`)
   and applies `config/sysmon/sysmonconfig.xml` (with `-accepteula`) when the Sysmon service is
   absent. It resolves the **real** `Sysmon64.exe` (from `%windir%` or the winget `Packages`
@@ -160,6 +197,12 @@ the action module switches on):
   its result to influence Stage 5.
 - **`DiffKey` is the contract** between a pair and must match on both sides and in `$ModulePairs`;
   it is the filename stem under `temp_files/diff/<DiffKey>-diff.json`.
+- **Never increment a counter inside `| ForEach-Object { }`.** The pipeline scriptblock gets its
+  own scope, so `$n++` there updates a throwaway copy and the outer variable stays at 0. This has
+  already caused two silent bugs (the audit's per-section item counts, and the power-plan GUID
+  lookup that always fell through to its hard-coded default). Use a `foreach` loop when you must
+  assign outward, or derive the value from the finished collection afterwards. Mutating a
+  `List[T]` with `.Add()` from inside `ForEach-Object` is fine — that mutates the same object.
 
 ### Core modules
 There are three modules under `modules/core/`. [Maintenance.psm1](modules/core/Maintenance.psm1)
@@ -179,10 +222,13 @@ produces empty or garbage results — this bug had made the bloatware protection
 
 [ReportGenerator.psm1](modules/core/ReportGenerator.psm1) is imported only in Stage 4 and owns
 all HTML report rendering. Public entry point is `New-MaintenanceReport`; internal `Build-*`
-helpers render per-module cards, the system overview, the SystemInventory/RestorePoint/SystemHealth
+helpers render per-module cards, the system overview, the inventory/restore-point/health
 sections, and the embedded log console (`ConvertFrom-MaintenanceLog` / `Build-LogConsole` parse the
 structured `maintenance.log` into the collapsible in-report console). Report markup/styling changes
-belong here, not in the orchestrator.
+belong here, not in the orchestrator. The three data sections are gated on the
+`SystemConfigurationAudit` result having run and otherwise key off the presence of their own JSON
+under `temp_files/data/` (`system-inventory.json`, `restore-point-audit.json`,
+`system-health-report.json`), so a section skipped by config simply doesn't render.
 
 [ConsoleUI.psm1](modules/core/ConsoleUI.psm1) is imported only by the orchestrator and owns
 interactive console formatting (section headers, status symbols, progress bars, spinners,
@@ -241,9 +287,24 @@ countdowns). Used for the Stage 1 menu and stage banners; not used by Type1/Type
 
 ## Consolidation note
 
-The Type2 surface was consolidated from six modules to four: `SoftwareManagement` merged
-BloatwareRemoval + AppManagement (itself EssentialApps + AppUpgrade); `SystemConfiguration`
-merged SystemHardening (Security + Telemetry) + SystemOptimization. `DiskCleanup` and
-`WindowsUpdates` stay standalone (distinct risk/tooling). Superseded `.psm1` files were deleted,
-so any module on disk is live. When merging modules, keep the one-combined-diff-plus-discriminator
-pattern and register the pair in `$ModulePairs`.
+The module surface has been consolidated twice. First, Type2 went from six modules to four:
+`SoftwareManagement` merged BloatwareRemoval + AppManagement (itself EssentialApps + AppUpgrade);
+`SystemConfiguration` merged SystemHardening (Security + Telemetry) + SystemOptimization.
+
+Then (**v7.0**) the remaining odd-shaped pairs were folded into the `SystemConfiguration` pair,
+leaving a clean **4 Type1 + 4 Type2**, one Type2 per Type1, no report-only modules:
+
+- `RestorePointAudit.psm1` → `SystemConfigurationAudit.psm1` (as `ConfigType = 'restorepoint'`)
+- `SystemInventory.psm1` → `SystemConfigurationAudit.psm1` (report-only Phase B)
+- `SystemHealthAudit.psm1` → `SystemConfigurationAudit.psm1` (report-only Phase B)
+- `RestorePointManagement.psm1` → `SystemConfiguration.psm1` (Type2)
+
+That merge is why `SystemConfiguration` needs the explicit intra-module ordering documented
+above (`Get-ConfigItemRank`): folding the restore point into the same module removed the
+orchestrator's ability to sequence it via `$Stage3Order`, so the ordering guarantee moved
+*inside* the module. It also let the two duplicate `Win32_ShadowCopy` queries (one for the diff,
+one for the inventory) collapse into one.
+
+`DiskCleanup` and `WindowsUpdates` stay standalone (distinct risk/tooling). Superseded `.psm1`
+files were deleted, so any module on disk is live. When merging modules, keep the
+one-combined-diff-plus-discriminator pattern and register the pair in `$ModulePairs`.

@@ -46,7 +46,7 @@ function ConvertTo-HtmlText {
 
 <#
 .SYNOPSIS
-    Loads system-inventory.json (produced by the SystemInventory module) if present.
+    Loads system-inventory.json (produced by SystemConfigurationAudit) if present.
 .OUTPUTS
     [pscustomobject] or $null.
 #>
@@ -493,19 +493,21 @@ function Build-ReportHtml {
         -PSVer $PSVersionTable.PSVersion.ToString() `
         -RunAs ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
 
+    # Inventory, restore points and health all come from SystemConfigurationAudit since the
+    # v7.0 consolidation (they used to be the separate SystemInventory / RestorePointAudit /
+    # SystemHealthAudit modules). Each Build-* helper reads its own JSON under temp_files/data
+    # and returns '' when that file is absent, so a section that was skipped by config simply
+    # does not render.
+    $configAuditRan = [bool]($SessionResults | Where-Object { $_.ModuleName -eq 'SystemConfigurationAudit' })
+
     $systemInventoryHtml = ''
-    if ($SessionResults | Where-Object { $_.ModuleName -eq 'SystemInventory' }) {
-        $systemInventoryHtml = Build-SystemInventorySection -Inv $inv
-    }
-
     $restorePointHtml = ''
-    if ($SessionResults | Where-Object { $_.ModuleName -eq 'RestorePointAudit' }) {
-        $restorePointHtml = Build-RestorePointSection
-    }
-
     $systemHealthHtml = ''
-    $healthResult = $SessionResults | Where-Object { $_.ModuleName -eq 'SystemHealthAudit' }
-    if ($healthResult) { $systemHealthHtml = Build-SystemHealthSection -Result $healthResult }
+    if ($configAuditRan) {
+        $systemInventoryHtml = Build-SystemInventorySection -Inv $inv
+        $restorePointHtml = Build-RestorePointSection
+        $systemHealthHtml = Build-SystemHealthSection
+    }
 
     # ── Reboot banner ────────────────────────────────────────────────────────
     $rebootNeeded = [bool]($SessionResults | Where-Object { $_.RebootRequired -eq $true })
@@ -800,9 +802,10 @@ function Build-RestorePointSection {
 function Build-SystemHealthSection {
     [CmdletBinding()]
     [OutputType([string])]
-    param([Parameter(Mandatory)] [hashtable]$Result)
+    param()
 
-    if (-not $Result.ExtraData) { return '' }
+    # Presence of the JSON is the only gate: the health block is optional (config
+    # skipSystemHealth) and is written by SystemConfigurationAudit when it runs.
     $dataPath = Get-TempPath -Category 'data' -FileName 'system-health-report.json' -ErrorAction SilentlyContinue
     if (-not $dataPath -or -not (Test-Path $dataPath)) { return '' }
     try { $healthData = Get-Content -Path $dataPath -Raw -Encoding UTF8 | ConvertFrom-Json } catch { return '' }
