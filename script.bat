@@ -14,23 +14,18 @@ REM Enhanced Logging System
 REM -----------------------------------------------------------------------------
 GOTO :MAIN_SCRIPT
 :LOG_MESSAGE
-REM ISO 8601 timestamp format for consistency with PowerShell modules
-REM Format: YYYY-MM-DDTHH:MM:SS+TZ (simplified for batch - no milliseconds)
-FOR /F "tokens=1-4 delims=/. " %%a IN ("%DATE%") DO (
-    SET "LOG_DATE=%%d-%%b-%%c"
-)
+REM Time-only timestamp for consistency with PowerShell modules' console format
 FOR /F "tokens=1-3 delims=:. " %%a IN ("%TIME%") DO (
     SET "LOG_TIME=%%a:%%b:%%c"
 )
-SET "LOG_TIMESTAMP=%LOG_DATE%T%LOG_TIME%"
 
 SET "LEVEL=%~2"
 IF "%LEVEL%"=="" SET "LEVEL=INFO"
 SET "COMPONENT=%~3"
 IF "%COMPONENT%"=="" SET "COMPONENT=LAUNCHER"
 
-REM Unified format: [TIMESTAMP] [LEVEL] [COMPONENT] MESSAGE
-SET "LOG_ENTRY=[%LOG_TIMESTAMP%] [%LEVEL%] [%COMPONENT%] %~1"
+REM Unified format: [TIME] [COMPONENT] [LEVEL] MESSAGE
+SET "LOG_ENTRY=[%LOG_TIME%] [%COMPONENT%] [%LEVEL%] %~1"
 
 ECHO %LOG_ENTRY%
 IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul

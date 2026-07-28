@@ -137,7 +137,7 @@ function Set-LogLevel {
 .SYNOPSIS
     Writes a structured log line to the console (level-gated) and to maintenance.log.
 .DESCRIPTION
-    Format: [HH:mm:ss] [LEVEL] [COMPONENT] message
+    Format: [HH:mm:ss] [COMPONENT] [LEVEL] message
     Enhanced with visual symbols and color coding for better readability.
     Console output is gated by the console threshold (default INFO); the file always
     receives everything at/above the file threshold (default DEBUG) via a direct,
@@ -171,9 +171,8 @@ function Write-Log {
     $rank = $script:LevelRank[$Level]
     $ts = (Get-Date).ToString('HH:mm:ss')
 
-    # Log file format (plain text, no timestamps at start for readability)
-    $fullTs = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
-    $logLine = "[$fullTs] [$Level] [$Component] $Message"
+    # Log file format: [TIME] [COMPONENT] [LEVEL] message (same order as script.bat's LOG_MESSAGE)
+    $logLine = "[$ts] [$Component] [$Level] $Message"
 
     # Console format with visual symbols
     $symbol, $color = switch ($Level) {

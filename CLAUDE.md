@@ -164,7 +164,7 @@ the action module switches on):
 ### Core modules
 There are three modules under `modules/core/`. [Maintenance.psm1](modules/core/Maintenance.psm1)
 is imported `-Global` and provides all shared infrastructure — do not duplicate these elsewhere:
-`Write-Log` (structured `[ts] [LEVEL] [COMPONENT] msg`, written **directly** to the single
+`Write-Log` (structured `[ts] [COMPONENT] [LEVEL] msg`, written **directly** to the single
 `maintenance.log` via an auto-flushed `StreamWriter` opened with `FileShare.ReadWrite` so the
 report can read it live, with per-sink level gating: console defaults to INFO, file to DEBUG,
 both overridable via the `logging` block in `main-config.json` / `Set-LogLevel`; plus

@@ -88,7 +88,7 @@ function Format-Uptime {
 .SYNOPSIS
     Parses maintenance.log into structured entries.
 .DESCRIPTION
-    Each line of the form "[ts] [LEVEL] [COMPONENT] message" becomes an object with
+    Each line of the form "[ts] [COMPONENT] [LEVEL] message" becomes an object with
     Ts / Level / Component / Message. Lines without that prefix (launcher banners,
     separators, wrapped text) are emitted as Level='RAW' so nothing is lost.
     Reads through a FileStream with FileShare.ReadWrite so it works even while the
@@ -104,7 +104,7 @@ function ConvertFrom-MaintenanceLog {
     $entries = [System.Collections.Generic.List[object]]::new()
     if (-not $Path -or -not (Test-Path $Path)) { return $entries }
 
-    $rx = [regex]'^\[(?<ts>[^\]]+)\]\s\[(?<lvl>[^\]]+)\]\s\[(?<cmp>[^\]]+)\]\s?(?<msg>.*)$'
+    $rx = [regex]'^\[(?<ts>[^\]]+)\]\s\[(?<cmp>[^\]]+)\]\s\[(?<lvl>[^\]]+)\]\s?(?<msg>.*)$'
     $fs = $null; $sr = $null
     try {
         $fs = [System.IO.FileStream]::new($Path, [System.IO.FileMode]::Open,
