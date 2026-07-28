@@ -510,6 +510,16 @@ function Invoke-SystemConfiguration {
                             $changed = $true
                         }
                         'sysmon' { $changed = Install-SysmonWithConfig }
+                        # CIS 1.1/1.2 - local password & account-lockout policy via secedit.
+                        'secpolicy' {
+                            $changed = Invoke-SecurityPolicyChangeItem -Item $item -Component 'CONFIG'
+                            if (-not $changed) { $errors += "[SecPolicy] $name"; $failed++ }
+                        }
+                        # CIS 17.x - advanced audit policy subcategories via auditpol.
+                        'auditpolicy' {
+                            $changed = Invoke-AuditPolicyChangeItem -Item $item -Component 'CONFIG'
+                            if (-not $changed) { $errors += "[AuditPolicy] $name"; $failed++ }
+                        }
                         default {
                             Write-Log -Level WARN -Component CONFIG -Message "Unknown security type '$type': $name"
                             $errors += "[Unknown type] $name"; $failed++

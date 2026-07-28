@@ -15,6 +15,11 @@
     "skipWindowsUpdates": false,
     "skipSystemHealth": false,
     "skipRestorePointManagement": false,
+    "systemConfiguration": {
+      "_comment": "skipPasswordPolicy turns off the CIS 1.1/1.2 password + account-lockout rules (applied via secedit). Leaving it false enforces minimum length 14 and lockout after 5 bad attempts; the lockout auto-clears after 15 minutes, and a longer minimum length only applies at the NEXT password change, so an existing shorter password keeps working. Set true on machines where a lockout would be hard to recover from. skipAuditPolicy turns off the CIS 17.x advanced audit policy (applied via auditpol) - that one only increases Security-log volume and changes nothing about how anyone signs in.",
+      "skipPasswordPolicy": false,
+      "skipAuditPolicy": false
+    },
     "softwareManagement": {
       "_comment": "aggressiveOemRemoval: when false (default), bloatware patterns tagged \"tier\": \"broad\" in bloatware-detection.json (whole-vendor wildcards like *Razer*, *ASUS*, Dell.*, HP.* that can also match software the user deliberately installed) are excluded from detection. Set true to include them.",
       "aggressiveOemRemoval": false

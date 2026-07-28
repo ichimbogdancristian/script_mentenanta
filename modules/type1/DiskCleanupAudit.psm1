@@ -219,7 +219,15 @@ function Invoke-DiskCleanupAudit {
 function Add-BrowserDiffItems {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)] [System.Collections.Generic.List[hashtable]]$Diff,
+        # AllowEmptyCollection is REQUIRED, not decoration. $Diff is an accumulator that this
+        # function appends to, so an EMPTY list is the normal state on the first call - and
+        # [Parameter(Mandatory)] implicitly rejects empty collections with
+        # "Cannot bind argument to parameter 'Diff' because it is an empty collection."
+        # That threw out to the audit's outer catch, so the whole DiskCleanup audit reported
+        # Failed/Detected:0 and Stage 2 then skipped the Type2 module entirely - i.e. disk
+        # cleanup silently never ran. It only reproduced on machines where the temp-file
+        # section queued nothing first (nothing above minSizeMB), leaving the list empty.
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [System.Collections.Generic.List[hashtable]]$Diff,
         [Parameter(Mandatory)] [string]$BrowserRoot,
         [Parameter(Mandatory)] [string]$BrowserName,
         [Parameter(Mandatory)] [string]$UserName,
@@ -271,7 +279,9 @@ function Add-BrowserDiffItems {
 function Add-FirefoxDiffItems {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)] [System.Collections.Generic.List[hashtable]]$Diff,
+        # See Add-BrowserDiffItems: an empty accumulator is normal and Mandatory alone
+        # rejects it, which failed the entire audit.
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [System.Collections.Generic.List[hashtable]]$Diff,
         [Parameter(Mandatory)] [string]$ProfileDir,
         [Parameter(Mandatory)] [string]$UserName,
         [Parameter(Mandatory)] [hashtable]$Config,

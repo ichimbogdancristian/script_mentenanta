@@ -205,7 +205,7 @@ the action module switches on):
 | # | Pair | DiffKey | Type2 | Discriminator | Covers |
 |---|---|---|---|---|---|
 | 1 | SoftwareManagement | `SoftwareManagement` | ✅ | `Action` = remove/install/upgrade | bloatware removal (40+ MS Store apps), essential-app install, app upgrade |
-| 2 | SystemConfiguration | `SystemConfiguration` | ✅ | `ConfigType` = restorepoint/security/telemetry/optimization | restore point create+prune, Defender/firewall/security registry + **Sysmon**, privacy services/registry/tasks, services/power/startup/visual-fx, **plus the report-only inventory + health datasets** |
+| 2 | SystemConfiguration | `SystemConfiguration` | ✅ | `ConfigType` = restorepoint/security/telemetry/optimization | restore point create+prune, Defender/firewall/security registry + **Sysmon** + **password/lockout policy (secedit)** + **advanced audit policy (auditpol)**, privacy services/registry/tasks, services/power/startup/visual-fx, **plus the report-only inventory + health datasets** |
 | 3 | DiskCleanup | `DiskCleanup` | ✅ | `Type` = temp/browser/update/bin | temp/browser cache/cookies, DISM component store, recycle-bin cleanup |
 | 4 | WindowsUpdates | `WindowsUpdates` | ✅ | — | Windows Update detection (3-layer: COM/Registry/EventLog) and installation |
 
@@ -228,6 +228,46 @@ their work in a deliberate order, not the order items happen to appear:
 - The audit queues the restore point `create` item **unconditionally** (unless
   `skipRestorePointManagement`), which is also what guarantees this pair's diff is never empty,
   so Stage 2 always schedules its Type2 and the safety net is taken every run.
+
+**CIS coverage: three different mechanisms, not one.** `security-baseline.json` is a CIS
+benchmark baseline, and CIS rules do **not** all live in the registry. The file has three
+sibling blocks and each needs its own compare/apply pair — a rule in the wrong block is
+silently never enforced:
+
+| Baseline block | CIS sections | Read via | Applied via | Diff `Type` |
+|---|---|---|---|---|
+| `registry` (300 entries) | 2.3.x, 18.x | registry | `Set-RegistryValue` | `registry` |
+| `securityPolicy` | 1.1 password, 1.2 lockout | `secedit /export` | `secedit /configure` (minimal UTF-16LE INF) | `secpolicy` |
+| `auditPolicy` (18 subcategories) | 17.x | `auditpol /get /r` | `auditpol /set` | `auditpolicy` |
+
+`securityPolicy` and `auditPolicy` were declared in the baseline but **no module read
+them**, so every CIS section 1 and 17 rule stayed non-compliant no matter how many times
+the run succeeded. `Compare-SecurityPolicyBaseline` / `Compare-AuditPolicyBaseline` and
+their `Invoke-*ChangeItem` partners live in `Maintenance.psm1` alongside the registry and
+service equivalents. Gotchas worth keeping:
+
+- **`SCENoApplyLegacyAuditPolicy = 1` is load-bearing.** Without it, legacy category-level
+  audit policy overrides the section-17 subcategory settings and they silently do nothing.
+  It is a registry entry precisely so it is applied in the same pass.
+- **`LockoutBadCount` is "N or fewer **but not 0**"** — 0 disables lockout entirely and
+  fails the benchmark, so the compare treats 0 as non-compliant, not as "very compliant".
+- **`auditpol /r` output is localised.** The parser matches the English inclusion strings
+  and, when it cannot, queues the item anyway — `auditpol /set` is idempotent, so a
+  needless re-apply is harmless while a missed one would not be.
+- Account **renaming** (`NewAdministratorName` / `NewGuestName`) is deliberately not
+  applied; none of the tracked CIS checks test it and it is hard to undo unattended.
+
+**Deliberate CIS deviations** (do not "fix" these — they are chosen):
+
+| CIS rule | Baseline value | Why |
+|---|---|---|
+| 18.10.17.1/18.1 `EnableAppInstaller = 0` | **`1`** | That rule disables **winget**, which SoftwareManagement and the Sysmon install depend on. Complying would break the project. |
+| 18.10.9.2.15–18 BitLocker TPM+PIN | not applied | A pre-boot PIN halts the machine after the Stage 5 reboot — it ends unattended operation and can strand a headless box. |
+| LAPS, Hardened UNC Paths | not applied | Domain-only; no-ops or harmful on the standalone machines this targets. |
+| `RequirePrivateStoreOnly`, `legalnoticetext`, `DenyDeviceIDs` (Thunderbolt) | not applied | Organisation-specific; break the Store, add a logon banner, or kill USB-C docks. |
+
+`modules.systemConfiguration.skipPasswordPolicy` / `skipAuditPolicy` in `main-config.json`
+turn the two non-registry areas off. Both default to enforcing.
 
 **Notable implementations:**
 - `SystemConfiguration` creates/deletes restore points through the **`root/default:SystemRestore`

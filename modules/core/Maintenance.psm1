@@ -807,6 +807,302 @@ function Invoke-ServiceChangeItem {
     return $true
 }
 
+#region ─── LOCAL SECURITY POLICY (secedit) ───────────────────────────────────
+
+<#
+.SYNOPSIS
+    Reads the local [System Access] security policy via secedit /export.
+.DESCRIPTION
+    CIS password and account-lockout rules (benchmark sections 1.1 and 1.2) are NOT
+    registry values - they live in the Local Security Policy database and are only
+    reachable through secedit. That is why they cannot be expressed as registry entries
+    in security-baseline.json, and why they were silently never applied before: the
+    baseline declared a securityPolicy block that no module read.
+    Requires elevation; returns an empty hashtable when it cannot export.
+.OUTPUTS
+    [hashtable] setting name -> raw string value.
+#>
+function Get-SecurityPolicyExport {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param()
+
+    $result = @{}
+    $cfg = Join-Path ([System.IO.Path]::GetTempPath()) ("secpol-{0}.cfg" -f ([guid]::NewGuid().ToString('N')))
+    try {
+        $p = Start-Process -FilePath 'secedit.exe' `
+            -ArgumentList @('/export', '/cfg', "`"$cfg`"", '/areas', 'SECURITYPOLICY', '/quiet') `
+            -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
+        if ($p.ExitCode -ne 0 -or -not (Test-Path $cfg)) {
+            Write-Log -Level WARN -Component CORE -Message "secedit /export failed (exit $($p.ExitCode)) - security policy cannot be audited"
+            return $result
+        }
+        # secedit writes UTF-16LE with a BOM; Get-Content detects it from the BOM.
+        foreach ($line in (Get-Content -Path $cfg -ErrorAction Stop)) {
+            if ($line -match '^\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*(.+?)\s*$') {
+                $result[$Matches[1]] = $Matches[2]
+            }
+        }
+    }
+    catch {
+        Write-Log -Level WARN -Component CORE -Message "Could not export security policy: $_"
+    }
+    finally {
+        if (Test-Path $cfg) { Remove-Item $cfg -Force -ErrorAction SilentlyContinue }
+    }
+    return $result
+}
+
+<#
+.SYNOPSIS
+    Compares the live local security policy against the baseline's securityPolicy block.
+.DESCRIPTION
+    Only the numeric password/lockout settings are compared. Account-RENAMING entries
+    (NewAdministratorName / NewGuestName) are deliberately ignored: renaming built-in
+    accounts on an unattended personal machine is a surprising, hard-to-undo change that
+    none of the supplied CIS checks actually test for.
+.OUTPUTS
+    [hashtable[]] diff items with Type = 'secpolicy'.
+#>
+function Compare-SecurityPolicyBaseline {
+    [CmdletBinding()]
+    [OutputType([array])]
+    param(
+        [Parameter(Mandatory)] [AllowNull()] $Baseline
+    )
+
+    $diff = [System.Collections.Generic.List[hashtable]]::new()
+    if (-not $Baseline) { return $diff.ToArray() }
+
+    # name -> comparison direction. CIS phrases these as "N or more" / "N or fewer".
+    $rules = @{
+        PasswordHistorySize   = 'AtLeast'
+        MinimumPasswordAge    = 'AtLeast'
+        MinimumPasswordLength = 'AtLeast'
+        LockoutDuration       = 'AtLeast'
+        ResetLockoutCount     = 'AtLeast'
+        LockoutBadCount       = 'AtMostNonZero'
+    }
+
+    $current = Get-SecurityPolicyExport
+    if ($current.Count -eq 0) { return $diff.ToArray() }
+
+    foreach ($name in $rules.Keys) {
+        if (-not $Baseline.ContainsKey($name)) { continue }
+        $desired = [int]$Baseline[$name]
+        $rawCur = $current[$name]
+        $curVal = 0
+        $haveCur = [int]::TryParse($rawCur, [ref]$curVal)
+
+        $compliant = $false
+        if ($haveCur) {
+            switch ($rules[$name]) {
+                'AtLeast' { $compliant = ($curVal -ge $desired) }
+                # "5 or fewer, but not 0" - 0 disables lockout entirely and fails the benchmark.
+                'AtMostNonZero' { $compliant = ($curVal -le $desired -and $curVal -gt 0) }
+            }
+        }
+        if ($compliant) { continue }
+
+        $diff.Add(@{
+                Type         = 'secpolicy'
+                Name         = $name
+                SettingName  = $name
+                CurrentState = $(if ($haveCur) { "$curVal" } else { '<unset>' })
+                DesiredState = "$desired"
+                DesiredValue = $desired
+                Description  = "Local security policy $name -> $desired"
+            })
+    }
+
+    return $diff.ToArray()
+}
+
+<#
+.SYNOPSIS
+    Applies one local-security-policy diff item through secedit /configure.
+.DESCRIPTION
+    Writes a minimal UTF-16LE INF containing only the [System Access] key being changed -
+    secedit applies exactly what the file contains, so this stays surgical instead of
+    re-imposing a whole exported policy. Uses a throwaway .sdb so the system database is
+    not rewritten.
+.OUTPUTS
+    [bool] $true when secedit reported success.
+#>
+function Invoke-SecurityPolicyChangeItem {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)] [hashtable]$Item,
+        [Parameter()] [string]$Component = 'CORE'
+    )
+
+    $name = $Item.SettingName ?? $Item.Name
+    $value = $Item.DesiredValue
+    if (-not $name -or $null -eq $value) {
+        Write-Log -Level WARN -Component $Component -Message 'Security policy item incomplete, skipped'
+        return $false
+    }
+
+    $stamp = [guid]::NewGuid().ToString('N')
+    $inf = Join-Path ([System.IO.Path]::GetTempPath()) "secpol-$stamp.inf"
+    $sdb = Join-Path ([System.IO.Path]::GetTempPath()) "secpol-$stamp.sdb"
+    try {
+        $body = @(
+            '[Unicode]'
+            'Unicode=yes'
+            '[Version]'
+            'signature="$CHICAGO$"'
+            'Revision=1'
+            '[System Access]'
+            "$name = $value"
+        ) -join "`r`n"
+        # secedit requires UTF-16LE when the INF declares Unicode=yes.
+        [System.IO.File]::WriteAllText($inf, $body, [System.Text.UnicodeEncoding]::new($false, $true))
+
+        $p = Start-Process -FilePath 'secedit.exe' `
+            -ArgumentList @('/configure', '/db', "`"$sdb`"", '/cfg', "`"$inf`"", '/areas', 'SECURITYPOLICY', '/quiet') `
+            -Wait -PassThru -WindowStyle Hidden -ErrorAction Stop
+
+        if ($p.ExitCode -eq 0) {
+            Write-Log -Level SUCCESS -Component $Component -Message "Security policy: $name -> $value"
+            return $true
+        }
+        Write-Log -Level WARN -Component $Component -Message "secedit /configure returned exit $($p.ExitCode) for $name"
+        return $false
+    }
+    catch {
+        Write-Log -Level ERROR -Component $Component -Message "Security policy change failed for ${name}: $_"
+        return $false
+    }
+    finally {
+        foreach ($f in $inf, $sdb) { if (Test-Path $f) { Remove-Item $f -Force -ErrorAction SilentlyContinue } }
+    }
+}
+
+#endregion
+
+#region ─── ADVANCED AUDIT POLICY (auditpol) ──────────────────────────────────
+
+<#
+.SYNOPSIS
+    Compares advanced audit policy subcategories against the baseline's auditPolicy block.
+.DESCRIPTION
+    Like the password policy, CIS section 17 is not registry-backed - it is the advanced
+    audit policy, readable and writable only through auditpol.exe. The baseline listed all
+    18 subcategories but nothing consumed them.
+
+    NOTE: these subcategory settings only take effect when
+    HKLM\System\CurrentControlSet\Control\Lsa\SCENoApplyLegacyAuditPolicy = 1, otherwise
+    legacy category-level policy overrides them. That registry value is part of the same
+    baseline for exactly this reason.
+.OUTPUTS
+    [hashtable[]] diff items with Type = 'auditpolicy'.
+#>
+function Compare-AuditPolicyBaseline {
+    [CmdletBinding()]
+    [OutputType([array])]
+    param(
+        [Parameter(Mandatory)] [AllowNull()] $Baseline
+    )
+
+    $diff = [System.Collections.Generic.List[hashtable]]::new()
+    if (-not $Baseline) { return $diff.ToArray() }
+
+    foreach ($entry in @($Baseline)) {
+        $sub = $entry.subcategory
+        if (-not $sub) { continue }
+        $wantSuccess = [bool]$entry.success
+        $wantFailure = [bool]$entry.failure
+
+        $curSuccess = $false; $curFailure = $false; $known = $false
+        try {
+            # /r emits CSV: Machine Name,Policy Target,Subcategory,Subcategory GUID,Inclusion Setting,...
+            $raw = & auditpol.exe /get /subcategory:"$sub" /r 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $row = @($raw | Where-Object { $_ -match [regex]::Escape($sub) }) | Select-Object -First 1
+                if ($row) {
+                    $cols = $row -split ','
+                    if ($cols.Count -ge 5) {
+                        $setting = $cols[4].Trim()
+                        # English inclusion-setting strings. On a localised Windows this will not
+                        # match, $known stays false, and the item is queued anyway - auditpol /set
+                        # is idempotent, so re-applying a already-correct setting is harmless.
+                        if ($setting -match '^(Success and Failure|Success|Failure|No Auditing)$') {
+                            $known = $true
+                            $curSuccess = $setting -in 'Success', 'Success and Failure'
+                            $curFailure = $setting -in 'Failure', 'Success and Failure'
+                        }
+                    }
+                }
+            }
+        }
+        catch {
+            Write-Log -Level DEBUG -Component CORE -Message "auditpol query failed for '$sub': $_"
+        }
+
+        if ($known -and $curSuccess -eq $wantSuccess -and $curFailure -eq $wantFailure) { continue }
+
+        $desired = if ($wantSuccess -and $wantFailure) { 'Success and Failure' }
+        elseif ($wantSuccess) { 'Success' }
+        elseif ($wantFailure) { 'Failure' }
+        else { 'No Auditing' }
+
+        $diff.Add(@{
+                Type         = 'auditpolicy'
+                Name         = "Audit: $sub"
+                Subcategory  = $sub
+                WantSuccess  = $wantSuccess
+                WantFailure  = $wantFailure
+                CIS          = $entry.cis
+                CurrentState = $(if ($known) { "Success=$curSuccess,Failure=$curFailure" } else { '<unreadable>' })
+                DesiredState = $desired
+                Description  = "Audit subcategory '$sub' -> $desired"
+            })
+    }
+
+    return $diff.ToArray()
+}
+
+<#
+.SYNOPSIS
+    Applies one advanced-audit-policy diff item through auditpol /set.
+.OUTPUTS
+    [bool] $true when auditpol reported success.
+#>
+function Invoke-AuditPolicyChangeItem {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)] [hashtable]$Item,
+        [Parameter()] [string]$Component = 'CORE'
+    )
+
+    $sub = $Item.Subcategory
+    if (-not $sub) {
+        Write-Log -Level WARN -Component $Component -Message 'Audit policy item missing Subcategory, skipped'
+        return $false
+    }
+    $succ = if ($Item.WantSuccess) { 'enable' } else { 'disable' }
+    $fail = if ($Item.WantFailure) { 'enable' } else { 'disable' }
+
+    try {
+        $null = & auditpol.exe /set /subcategory:"$sub" /success:$succ /failure:$fail 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Log -Level SUCCESS -Component $Component -Message "Audit policy '$sub' -> success:$succ failure:$fail"
+            return $true
+        }
+        Write-Log -Level WARN -Component $Component -Message "auditpol /set returned exit $LASTEXITCODE for '$sub'"
+        return $false
+    }
+    catch {
+        Write-Log -Level ERROR -Component $Component -Message "Audit policy change failed for '$sub': $_"
+        return $false
+    }
+}
+
+#endregion
+
 <#
 .SYNOPSIS
     Persists a diff list to temp_files/diff/[ModuleName]-diff.json.
@@ -844,16 +1140,26 @@ function Get-DiffList {
     )
 
     $path = Get-TempPath -Category 'diff' -FileName "$ModuleName-diff.json"
-    if (-not (Test-Path $path)) { return @() }
+    # `,@()` for the same unrolling reason as below: a bare `return @()` yields $null to the
+    # caller, so Get-DiffList would sometimes hand back $null and sometimes an array. Always
+    # returning a real array keeps the Type2 contract uniform.
+    if (-not (Test-Path $path)) { return , @() }
     try {
         # -AsHashtable: keeps diff items as [hashtable] for uniform access.
         # Type1 modules save hashtable arrays via Save-DiffList;
         # Type2 modules consume them — both sides now use the same type.
         $items = Get-Content -Path $path -Raw | ConvertFrom-Json -Depth 10 -AsHashtable
-        if ($null -eq $items) { return @() }
-        return @($items)
+        if ($null -eq $items) { return , @() }
+        # `,` (array-wrap) is REQUIRED. PowerShell unrolls a single-element array on return,
+        # so `return @($items)` handed back the bare hashtable whenever the diff held exactly
+        # ONE item. Callers then read $diff.Count as the item's KEY COUNT (e.g. 5) instead of
+        # 1 - corrupting every "N item(s)" log line, ItemsDetected in the module result, and
+        # the report's diff table (which indexes $diffData[0..n] and got $null rows).
+        # ConvertTo-Json also serialises a 1-element array as a bare JSON OBJECT, so this is
+        # the single point where both collapses have to be undone.
+        return , @($items)
     }
-    catch { return @() }
+    catch { return , @() }
 }
 
 #endregion
@@ -1455,6 +1761,11 @@ Export-ModuleMember -Function @(
     'Compare-ServiceBaseline',
     'Invoke-RegistryChangeItem',
     'Invoke-ServiceChangeItem',
+    'Get-SecurityPolicyExport',
+    'Compare-SecurityPolicyBaseline',
+    'Invoke-SecurityPolicyChangeItem',
+    'Compare-AuditPolicyBaseline',
+    'Invoke-AuditPolicyChangeItem',
     'Save-DiffList',
     'Get-DiffList',
     'New-ModuleResult',

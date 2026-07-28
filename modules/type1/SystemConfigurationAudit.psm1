@@ -535,6 +535,9 @@ function Invoke-SystemConfigurationAudit {
         $config = Get-MainConfig
         $skipRestorePoint = [bool]($config.modules.skipRestorePointManagement)
         $skipHealth = [bool]($config.modules.skipSystemHealth)
+        # Sub-feature switches for the two policy areas that change how users log in.
+        $skipPasswordPolicy = [bool]($config.modules.systemConfiguration.skipPasswordPolicy)
+        $skipAuditPolicy = [bool]($config.modules.systemConfiguration.skipAuditPolicy)
 
         $diff = [System.Collections.Generic.List[hashtable]]::new()
         $restorePoints = @()
@@ -682,6 +685,33 @@ function Invoke-SystemConfigurationAudit {
                     }
                 }
                 catch { Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Firewall query failed: $_" }
+            }
+
+            # ── Local security policy: CIS 1.1 password + 1.2 account lockout ────
+            # These are NOT registry values - they live in the Local Security Policy
+            # database and are only reachable via secedit. The baseline has declared a
+            # securityPolicy block for a long time but NOTHING read it, so every one of
+            # these CIS rules stayed non-compliant no matter how often the run completed.
+            if ($securityBaseline.securityPolicy -and -not $skipPasswordPolicy) {
+                Compare-SecurityPolicyBaseline -Baseline $securityBaseline.securityPolicy | ForEach-Object {
+                    $_.ConfigType = 'security'
+                    $diff.Add($_)
+                }
+            }
+            elseif ($skipPasswordPolicy) {
+                Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Password/lockout policy skipped (config: skipPasswordPolicy)'
+            }
+
+            # ── Advanced audit policy: CIS 17.x ──────────────────────────────────
+            # Same story: auditpol-only, declared in the baseline, never consumed.
+            if ($securityBaseline.auditPolicy -and -not $skipAuditPolicy) {
+                Compare-AuditPolicyBaseline -Baseline $securityBaseline.auditPolicy | ForEach-Object {
+                    $_.ConfigType = 'security'
+                    $diff.Add($_)
+                }
+            }
+            elseif ($skipAuditPolicy) {
+                Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Advanced audit policy skipped (config: skipAuditPolicy)'
             }
 
             # Sysmon presence check (installed via SystemConfiguration Type2 with sysmonconfig.xml)

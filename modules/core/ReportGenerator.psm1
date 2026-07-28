@@ -403,7 +403,11 @@ function New-MaintenanceReport {
     [CmdletBinding()]
     [OutputType([string])]
     param(
-        [Parameter(Mandatory)] [array]$SessionResults,
+        # AllowEmptyCollection: a run that produced no module results must still yield a
+        # report - it is the only artifact that survives cleanup. Without this, Mandatory
+        # rejects the empty array outright ("Cannot bind argument ... empty collection")
+        # and Stage 4 fails instead of rendering an empty run.
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$SessionResults,
         [Parameter(Mandatory)] [hashtable]$OSContext,
         [Parameter()] [string]$TranscriptPath = '',
         [Parameter()] [string]$ReportTitle = 'Windows Maintenance Report'
