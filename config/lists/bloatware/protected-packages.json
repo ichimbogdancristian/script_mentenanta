@@ -1,5 +1,169 @@
 {
-  "_comment": "System packages that should NEVER be removed. Removing these breaks Windows or other critical apps.",
+  "_comment": "System packages that should NEVER be removed. Removing these breaks Windows or other critical apps. Keys are matched with PowerShell -like against the candidate's identifier (see Test-CanRemovePackage), so a key MAY contain wildcards - that is how whole framework families (Microsoft.VCLibs.*, Microsoft.NET.Native.*) are covered by one entry. This file is the ONLY hard block on removal, so anything a broad detection wildcard could sweep up must be listed here.",
+  "os_shell_and_logon": {
+    "_comment": "Removing any of these can leave the machine unable to log in, render a Start menu, or prompt for credentials. Several are reachable from existing broad patterns - e.g. Microsoft.XboxGameCallableUI is matched by the 'Microsoft.Xbox*' bloatware pattern.",
+    "Microsoft.XboxGameCallableUI": {
+      "protected": true,
+      "reason": "System UI component matched by the broad Microsoft.Xbox* pattern; not the Game Bar and not removable safely",
+      "severity": "Critical"
+    },
+    "Microsoft.AAD.BrokerPlugin": {
+      "protected": true,
+      "reason": "Entra/Azure AD authentication broker; removing breaks work-account sign-in",
+      "severity": "Critical"
+    },
+    "Microsoft.AccountsControl": {
+      "protected": true,
+      "reason": "Account/credential UI used by sign-in and UAC flows",
+      "severity": "Critical"
+    },
+    "Microsoft.CredDialogHost": {
+      "protected": true,
+      "reason": "Credential dialog host; removing breaks authentication prompts",
+      "severity": "Critical"
+    },
+    "Microsoft.BioEnrollment": {
+      "protected": true,
+      "reason": "Windows Hello biometric enrollment",
+      "severity": "Critical"
+    },
+    "Microsoft.LockApp": {
+      "protected": true,
+      "reason": "Lock screen; removing can make the machine unlockable",
+      "severity": "Critical"
+    },
+    "Microsoft.Windows.ShellExperienceHost": {
+      "protected": true,
+      "reason": "Core shell (taskbar, action center, Start surfaces)",
+      "severity": "Critical"
+    },
+    "Microsoft.Windows.StartMenuExperienceHost": {
+      "protected": true,
+      "reason": "Start menu host",
+      "severity": "Critical"
+    },
+    "Microsoft.Windows.CloudExperienceHost": {
+      "protected": true,
+      "reason": "OOBE and account/sign-in web flows",
+      "severity": "Critical"
+    },
+    "Microsoft.Windows.PeopleExperienceHost": {
+      "protected": true,
+      "reason": "Shell contact surface; removal destabilises Explorer",
+      "severity": "Critical"
+    },
+    "Microsoft.Windows.Search": {
+      "protected": true,
+      "reason": "Windows Search UI",
+      "severity": "Critical"
+    },
+    "Microsoft.Windows.ContentDeliveryManager": {
+      "protected": true,
+      "reason": "Removing breaks Start/lock-screen content plumbing; suppress its CONTENT via the telemetry registry baseline instead",
+      "severity": "Critical"
+    },
+    "Microsoft.Windows.Apprep.ChxApp": {
+      "protected": true,
+      "reason": "SmartScreen app reputation UI",
+      "severity": "Critical"
+    },
+    "Microsoft.Win32WebViewHost": {
+      "protected": true,
+      "reason": "Desktop app web view host used by system dialogs",
+      "severity": "Critical"
+    },
+    "Microsoft.ECApp": {
+      "protected": true,
+      "reason": "Eye control / accessibility host",
+      "severity": "High"
+    },
+    "Microsoft.Windows.NarratorQuickStart": {
+      "protected": true,
+      "reason": "Accessibility - Narrator quick start",
+      "severity": "High"
+    },
+    "Microsoft.Windows.CapturePicker": {
+      "protected": true,
+      "reason": "System capture picker used by screen-sharing APIs",
+      "severity": "High"
+    },
+    "Microsoft.Windows.PinningConfirmationDialog": {
+      "protected": true,
+      "reason": "Taskbar/Start pin confirmation dialog",
+      "severity": "High"
+    }
+  },
+  "frameworks_and_runtimes": {
+    "_comment": "Framework packages other apps declare as dependencies. Removing one silently breaks every app that depends on it. Wildcard keys cover all versions.",
+    "Microsoft.VCLibs.*": {
+      "protected": true,
+      "reason": "Visual C++ UWP runtime; a declared dependency of very many Store apps (incl. winget)",
+      "severity": "Critical"
+    },
+    "Microsoft.UI.Xaml.*": {
+      "protected": true,
+      "reason": "WinUI XAML framework; a declared dependency of many Store apps (incl. winget)",
+      "severity": "Critical"
+    },
+    "Microsoft.NET.Native.*": {
+      "protected": true,
+      "reason": ".NET Native framework/runtime dependency",
+      "severity": "Critical"
+    },
+    "Microsoft.WindowsAppRuntime.*": {
+      "protected": true,
+      "reason": "Windows App SDK runtime dependency",
+      "severity": "Critical"
+    },
+    "Microsoft.Services.Store.Engagement": {
+      "protected": true,
+      "reason": "Store engagement SDK dependency",
+      "severity": "High"
+    },
+    "Microsoft.DesktopAppInstaller": {
+      "protected": true,
+      "reason": "THIS IS WINGET. Removing it disables the package manager this project depends on for install/upgrade/uninstall",
+      "severity": "Critical"
+    },
+    "Microsoft.StorePurchaseApp": {
+      "protected": true,
+      "reason": "Store purchase plumbing; removing breaks Store transactions",
+      "severity": "High"
+    }
+  },
+  "media_codecs": {
+    "_comment": "Codec extensions. Photos/Camera/Media Player silently fail on common file types without them.",
+    "Microsoft.HEIFImageExtension": {
+      "protected": true,
+      "reason": "HEIF/HEIC image support used by Photos",
+      "severity": "High"
+    },
+    "Microsoft.HEVCVideoExtension*": {
+      "protected": true,
+      "reason": "HEVC video support",
+      "severity": "High"
+    },
+    "Microsoft.VP9VideoExtensions": {
+      "protected": true,
+      "reason": "VP9 video support (web video playback)",
+      "severity": "High"
+    },
+    "Microsoft.WebMediaExtensions": {
+      "protected": true,
+      "reason": "Web media format support",
+      "severity": "High"
+    },
+    "Microsoft.WebpImageExtension": {
+      "protected": true,
+      "reason": "WebP image support",
+      "severity": "High"
+    },
+    "Microsoft.RawImageExtension": {
+      "protected": true,
+      "reason": "RAW camera image support",
+      "severity": "Medium"
+    }
+  },
   "critical_dependencies": {
     "Microsoft.Advertising.Xaml": {
       "protected": true,
@@ -46,6 +210,51 @@
     "Microsoft.ScreenSketch": {
       "protected": true,
       "reason": "Screenshot and annotation tool",
+      "severity": "High"
+    },
+    "Microsoft.WindowsCamera": {
+      "protected": true,
+      "reason": "Only in-box camera app",
+      "severity": "High"
+    },
+    "Microsoft.Windows.Photos": {
+      "protected": true,
+      "reason": "Default image viewer; removing leaves no in-box way to open pictures",
+      "severity": "High"
+    },
+    "Microsoft.Paint": {
+      "protected": true,
+      "reason": "Classic Paint (NOT Paint 3D, which is Microsoft.MSPaint/Microsoft.Paint3D and IS removed)",
+      "severity": "High"
+    },
+    "Microsoft.MicrosoftStickyNotes": {
+      "protected": true,
+      "reason": "Holds user-created notes; removal is data loss",
+      "severity": "High"
+    },
+    "Microsoft.WindowsSoundRecorder": {
+      "protected": true,
+      "reason": "Only in-box audio recorder",
+      "severity": "Medium"
+    },
+    "MicrosoftCorporationII.QuickAssist": {
+      "protected": true,
+      "reason": "Remote assistance tool used for support on unattended machines",
+      "severity": "Medium"
+    },
+    "Microsoft.SecHealthUI": {
+      "protected": true,
+      "reason": "Windows Security UI (alternate package id to Microsoft.Windows.SecHealthUI)",
+      "severity": "Critical"
+    },
+    "Microsoft.MicrosoftEdge*": {
+      "protected": true,
+      "reason": "Edge itself is the fallback browser and is servicing-managed; only Microsoft.Edge.GameAssist is treated as bloatware",
+      "severity": "Critical"
+    },
+    "Microsoft.OneDrive": {
+      "protected": true,
+      "reason": "Removing can orphan synced user data; out of scope for unattended maintenance",
       "severity": "High"
     }
   },

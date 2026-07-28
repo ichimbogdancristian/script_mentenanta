@@ -1,14 +1,19 @@
 {
   "_comment": "v6.0 - Multi-source bloatware detection (AppX/Provisioned/Registry/WinGet). The audit uses ONE pattern per app entry: 'appx_pattern' when present, else 'name'. Patterns are matched with PowerShell -like against AppX package .Name, provisioned PackageName, registry DisplayName and winget list lines. Microsoft first-party apps use their exact 'Microsoft.*' package name (matches the AppX .Name); third-party / OEM / games use the real publisher-prefixed identifier or a *wildcard* because their package names carry a variable publisher prefix (e.g. Netflix = 4DF9E0F8.Netflix, HP = AD2F1837.*, Lenovo = E046963F.*).",
   "metadata": {
-    "version": "6.0",
-    "updated": "2026-07-18",
+    "version": "7.0",
+    "updated": "2026-07-28",
     "detection_sources": ["AppX", "Provisioned", "Registry", "WinGet"],
     "sources_researched": [
-      "https://github.com/Raphire/Win11Debloat (App-Removal wiki)",
+      "https://github.com/Raphire/Win11Debloat - Config/Apps.json (141 curated apps with per-app safe/optional/unsafe recommendations; primary source for the v7.0 expansion)",
+      "https://github.com/ChrisTitusTech/winutil - config/appx.json",
+      "https://github.com/Sycnex/Windows10Debloater - Windows10Debloater.ps1 (Windows 10 in-box app coverage)",
+      "https://github.com/W4RH4WK/Debloat-Windows-10 - scripts/remove-default-apps.ps1",
       "https://patchmypc.com/blog/remove-default-microsoft-store-app-packages-windows11-25h2/"
     ],
-    "notes": "Deliberately EXCLUDES genuinely useful/system apps (Calculator, Camera, Photos, Notepad, Paint, Snipping Tool, Store, Terminal, Sticky Notes, Sound Recorder, Quick Assist, Edge, OneDrive) - those are also guarded by protected-packages.json."
+    "notes": "Deliberately EXCLUDES genuinely useful/system apps (Calculator, Camera, Photos, Notepad, Paint, Snipping Tool, Store, Terminal, Sticky Notes, Sound Recorder, Quick Assist, Edge, OneDrive) - those are also guarded by protected-packages.json.",
+    "v7_changes": "130 -> 166 entries. Added Windows 10 legacy in-box apps (WindowsPhone, CommsPhone, ConnectivityStore, ReadingList, FreshPaint, Appconnector, Office.Lens, Office.Todo.List, Windows.Cortana), Windows 11 24H2/25H2 components (Widgets = MicrosoftWindows.Client.WebExperience + WidgetsPlatformRuntime, Client.AIX, Ai.Copilot.Provider, Edge.GameAssist), both Teams packages, and Store-delivered third-party bloat (ACGMediaPlayer, ActiproSoftwareLLC, EclipseManager, NYTCrossword, OneCalendar, Pandora, Booking.com, Plex, Viber, Fitbit, Sketchable, McAfee's 5A894077.* AppX prefix).",
+    "IMPORTANT_do_not_bulk_import": "Debloat scripts list system packages in their KEEP/exclusion arrays as well as their removal arrays. Scraping identifiers out of them without reading the surrounding context pulls in Microsoft.AAD.BrokerPlugin, Microsoft.LockApp, Microsoft.Windows.ShellExperienceHost, Microsoft.DesktopAppInstaller (winget itself) and the VCLibs/UI.Xaml/NET.Native framework packages. Every new pattern must be checked against protected-packages.json before it is added."
   },
   "categories": {
     "games_entertainment": {
@@ -95,7 +100,22 @@
         { "name": "Microsoft.People", "display_name": "People", "detection": ["AppX", "Provisioned"], "removable": true },
         { "name": "Microsoft.Wallet", "display_name": "Wallet", "detection": ["AppX", "Provisioned"], "removable": true },
         { "name": "microsoft.windowscommunicationsapps", "display_name": "Mail and Calendar", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "Legacy Mail & Calendar, being retired in favour of new Outlook" },
-        { "name": "Microsoft.549981C3F5F10", "display_name": "Cortana", "detection": ["AppX", "Provisioned"], "removable": true }
+        { "name": "Microsoft.549981C3F5F10", "display_name": "Cortana", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.Windows.Cortana", "display_name": "Cortana (legacy package id)", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "Older Windows 10 Cortana identifier; Microsoft.549981C3F5F10 is the Store-era one" },
+        { "name": "Microsoft.Paint3D", "display_name": "Paint 3D (alternate id)", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "Some builds register Paint 3D as Microsoft.Paint3D rather than Microsoft.MSPaint. Classic Paint (Microsoft.Paint) is protected." },
+        { "name": "Microsoft.WindowsPhone", "display_name": "Phone Companion (Windows 10)", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.CommsPhone", "display_name": "Phone / Calls (Windows 10)", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.ConnectivityStore", "display_name": "Paid Wi-Fi & Cellular (Windows 10)", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.WindowsReadingList", "display_name": "Reading List (Windows 10)", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.FreshPaint", "display_name": "Fresh Paint (Windows 10)", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.Appconnector", "display_name": "App Connector (Windows 10)", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.Office.Lens", "display_name": "Office Lens", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.Office.Todo.List", "display_name": "Office To-Do (legacy)", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.WindowsAlarms", "display_name": "Alarms & Clock", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "protected-packages.json explicitly marks this removable (protected: false)" },
+        { "name": "Microsoft.Edge.GameAssist", "display_name": "Microsoft Edge for Game Bar", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "Game Bar browser sidebar; separate package from Edge itself, which is protected" },
+        { "name": "Microsoft.RemoteDesktop", "display_name": "Remote Desktop (Store)", "detection": ["AppX", "Provisioned"], "removable": true, "tier": "broad", "notes": "Genuinely used by admins/remote workers - only removed with aggressiveOemRemoval" },
+        { "name": "MicrosoftTeams", "display_name": "Teams (consumer / Chat)", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "The pre-installed consumer Chat/Teams app. The work client is MSTeams, tagged broad below." },
+        { "name": "MSTeams", "display_name": "Microsoft Teams (work/school)", "detection": ["AppX", "Provisioned", "WinGet"], "removable": true, "tier": "broad", "notes": "The real Teams client many people depend on - only removed with aggressiveOemRemoval" }
       ]
     },
     "windows11_new_apps": {
@@ -111,7 +131,12 @@
         { "name": "Microsoft.PCManager", "display_name": "PC Manager", "detection": ["AppX", "Provisioned", "WinGet"], "removable": true },
         { "name": "Microsoft.M365Companions", "display_name": "M365 Copilot companion", "detection": ["AppX", "Provisioned"], "removable": true },
         { "name": "Microsoft.StartExperiencesApp", "display_name": "Start Experiences (recommended)", "detection": ["AppX", "Provisioned"], "removable": true },
-        { "name": "MicrosoftCorporationII.MicrosoftFamily", "display_name": "Family Safety", "detection": ["AppX", "Provisioned"], "removable": true }
+        { "name": "MicrosoftCorporationII.MicrosoftFamily", "display_name": "Family Safety", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "MicrosoftWindows.Client.WebExperience", "display_name": "Widgets (Web Experience Pack)", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "The Widgets board / news-and-interests feed" },
+        { "name": "Microsoft.WidgetsPlatformRuntime", "display_name": "Widgets Platform Runtime", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "Runtime behind the Widgets board; pair with MicrosoftWindows.Client.WebExperience" },
+        { "name": "MicrosoftWindows.Client.AIX", "display_name": "Windows AI experiences (AIX)", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "24H2/25H2 AI experience host" },
+        { "name": "Microsoft.Windows.Ai.Copilot.Provider", "display_name": "Copilot provider", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Microsoft.MicrosoftOfficeHub (Store id)", "appx_pattern": "XP9CXNGPPJ97XX", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "Microsoft Store product id that ships Copilot on some 24H2 images" }
       ]
     },
     "third_party_bloatware": {
@@ -144,7 +169,23 @@
         { "name": "Autodesk SketchBook", "appx_pattern": "*AutodeskSketchBook*", "detection": ["AppX", "Provisioned"], "removable": true },
         { "name": "Drawboard PDF", "appx_pattern": "*DrawboardPDF*", "detection": ["AppX", "Provisioned"], "removable": true },
         { "name": "WinZip (Universal)", "appx_pattern": "*WinZipUniversal*", "detection": ["AppX", "Provisioned"], "removable": true },
-        { "name": "Live Wallpaper (Sidia)", "appx_pattern": "*LiveWallpaper*", "detection": ["AppX", "Provisioned"], "removable": true }
+        { "name": "Live Wallpaper (Sidia)", "appx_pattern": "*LiveWallpaper*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "ACG Media Player", "appx_pattern": "ACGMediaPlayer*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Actipro Software", "appx_pattern": "ActiproSoftwareLLC*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Eclipse Manager", "appx_pattern": "EclipseManager*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "NYT Crossword", "appx_pattern": "*NYTCrossword*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "OneCalendar", "appx_pattern": "*OneCalendar*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Pandora", "appx_pattern": "*PandoraMediaInc*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Booking.com", "appx_pattern": "*Booking.com*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Plex", "appx_pattern": "*Plex*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Viber", "appx_pattern": "*Viber*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Fitbit / Fitbit Coach", "appx_pattern": "*Fitbit*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Keeper password manager (bundled)", "appx_pattern": "*Keeper*", "detection": ["AppX", "Provisioned"], "removable": true, "tier": "broad", "notes": "Bundled trial on many OEM images, but also a password manager people genuinely use" },
+        { "name": "Dolby Access / Dolby Digital Plus", "appx_pattern": "*Dolby*", "detection": ["AppX", "Provisioned"], "removable": true, "tier": "broad", "notes": "Dolby Access is trialware, but some laptops need the Dolby audio driver companion" },
+        { "name": "Sketchable", "appx_pattern": "*Sketchable*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "Bubble Shooter / casual game packs", "appx_pattern": "*BubbleShooter*", "detection": ["AppX", "Provisioned"], "removable": true },
+        { "name": "ExpressVPN (bundled)", "appx_pattern": "*ExpressVPN*", "detection": ["AppX", "Registry"], "removable": true, "tier": "broad" },
+        { "name": "McAfee (AppX publisher)", "appx_pattern": "5A894077.*", "detection": ["AppX", "Provisioned"], "removable": true, "notes": "McAfee's AppX publisher prefix - the Store-delivered McAfee Security trial on OEM images" }
       ]
     },
     "toolbars_extensions": {
