@@ -35,6 +35,15 @@ verified in the current code:
   `TIMEOUT /T n >nul 2>&1` (which returns immediately when stdin is redirected) and then
   `EXIT /B <code>`. If you add an error path, follow that pattern — a `PAUSE` on a SYSTEM
   task hangs the job forever with no visible window.
+- **`TIMEOUT` is not a delay primitive here — it is an abort-path no-op.** With stdin
+  redirected (every unattended run) it exits instantly with "Input redirection is not
+  supported": measured 0.05s for `TIMEOUT /T 5 /NOBREAK`, versus a correct 5s for
+  `ping -n 6 127.0.0.1`. That is *why* it is safe on abort paths, and exactly why it must
+  **not** be used where a real wait is required. The 30s pre-orchestrator cooldown therefore
+  branches on `IF DEFINED ORCH_EXTRA_ARGS`: `ping -n 31` unattended (really waits),
+  `TIMEOUT /T 30` interactive (visible, key-skippable). The cooldown exists because the
+  bootstrap may have just installed PS7/winget/PSWindowsUpdate and added Defender
+  exclusions, which leave file locks and registry/PATH writes in flight.
 - **The one `Read-Host`** (Stage 1 menu) is unreachable unattended: it sits behind a
   `[Console]::KeyAvailable` check, which throws with no console and is caught → treated as
   "no key". Every timed prompt auto-proceeds on timeout; none require input to continue.

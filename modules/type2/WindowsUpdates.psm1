@@ -1,9 +1,15 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS    Windows Updates - Type 2 (system modification)
-.DESCRIPTION Downloads and installs pending Windows updates identified in the diff list
-             using the Windows Update COM API (Microsoft.Update.Session).
-.NOTES       Module Type: Type2 | DiffKey: WindowsUpdates | Version: 5.0
+.DESCRIPTION Downloads and installs the pending Windows updates listed in the diff, via two
+             verifiable paths:
+               1. PSWindowsUpdate (preferred) - installs by KB and confirms the result.
+               2. Windows Update COM API (Microsoft.Update.Session) - the fallback, built
+                  into Windows, so it works with no PSGallery access and no module install.
+             Both report real per-update outcomes; neither can prompt, so both are safe
+             unattended. The old `usoclient` fallback was removed - see
+             Install-WindowsUpdateViaCom for why.
+.NOTES       Module Type: Type2 | DiffKey: WindowsUpdates | Version: 6.0
 #>
 
 $_corePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'core\Maintenance.psm1'
@@ -76,6 +82,179 @@ function Test-UpdateIsInstalled {
 
     Write-Log -Level WARN -Component WINUPDATE -Message "⚠ Update not verified in system (may still be installing)"
     return $false
+}
+
+<#
+.SYNOPSIS
+    Downloads and installs the queued updates through the built-in Windows Update COM API.
+.DESCRIPTION
+    The fallback path, used when PSWindowsUpdate is not available. It replaces the old
+    `usoclient StartScan/StartInstall` trigger, which is dead on current Windows 10/11:
+    the USO client CLI was neutered by Microsoft, returns exit code 1, and installs
+    nothing - and because it was fire-and-forget, the module reported those 0 installs
+    as successes ("results unverifiable").
+
+    Microsoft.Update.Session is part of Windows itself, so it needs no PSGallery access,
+    no NuGet provider and no module install. It is also SYNCHRONOUS and returns a real
+    per-update result code, so what this reports actually happened.
+
+    The diff only carries update IDs, not live COM objects, so the searcher is re-run and
+    the results are matched back to the queued IDs (the audit stores Identity =
+    IUpdate.Identity.UpdateID for exactly this purpose).
+
+    NOTE: Install() blocks until Windows finishes. That is intentional - an unverifiable
+    async trigger is what caused the previous reboot-loop bug - and it is safe unattended
+    because it cannot prompt.
+.OUTPUTS
+    [hashtable] Installed / Failed / RebootRequired / Errors / Attempted.
+#>
+function Install-WindowsUpdateViaCom {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param([Parameter(Mandatory)] [AllowEmptyCollection()] [object[]]$DiffItems)
+
+    $outcome = @{
+        Installed      = 0
+        Failed         = 0
+        RebootRequired = $false
+        Errors         = [System.Collections.Generic.List[string]]::new()
+        Attempted      = 0
+    }
+
+    try {
+        $session = New-Object -ComObject Microsoft.Update.Session -ErrorAction Stop
+        $session.ClientApplicationID = 'WindowsMaintenanceAutomation'
+    }
+    catch {
+        Write-Log -Level ERROR -Component WINUPDATE -Message "Could not create Microsoft.Update.Session: $_"
+        $outcome.Errors.Add("COM session creation failed: $_")
+        return $outcome
+    }
+
+    # Refuse to start on top of another servicing operation, and honour Windows' own
+    # "reboot first" signal - installing into either state is how you get partial installs.
+    try {
+        $installer = $session.CreateUpdateInstaller()
+        if ($installer.IsBusy) {
+            Write-Log -Level WARN -Component WINUPDATE -Message 'Windows Update installer is busy with another operation - deferring to the next run'
+            $outcome.Errors.Add('Windows Update installer busy')
+            return $outcome
+        }
+        if ($installer.RebootRequiredBeforeInstallation) {
+            Write-Log -Level WARN -Component WINUPDATE -Message 'Windows requires a reboot BEFORE more updates can install - deferring installation'
+            $outcome.RebootRequired = $true
+            return $outcome
+        }
+    }
+    catch {
+        Write-Log -Level ERROR -Component WINUPDATE -Message "Could not create update installer: $_"
+        $outcome.Errors.Add("COM installer creation failed: $_")
+        return $outcome
+    }
+
+    # Re-run the search to get live IUpdate objects for the IDs the audit queued.
+    try {
+        $searchResult = $session.CreateUpdateSearcher().Search('IsInstalled=0 and IsHidden=0')
+    }
+    catch {
+        Write-Log -Level ERROR -Component WINUPDATE -Message "Windows Update COM search failed: $_"
+        $outcome.Errors.Add("COM search failed: $_")
+        return $outcome
+    }
+
+    $wantedIds = @{}
+    foreach ($d in $DiffItems) {
+        if ($d.Identity) { $wantedIds[[string]$d.Identity] = $true }
+    }
+
+    $toInstall = New-Object -ComObject Microsoft.Update.UpdateColl
+    for ($i = 0; $i -lt $searchResult.Updates.Count; $i++) {
+        $u = $searchResult.Updates.Item($i)
+        # If the audit supplied IDs, install exactly those (diff-list discipline). If it
+        # supplied none, fall back to everything the search found.
+        if ($wantedIds.Count -gt 0 -and -not $wantedIds.ContainsKey([string]$u.Identity.UpdateID)) { continue }
+        if (-not $u.EulaAccepted) {
+            try { $u.AcceptEula() }
+            catch { Write-Log -Level DEBUG -Component WINUPDATE -Message "Could not accept EULA for $($u.Title): $_" }
+        }
+        [void]$toInstall.Add($u)
+    }
+
+    $outcome.Attempted = $toInstall.Count
+    if ($toInstall.Count -eq 0) {
+        Write-Log -Level INFO -Component WINUPDATE -Message 'COM search returned none of the queued updates - nothing left to install'
+        return $outcome
+    }
+
+    # ── Download ─────────────────────────────────────────────────────────────
+    Write-Log -Level INFO -Component WINUPDATE -Message "Downloading $($toInstall.Count) update(s) via Windows Update COM API"
+    try {
+        $downloader = $session.CreateUpdateDownloader()
+        $downloader.Updates = $toInstall
+        $dl = $downloader.Download()
+        # 2 = Succeeded, 3 = SucceededWithErrors
+        if ($dl.ResultCode -notin 2, 3) {
+            Write-Log -Level WARN -Component WINUPDATE -Message "Download finished with result code $($dl.ResultCode)"
+        }
+    }
+    catch {
+        Write-Log -Level ERROR -Component WINUPDATE -Message "Update download failed: $_"
+        $outcome.Errors.Add("Download failed: $_")
+        return $outcome
+    }
+
+    # Only downloaded updates can be installed.
+    $ready = New-Object -ComObject Microsoft.Update.UpdateColl
+    for ($i = 0; $i -lt $toInstall.Count; $i++) {
+        $u = $toInstall.Item($i)
+        if ($u.IsDownloaded) { [void]$ready.Add($u) }
+        else {
+            Write-Log -Level WARN -Component WINUPDATE -Message "Not downloaded, skipping: $($u.Title)"
+            $outcome.Errors.Add("[Not downloaded] $($u.Title)")
+            $outcome.Failed++
+        }
+    }
+
+    if ($ready.Count -eq 0) {
+        Write-Log -Level WARN -Component WINUPDATE -Message 'No updates were successfully downloaded - nothing to install'
+        return $outcome
+    }
+
+    # ── Install ──────────────────────────────────────────────────────────────
+    Write-Log -Level INFO -Component WINUPDATE -Message "Installing $($ready.Count) update(s) via Windows Update COM API"
+    try {
+        $installer.Updates = $ready
+        $ir = $installer.Install()
+        $outcome.RebootRequired = [bool]$ir.RebootRequired
+
+        for ($i = 0; $i -lt $ready.Count; $i++) {
+            $title = $ready.Item($i).Title
+            $code = 4
+            try { $code = $ir.GetUpdateResult($i).ResultCode } catch { $code = $ir.ResultCode }
+            switch ($code) {
+                2 {
+                    Write-Log -Level SUCCESS -Component WINUPDATE -Message "Installed: $title"
+                    $outcome.Installed++
+                }
+                3 {
+                    Write-Log -Level WARN -Component WINUPDATE -Message "Installed with errors: $title"
+                    $outcome.Installed++
+                }
+                default {
+                    Write-Log -Level ERROR -Component WINUPDATE -Message "Install failed (result code $code): $title"
+                    $outcome.Errors.Add("[Result $code] $title")
+                    $outcome.Failed++
+                }
+            }
+        }
+    }
+    catch {
+        Write-Log -Level ERROR -Component WINUPDATE -Message "Update installation failed: $_"
+        $outcome.Errors.Add("Install failed: $_")
+        $outcome.Failed += $ready.Count
+    }
+
+    return $outcome
 }
 
 function Invoke-WindowsUpdate {
@@ -161,42 +340,43 @@ function Invoke-WindowsUpdate {
             }
         }
         catch {
-            Write-Log -Level WARN -Component WINUPDATE -Message "PSWindowsUpdate module error: $_. Falling back to usoclient."
+            Write-Log -Level WARN -Component WINUPDATE -Message "PSWindowsUpdate module error: $_. Falling back to the Windows Update COM API."
             $pswuAvailable = $false
         }
     }
 
+    $usedCom = $false
     if (-not $pswuAvailable) {
-        # Fallback: usoclient — async, triggers WU service to scan+install all pending at once
-        Write-Log -Level WARN -Component WINUPDATE -Message "Triggering usoclient to install $($diff.Count) update(s) (async — results unverifiable)"
-        $usoClient = Join-Path $env:SystemRoot 'System32\usoclient.exe'
-        $null = & $usoClient StartScan 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            Write-Log -Level WARN -Component WINUPDATE -Message "usoclient StartScan failed with exit code $LASTEXITCODE"
-        }
-        Start-Sleep -Seconds 2
-        $null = & $usoClient StartInstall 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            Write-Log -Level WARN -Component WINUPDATE -Message "usoclient StartInstall failed with exit code $LASTEXITCODE"
-        }
-        $processed = $diff.Count
-        # Do NOT force RebootRequired here. usoclient is an unverifiable async trigger; if a
-        # reboot is genuinely needed Windows sets its own authoritative marker, which the
-        # launcher detects at the next startup. Forcing $true from this fire-and-forget path
-        # made Stage 5 reboot on every run that fell back to usoclient — a needless reboot
-        # cycle. Reboot is now deferred to Windows' real signal.
-        $rebootRequired = $false
-        Write-Log -Level INFO -Component WINUPDATE -Message "usoclient triggered $processed update(s) — reboot deferred to Windows' own marker"
+        # Fallback: the built-in Windows Update COM API. See Install-WindowsUpdateViaCom for
+        # why usoclient was removed (dead CLI on current Windows: exit 1, installs nothing,
+        # and its results were reported as successes because they could not be verified).
+        $usedCom = $true
+        Write-Log -Level INFO -Component WINUPDATE -Message "PSWindowsUpdate unavailable - installing $($diff.Count) update(s) via the Windows Update COM API"
+
+        $comResult = Install-WindowsUpdateViaCom -DiffItems @($diff)
+        $processed = $comResult.Installed
+        $failed = $comResult.Failed
+        $errors += @($comResult.Errors)
+        if ($comResult.RebootRequired) { $rebootRequired = $true }
+
+        Write-Log -Level INFO -Component WINUPDATE -Message "COM install: $($comResult.Installed) installed, $($comResult.Failed) failed (of $($comResult.Attempted) attempted)"
     }
 
-    $extraData = @{ RebootRequired = $rebootRequired; UsedUsoclient = (-not $pswuAvailable) }
+    $extraData = @{ RebootRequired = $rebootRequired; UsedComApi = $usedCom }
     if ($rebootRequired) {
         Write-Log -Level WARN -Component WINUPDATE -Message 'One or more updates require a reboot'
     }
 
-    $status = if (-not $pswuAvailable) { 'Warning' } elseif ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
-    Write-Log -Level INFO -Component WINUPDATE -Message "Done: $processed triggered/installed, $failed failed"
-    return New-ModuleResult -ModuleName 'WindowsUpdates' -Status $status -ItemsDetected $diff.Count `
+    # Status now reflects what actually happened on BOTH paths. The old version hard-coded
+    # 'Warning' for the fallback because usoclient results were unknowable; COM results are
+    # verified, so the fallback is judged by the same rule as the primary path.
+    $status = if ($failed -eq 0 -and $processed -gt 0) { 'Success' }
+    elseif ($failed -eq 0) { 'Skipped' }
+    elseif ($processed -gt 0) { 'Warning' }
+    else { 'Failed' }
+
+    Write-Log -Level INFO -Component WINUPDATE -Message "Done: $processed installed, $failed failed"
+    return New-ModuleResult -ModuleName 'WindowsUpdates' -Status $status -ModuleType 'Type2' -ItemsDetected $diff.Count `
         -ItemsProcessed $processed -ItemsFailed $failed -RebootRequired $rebootRequired `
         -Errors $errors -ExtraData $extraData
 }

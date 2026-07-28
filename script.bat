@@ -1051,17 +1051,28 @@ FOR /F "tokens=*" %%V IN ('"!PS7_EXECUTABLE!" -Command "$PSVersionTable.PSVersio
 REM -----------------------------------------------------------------------------
 REM PowerShell Module Dependencies (PSWindowsUpdate for Windows Update management)
 REM -----------------------------------------------------------------------------
+REM The probe MUST set a non-zero exit code when the module is missing. Write-Host does not
+REM affect $LASTEXITCODE, so the old probe ("...else { Write-Host 'MISSING' }") always exited 0
+REM and this block always took the "already installed" branch - the install below never ran on
+REM ANY machine. WindowsUpdates (Type2) then always fell through to its usoclient fallback.
+REM 'exit 1' in the else branch is what makes the ERRORLEVEL test below meaningful.
+REM
+REM Scope is ALLUSERS, not CurrentUser: the monthly task runs as SYSTEM, which has its own
+REM profile (C:\Windows\system32\config\systemprofile) and cannot see a per-user module the
+REM interactive admin installed. AllUsers lands in %ProgramFiles%\PowerShell\Modules, which is
+REM on PSModulePath for every account including SYSTEM. (A redirected/OneDrive Documents
+REM folder makes the CurrentUser path even less predictable.)
 CALL :LOG_MESSAGE "Checking PSWindowsUpdate module availability..." "INFO" "LAUNCHER"
-pwsh.exe -NoProfile -Command "if (Get-Module -ListAvailable -Name PSWindowsUpdate) { Write-Host 'PSWINDOWSUPDATE_AVAILABLE' } else { Write-Host 'PSWINDOWSUPDATE_MISSING' }" >nul 2>&1
+pwsh.exe -NoProfile -Command "if (Get-Module -ListAvailable -Name PSWindowsUpdate) { exit 0 } else { exit 1 }" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "PSWindowsUpdate module is already installed" "SUCCESS" "LAUNCHER"
 ) ELSE (
-    CALL :LOG_MESSAGE "PSWindowsUpdate module not found. Installing..." "INFO" "LAUNCHER"
-    pwsh.exe -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Set-PSRepository -Name PSGallery -InstallationPolicy Trusted; Install-Module -Name PSWindowsUpdate -Force -Scope CurrentUser -Repository PSGallery; Write-Host 'PSWINDOWSUPDATE_INSTALLED' } catch { Write-Host 'PSWINDOWSUPDATE_INSTALL_FAILED'; Write-Host $_.Exception.Message; exit 1 }"
+    CALL :LOG_MESSAGE "PSWindowsUpdate module not found. Installing (AllUsers)..." "INFO" "LAUNCHER"
+    pwsh.exe -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Install-PackageProvider -Name NuGet -Force -Scope AllUsers -ErrorAction Stop | Out-Null; Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue; Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -Repository PSGallery -AllowClobber -ErrorAction Stop; if (Get-Module -ListAvailable -Name PSWindowsUpdate) { exit 0 } else { exit 1 } } catch { Write-Host $_.Exception.Message; exit 1 }"
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "PSWindowsUpdate module installed successfully" "SUCCESS" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "PSWindowsUpdate module installation failed - Windows Updates task will not be available" "WARN" "LAUNCHER"
+        CALL :LOG_MESSAGE "PSWindowsUpdate install failed - WindowsUpdates will use the built-in Windows Update COM API instead" "WARN" "LAUNCHER"
     )
 )
 
@@ -1586,16 +1597,42 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     SET "PS_ARGS=!PS_ARGS!Write-Host 'Maintenance session completed.' -ForegroundColor Green; "
     SET "PS_ARGS=!PS_ARGS!}"
     
+    REM ---------------------------------------------------------------------------------
+    REM 30s cooldown before handing off to the orchestrator.
+    REM
+    REM The bootstrap phase immediately above may have installed PowerShell 7, winget/App
+    REM Installer and PSWindowsUpdate, and added Defender exclusions. Those leave work in
+    REM flight for a few seconds - MSI/winget file locks, registry and PATH writes, service
+    REM registration, Defender picking up the new exclusions. Handing straight over means the
+    REM orchestrator's first module can hit a half-registered dependency. This is the same
+    REM reasoning as the existing "wait for PowerShell 7 registration to settle" retry loop.
+    REM
+    REM DO NOT use TIMEOUT here. TIMEOUT aborts instantly ("Input redirection is not
+    REM supported") whenever stdin is redirected - which is precisely the unattended
+    REM Task Scheduler case, i.e. the fresh-machine run that needs the settle time most.
+    REM Measured: TIMEOUT /T 5 /NOBREAK returned in 0.05s with stdin redirected, while
+    REM `ping -n 6` waited the full 5s. So: ping for unattended (reliable, silent),
+    REM TIMEOUT for interactive (visible countdown, and a keypress can skip it).
+    CALL :LOG_MESSAGE "Cooling down 30s to let freshly installed dependencies settle before handing off..." "INFO" "LAUNCHER"
+    IF DEFINED ORCH_EXTRA_ARGS (
+        ping -n 31 127.0.0.1 >nul 2>&1
+    ) ELSE (
+        ECHO.
+        ECHO   Starting the maintenance orchestrator in 30 seconds - press any key to skip...
+        TIMEOUT /T 30
+    )
+    CALL :LOG_MESSAGE "Cooldown complete - handing off to the orchestrator" "INFO" "LAUNCHER"
+
     REM Write all remaining launcher messages BEFORE START so the bootstrap log
     REM is complete by the time the orchestrator reads and deletes it.
     CALL :LOG_MESSAGE "Launching: \"%PS_EXECUTABLE%\" !PS_ARGS!" "DEBUG" "LAUNCHER"
     CALL :LOG_MESSAGE "PowerShell 7+ window launching - batch launcher exiting" "SUCCESS" "LAUNCHER"
     CALL :LOG_MESSAGE "All further operations will run in the dedicated PowerShell window" "INFO" "LAUNCHER"
     CALL :LOG_MESSAGE "=== END OF LAUNCHER LOG ===" "INFO" "LAUNCHER"
-    
+
     REM Clear LOG_FILE now so no stray write can race with the orchestrator's delete
     SET "LOG_FILE="
-    
+
     START "Windows Maintenance Automation - PowerShell 7" "%PS_EXECUTABLE%" !PS_ARGS!
     
     REM Exit batch script cleanly - PowerShell 7 window takes over
