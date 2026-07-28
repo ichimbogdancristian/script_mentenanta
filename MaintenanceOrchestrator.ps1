@@ -603,13 +603,25 @@ try {
     # unrelated code). The launcher therefore hands the freshly-extracted copy to us via
     # $env:PENDING_SCRIPT_UPDATE, and we copy it into the launcher folder from this separate
     # process, after the launcher has exited.
+    #
+    # The copy REWRITES the file with CRLF endings instead of copying bytes verbatim.
+    # cmd.exe re-seeks a running .bat by byte offset, so an LF-only batch file makes it
+    # mis-locate line boundaries and jump into unrelated blocks - the launcher then never
+    # reaches the orchestrator, and because it is the launcher that is broken nothing here
+    # can repair it on the following run. `.gitattributes` (*.bat eol=crlf) is the primary
+    # fix - it makes GitHub's `git archive` zip ship CRLF - but this normalisation is the
+    # backstop: it keeps a self-update from ever bricking the entry point.
     if ($env:PENDING_SCRIPT_UPDATE -and (Test-Path $env:PENDING_SCRIPT_UPDATE)) {
         try {
             $launcherDir = $env:ORIGINAL_SCRIPT_DIR
             if ($launcherDir -and (Test-Path $launcherDir)) {
                 $destBat = Join-Path $launcherDir 'script.bat'
-                Copy-Item -Path $env:PENDING_SCRIPT_UPDATE -Destination $destBat -Force -ErrorAction Stop
-                Write-Log -Level SUCCESS -Component ORCH -Message "script.bat self-update applied: $destBat"
+                # -Raw + regex so an already-CRLF source is not turned into CRCRLF.
+                $batText = [System.IO.File]::ReadAllText($env:PENDING_SCRIPT_UPDATE)
+                $batText = [regex]::Replace($batText, '\r\n|\r|\n', "`r`n")
+                # No BOM: cmd.exe echoes a leading UTF-8 BOM as garbage on the first line.
+                [System.IO.File]::WriteAllText($destBat, $batText, [System.Text.UTF8Encoding]::new($false))
+                Write-Log -Level SUCCESS -Component ORCH -Message "script.bat self-update applied (CRLF-normalised): $destBat"
             }
         }
         catch {

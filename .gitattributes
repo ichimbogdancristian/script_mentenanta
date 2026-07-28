@@ -1,0 +1,16 @@
+# cmd.exe requires CRLF line endings in .bat/.cmd files. It streams a batch file from
+# disk by byte offset and re-seeks after every command; with LF-only endings it
+# mis-locates line boundaries and execution jumps into the middle of unrelated blocks.
+#
+# This matters here because script.bat SELF-UPDATES from
+# https://github.com/.../archive/refs/heads/master.zip. GitHub builds that zip with
+# `git archive` using server-side defaults (core.autocrlf unset), so without this
+# attribute the zip ships the LF-normalised blob and the launcher overwrites the user's
+# working CRLF script.bat with an LF-only one. The next run then executes a batch file
+# cmd.exe cannot parse -- the run jumps between unrelated error blocks and never reaches
+# the orchestrator. `eol=crlf` makes `git archive` emit CRLF regardless of the server's
+# config, so the self-updated copy stays runnable.
+#
+# Do NOT remove this, and do NOT let a `* text=auto` rule above it win.
+*.bat text eol=crlf
+*.cmd text eol=crlf
