@@ -1401,6 +1401,60 @@ function Remove-AppxProvisionedPackageCompat {
 
 <#
 .SYNOPSIS
+    Detects whether Windows has a pending reboot from Component Based Servicing (CBS) or
+    Windows Update, which blocks operations like DISM /StartComponentCleanup.
+.DESCRIPTION
+    DISM's component-store cleanup fails with 0x800F0806 ("the operation could not be
+    completed due to pending operations") whenever a prior servicing operation - most
+    commonly a .NET Framework update - is waiting for a reboot to finish applying. Retrying
+    the same cleanup without rebooting just repeats the same failure every run. This checks
+    the well-known registry indicators for that state so a caller can skip the attempt
+    entirely and signal RebootRequired instead of logging a hard error for a condition a
+    reboot (handled centrally at Stage 5, per the operating contract - modules never reboot
+    themselves) will resolve on its own.
+.OUTPUTS
+    [bool] $true if a reboot is pending for any of these reasons.
+#>
+function Test-CbsRebootPending {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+
+    $indicators = @(
+        @{ Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'; Kind = 'KeyExists' }
+        @{ Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootInProgress'; Kind = 'KeyExists' }
+        @{ Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\PackagesPending'; Kind = 'HasSubkeys' }
+        @{ Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'; Kind = 'KeyExists' }
+        @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager'; Kind = 'ValueExists'; Name = 'PendingFileRenameOperations' }
+    )
+
+    foreach ($indicator in $indicators) {
+        try {
+            switch ($indicator.Kind) {
+                'KeyExists' {
+                    if (Test-Path -Path $indicator.Path -ErrorAction SilentlyContinue) { return $true }
+                }
+                'HasSubkeys' {
+                    if (Test-Path -Path $indicator.Path -ErrorAction SilentlyContinue) {
+                        if (@(Get-ChildItem -Path $indicator.Path -ErrorAction SilentlyContinue).Count -gt 0) { return $true }
+                    }
+                }
+                'ValueExists' {
+                    $val = (Get-ItemProperty -Path $indicator.Path -Name $indicator.Name -ErrorAction SilentlyContinue).($indicator.Name)
+                    if ($val) { return $true }
+                }
+            }
+        }
+        catch {
+            Write-Log -Level DEBUG -Component CORE -Message "Reboot-pending indicator check failed for $($indicator.Path): $_"
+        }
+    }
+
+    return $false
+}
+
+<#
+.SYNOPSIS
     Returns a list of installed applications from the Windows registry.
     Covers both 32-bit and 64-bit entry points plus AppX packages.
 #>
@@ -1769,6 +1823,7 @@ Export-ModuleMember -Function @(
     'Save-DiffList',
     'Get-DiffList',
     'New-ModuleResult',
+    'Test-CbsRebootPending',
     'Get-InstalledApp',
     'Get-WingetUpgrade',
     'Test-CommandAvailable',
