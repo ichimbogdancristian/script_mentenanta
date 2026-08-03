@@ -866,16 +866,51 @@ REM ----------------------------------------------------------------------------
 REM Winget Self-Update (keep App Installer / winget current before we rely on it).
 REM Only runs when winget is available; fully non-fatal and non-interactive so an
 REM unattended run is never blocked by "already current" or an update being unavailable.
+REM
+REM "winget upgrade --id Microsoft.AppInstaller" (the old approach here) is NOT a
+REM reliable self-update path: winget's own package-matching does not reliably see
+REM itself as an installed/upgradable package, so this consistently failed with
+REM APPINSTALLER_CLI_ERROR_NO_APPLICATIONS_FOUND ("No installed package found matching
+REM input criteria") regardless of whether a newer version existed - confirmed against
+REM multiple open microsoft/winget-cli issues, not a local misconfiguration. The
+REM officially documented fix (same sequence Microsoft Learn's troubleshooting page
+REM prescribes, and the same one already used above for a from-scratch install) is the
+REM Microsoft.WinGet.Client module's Repair-WinGetPackageManager cmdlet, which operates
+REM via the AppX/MSIX APIs directly rather than asking winget.exe to find itself.
+REM
+REM Caveat that is NOT fixable from here: Microsoft's own docs state winget.exe is not
+REM supported under NT AUTHORITY\SYSTEM at all (MSIX packages register per-user, and
+REM SYSTEM is explicitly excluded), and multiple issues report Repair-WinGetPackageManager
+REM itself silently reporting "already in a good state" under SYSTEM without actually
+REM updating anything. The monthly scheduled task runs this launcher as SYSTEM, so on
+REM that path treat this as "best effort" - the before/after version is logged so the
+REM real behaviour is visible rather than just trusting the exit code.
 REM -----------------------------------------------------------------------------
 IF "!WINGET_AVAILABLE!"=="YES" (
     CALL :LOG_MESSAGE "Refreshing winget sources..." "INFO" "LAUNCHER"
     "!WINGET_EXE!" source update >nul 2>&1
-    CALL :LOG_MESSAGE "Attempting to update winget (App Installer) itself..." "INFO" "LAUNCHER"
-    "!WINGET_EXE!" upgrade --id Microsoft.AppInstaller --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "winget self-update applied (or already current)" "SUCCESS" "LAUNCHER"
+
+    FOR /F "tokens=*" %%W IN ('whoami 2^>nul') DO SET "CURRENT_RUN_USER=%%W"
+    IF /I "!CURRENT_RUN_USER!"=="nt authority\system" (
+        CALL :LOG_MESSAGE "Running as NT AUTHORITY\SYSTEM - winget/App Installer self-update is documented by Microsoft as unsupported in this context; attempting anyway via Repair-WinGetPackageManager, but treat the outcome as best-effort" "WARN" "LAUNCHER"
+    )
+
+    FOR /F "tokens=*" %%V IN ('"!WINGET_EXE!" --version 2^>nul') DO SET "WINGET_VERSION_BEFORE=%%V"
+    CALL :LOG_MESSAGE "winget version before self-update attempt: !WINGET_VERSION_BEFORE!" "DEBUG" "LAUNCHER"
+
+    CALL :LOG_MESSAGE "Attempting to update winget (App Installer) via Repair-WinGetPackageManager..." "INFO" "LAUNCHER"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; if (-not (Get-Module -ListAvailable -Name Microsoft.WinGet.Client)) { Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser | Out-Null }; Import-Module Microsoft.WinGet.Client -Force; Repair-WinGetPackageManager -AllUsers -Force -Latest; Write-Host 'WINGET_REPAIR_DONE' } catch { Write-Host 'WINGET_REPAIR_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
+    SET "WINGET_REPAIR_RC=!ERRORLEVEL!"
+
+    CALL :REFRESH_PATH_FROM_REGISTRY
+    FOR /F "tokens=*" %%V IN ('"!WINGET_EXE!" --version 2^>nul') DO SET "WINGET_VERSION_AFTER=%%V"
+
+    IF "!WINGET_VERSION_AFTER!" NEQ "!WINGET_VERSION_BEFORE!" (
+        CALL :LOG_MESSAGE "winget updated: !WINGET_VERSION_BEFORE! -> !WINGET_VERSION_AFTER!" "SUCCESS" "LAUNCHER"
+    ) ELSE IF !WINGET_REPAIR_RC! EQU 0 (
+        CALL :LOG_MESSAGE "Repair-WinGetPackageManager completed - winget version unchanged (!WINGET_VERSION_AFTER!), which is expected if already current" "INFO" "LAUNCHER"
     ) ELSE (
-        CALL :LOG_MESSAGE "winget self-update not applied (already current or unavailable) - continuing" "INFO" "LAUNCHER"
+        CALL :LOG_MESSAGE "winget self-update attempt failed - continuing with version !WINGET_VERSION_AFTER!" "WARN" "LAUNCHER"
     )
 )
 
