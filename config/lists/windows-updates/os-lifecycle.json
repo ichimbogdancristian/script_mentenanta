@@ -1,0 +1,59 @@
+{
+  "_comment": "Windows 10/11 servicing-lifecycle reference. Used ONLY to detect when the running OS has fallen out of free servicing and, for Windows 11, to pick an auto-advance target version. This is deliberately NOT a CVE-to-KB map: Windows Update's own COM API (see WindowsUpdatesAudit.psm1) is already the authoritative source for which specific updates are missing on an in-support machine. Maintain by checking https://learn.microsoft.com/en-us/windows/release-health monthly - this file only needs a new row when a new feature version ships or reaches end of service, which is a handful of times a year, not per-CVE.",
+  "_excludedEditions": "LTSC/IoT Enterprise LTSC editions (EditionID containing 'EnterpriseS' or 'IoTEnterpriseS') follow a completely different multi-year servicing model and are intentionally NOT covered by this file - the audit skips lifecycle evaluation for them rather than guess.",
+  "windows10": {
+    "22H2": {
+      "editions": {
+        "consumer": {
+          "endOfService": "2025-10-14",
+          "note": "Home/Pro/Pro Education/Pro for Workstations. This was the final feature version of Windows 10; there is no newer version to advance to."
+        },
+        "enterprise": {
+          "endOfService": "2025-10-14",
+          "note": "Enterprise/Education editions of 22H2 reached end of servicing the same day as consumer editions for Windows 10 (unlike Windows 11, Windows 10 did not extend Enterprise/Education servicing further)."
+        }
+      },
+      "esuAvailable": true,
+      "esuEndDate": "2026-10-13",
+      "esuNote": "Consumer ESU (free via Windows Backup/MSA, Microsoft Rewards points, or a paid one-time purchase) covers security-only updates through this date. Commercial/volume-licensed ESU (Enterprise/Education, via MAK/KMS activation keys) follows a separate multi-year paid schedule not modeled here. Verify current status at https://www.microsoft.com/en-us/windows/extended-security-updates before relying on this date - Microsoft has adjusted ESU terms since the program's announcement."
+    }
+  },
+  "windows11": {
+    "_comment": "latestSupportedVersion is the auto-advance target when autoAdvanceEolFeatureVersion is enabled (see main-config.json modules.windowsUpdates). Bump this the month a new Hx version ships and has rolled out broadly - not on day one, since early rollout can still have known issues.",
+    "latestSupportedVersion": "25H2",
+    "versions": {
+      "21H2": {
+        "editions": {
+          "consumer": { "endOfService": "2023-10-10" },
+          "enterprise": { "endOfService": "2024-10-08" }
+        }
+      },
+      "22H2": {
+        "editions": {
+          "consumer": { "endOfService": "2024-10-08" },
+          "enterprise": { "endOfService": "2025-10-14" }
+        }
+      },
+      "23H2": {
+        "editions": {
+          "consumer": { "endOfService": "2025-11-11" },
+          "enterprise": { "endOfService": "2026-11-10" }
+        }
+      },
+      "24H2": {
+        "editions": {
+          "consumer": { "endOfService": "2026-10-13", "approximate": true },
+          "enterprise": { "endOfService": "2027-10-12", "approximate": true }
+        },
+        "_note": "Released Oct 2024. Exact EOS date not yet confirmed in Microsoft's published lifecycle table at time of writing - estimated from the standard 24-month (consumer) / 36-month (Enterprise/Education) servicing cadence. Verify at https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information before the estimated date."
+      },
+      "25H2": {
+        "editions": {
+          "consumer": { "endOfService": "2027-09-30", "approximate": true },
+          "enterprise": { "endOfService": "2028-09-30", "approximate": true }
+        },
+        "_note": "Released Sept 30, 2025 as an enablement package on top of 24H2. Dates estimated from the standard 24/36-month cadence - verify before relying on them."
+      }
+    }
+  }
+}

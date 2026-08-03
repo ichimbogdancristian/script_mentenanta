@@ -207,7 +207,7 @@ the action module switches on):
 | 1 | SoftwareManagement | `SoftwareManagement` | ✅ | `Action` = remove/install/upgrade | bloatware removal (40+ MS Store apps), essential-app install, app upgrade |
 | 2 | SystemConfiguration | `SystemConfiguration` | ✅ | `ConfigType` = restorepoint/security/telemetry/optimization | restore point create+prune, Defender/firewall/security registry + **Sysmon** + **password/lockout policy (secedit)** + **advanced audit policy (auditpol)**, privacy services/registry/tasks, services/power/startup/visual-fx, **plus the report-only inventory + health datasets** |
 | 3 | DiskCleanup | `DiskCleanup` | ✅ | `Type` = temp/browser/update/bin | temp/browser cache/cookies, DISM component store, recycle-bin cleanup |
-| 4 | WindowsUpdates | `WindowsUpdates` | ✅ | — | Windows Update detection (3-layer: COM/Registry/EventLog) and installation |
+| 4 | WindowsUpdates | `WindowsUpdates` | ✅ | `Type` = (blank)/`lifecycle` | Windows Update detection (COM API only, trusted even at zero) and installation; **plus** OS end-of-service detection and, opt-in, a Windows 11 feature-version auto-advance / Windows 10 Consumer ESU enrollment attempt |
 
 **`SystemConfiguration` internal ordering (the important part).** Both halves of this pair run
 their work in a deliberate order, not the order items happen to appear:
@@ -303,9 +303,44 @@ turn the two non-registry areas off. Both default to enforcing.
   string). Nothing survives between runs except the final HTML report (copied to
   `$env:ORIGINAL_SCRIPT_DIR`, see below), so a missing essential app is queued for install on
   every run regardless of whether a prior run installed it and the user removed it since.
-- `WindowsUpdates` detects pending updates via three layers: Layer 1 COM API
-  (`Windows.Update.Session`) → Layer 2 registry pending/setup-in-progress flags → Layer 3
-  event-log analysis.
+- `WindowsUpdates` detects pending updates via the Windows Update COM API
+  (`Microsoft.Update.Session`) alone, and trusts its result even when it is zero. Earlier
+  versions added registry pending-flag and event-log fallback layers when the COM scan
+  returned nothing; those were removed after they caused an endless reboot loop on a
+  fully-patched machine (Layer 2 mistook reboot-pending flags for installable updates, Layer 3
+  re-enqueued KBs it found as "installed" event-log entries — see `Get-PendingUpdatesMultiSource`
+  for the full history). Never re-add a "stronger fallback" here without re-reading that comment.
+- `WindowsUpdates` also runs an **OS-lifecycle check** that is deliberately separate from the
+  COM-based pending-update detection above and is NOT a CVE-to-KB map. Windows Update's own COM
+  API is already the authoritative source for what's missing on an *in-support* machine; the
+  lifecycle check instead answers "has this feature version itself fallen out of free
+  servicing," using a small, hand-maintained catalog (`config/lists/windows-updates/os-lifecycle.json`)
+  that only needs a new entry a few times a year, not per-CVE. `Get-WindowsLifecycleStatus`
+  (Type1) reads `DisplayVersion`/`EditionID` from `HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion`,
+  skips LTSC/IoT Enterprise LTSC editions entirely (different multi-year servicing model, not
+  modeled here), and compares the consumer/enterprise end-of-service date against today. When
+  out of service, it queues one of two `Type = 'lifecycle'` diff items (gated by
+  `main-config.json` → `modules.windowsUpdates`, and always surfaced in the report via
+  `ExtraData.OSSupportStatus`/`Guidance` regardless of whether either flag is on):
+  - **Windows 11**, `autoAdvanceEolFeatureVersion` (default `true`): sets Microsoft's documented
+    `TargetReleaseVersion`/`TargetReleaseVersionInfo`/`ProductVersion` policy under
+    `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate` to the catalog's
+    `latestSupportedVersion`. This is intentionally the *only* mechanism used — Windows Update
+    itself then offers and installs the newer feature version through the exact same COM path
+    already used for regular updates, so no separate download/install code was added for this.
+  - **Windows 10**, `attemptConsumerEsuEnrollment` (default `false`, opt-in): Windows 10 22H2 was
+    the final feature version, so there is no version to advance to — only free Consumer ESU
+    (through the date in the catalog) helps. This sets the undocumented
+    `FeatureManagement\Overrides` flag `4011992206` and runs the built-in
+    `ClipESUConsumer.exe -evaluateEligibility`, then re-reads
+    `HKCU:\...\Windows\ConsumerESU` → `ESUEligibility` to confirm. It is off by default and
+    reports Warning (never Success) when unconfirmed, because Microsoft's consumer ESU flow is
+    built around an interactively signed-in account and this task normally runs as SYSTEM with
+    no such session — treat it as a best-effort nudge, not a guaranteed fix. Do not build a
+    hand-maintained CVE→KB→download-URL list as an alternative to this: a single cumulative
+    update fixes dozens to hundreds of CVEs at once, so Wazuh-style vulnerability feeds always
+    show large CVE counts on any machine behind by even one month, and per-CVE mapping would
+    both duplicate the COM audit above and go stale every Patch Tuesday.
 
 - **Type1** (`modules/type1/*Audit.psm1`): loads a baseline JSON from `config/lists/`, scans
   the live system, computes what needs to change, and calls `Save-DiffList -ModuleName <DiffKey>`.

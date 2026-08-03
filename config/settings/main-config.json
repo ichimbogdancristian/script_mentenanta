@@ -23,6 +23,11 @@
     "softwareManagement": {
       "_comment": "aggressiveOemRemoval: when false (default), bloatware patterns tagged \"tier\": \"broad\" in bloatware-detection.json (whole-vendor wildcards like *Razer*, *ASUS*, Dell.*, HP.* that can also match software the user deliberately installed) are excluded from detection. Set true to include them.",
       "aggressiveOemRemoval": false
+    },
+    "windowsUpdates": {
+      "_comment": "Lifecycle handling for OS versions that have fallen out of free servicing (see config/lists/windows-updates/os-lifecycle.json). autoAdvanceEolFeatureVersion (Windows 11 only): when true, sets Microsoft's documented TargetReleaseVersion policy to the latest known supported feature version so Windows Update itself offers and installs it through the SAME COM API path already used for regular updates - safe and unattended because it uses only a documented policy, never a hand-built download. attemptConsumerEsuEnrollment (Windows 10 only, default false): best-effort attempt to enroll in free Consumer ESU via the built-in ClipESUConsumer.exe tool. This is opt-in and NOT guaranteed to complete unattended - Microsoft's consumer ESU flow is designed around an interactively signed-in user/Microsoft Account, and this task normally runs as SYSTEM with no such session. The module always re-verifies eligibility afterward and reports Warning (never Success) if enrollment cannot be confirmed - enable only if you understand it may just be a no-op on most unattended runs.",
+      "autoAdvanceEolFeatureVersion": true,
+      "attemptConsumerEsuEnrollment": false
     }
   },
   "reporting": {
