@@ -464,15 +464,53 @@ REM ----------------------------------------------------------------------------
 :DOWNLOAD_REPOSITORY
 CALL :LOG_MESSAGE "Downloading latest repository from GitHub..." "INFO" "LAUNCHER"
 
+REM ---------------------------------------------------------------------------------
+REM Branch selection: master is the default; Testing exists so in-progress changes can
+REM be verified before they merge. The choice MUST be decided from the same early
+REM invocation-argument check used later for ORCH_EXTRA_ARGS (%1), never from TIMEOUT's
+REM own ERRORLEVEL: TIMEOUT returns instantly with ERRORLEVEL 1 ("Input redirection is
+REM not supported") whenever stdin is redirected, which is exactly what every unattended
+REM invocation does (the monthly SYSTEM task, and any manual -NonInteractive/-TaskNumbers
+REM run) - trusting ERRORLEVEL there would make unattended runs randomly "choose" Testing
+REM instead of deterministically getting master. Gating on %1 first means the countdown
+REM (and therefore any real keypress) only ever runs in a genuine interactive session.
+REM Unattended runs skip the wait entirely and go straight to master - there is no human
+REM who could press a key, so there is nothing to wait for (unlike the later pre-orchestrator
+REM cooldown, which waits even unattended because it is masking real file-lock settling
+REM time, not a human decision).
+REM ---------------------------------------------------------------------------------
+SET "SELECTED_BRANCH=master"
+SET "EARLY_UNATTENDED=NO"
+IF "%1"=="-TaskNumbers" SET "EARLY_UNATTENDED=YES"
+IF "%1"=="-NonInteractive" SET "EARLY_UNATTENDED=YES"
+
+IF "%EARLY_UNATTENDED%"=="YES" (
+    CALL :LOG_MESSAGE "Unattended run - using master branch" "INFO" "LAUNCHER"
+) ELSE (
+    ECHO.
+    ECHO   Downloading master branch in 30 seconds - press any key to download the Testing branch instead...
+    TIMEOUT /T 30
+    IF !ERRORLEVEL! EQU 1 SET "SELECTED_BRANCH=Testing"
+)
+
+IF "%SELECTED_BRANCH%"=="Testing" (
+    SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/Testing.zip"
+    SET "EXTRACT_FOLDER=script_mentenanta-Testing"
+    CALL :LOG_MESSAGE "User pressed a key - switching to the Testing branch" "WARN" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "Repository branch: master" "INFO" "LAUNCHER"
+)
+
 REM Clean up leftovers from a previous run. If the extracted folder cannot be fully
 REM removed (files held open by another process), abort NOW instead of extracting
 REM into a half-deleted tree: ZipFile.ExtractToDirectory fails on existing files and
 REM the run would otherwise die much later with a confusing "orchestrator not found".
+REM Both possible branch folders are removed here (not just the one selected this run) -
+REM otherwise a folder left behind by a crashed run on the OTHER branch would never get
+REM cleaned up, since a normal run only ever looks at its own EXTRACT_FOLDER.
 IF EXIST "%ZIP_FILE%" DEL /Q "%ZIP_FILE%" >nul 2>&1
-IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" (
-    CALL :LOG_MESSAGE "Removing leftover extracted folder from a previous run: %WORKING_DIR%%EXTRACT_FOLDER%" "DEBUG" "LAUNCHER"
-    RMDIR /S /Q "%WORKING_DIR%%EXTRACT_FOLDER%" >nul 2>&1
-)
+IF EXIST "%WORKING_DIR%script_mentenanta-master" RMDIR /S /Q "%WORKING_DIR%script_mentenanta-master" >nul 2>&1
+IF EXIST "%WORKING_DIR%script_mentenanta-Testing" RMDIR /S /Q "%WORKING_DIR%script_mentenanta-Testing" >nul 2>&1
 IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" (
     CALL :LOG_MESSAGE "Could not remove previous extracted folder - files are in use (a previous run's window still open? antivirus scan?)" "ERROR" "LAUNCHER"
     CALL :LOG_MESSAGE "Close anything using %WORKING_DIR%%EXTRACT_FOLDER%, then run script.bat again." "ERROR" "LAUNCHER"

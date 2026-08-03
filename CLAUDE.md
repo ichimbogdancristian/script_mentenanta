@@ -117,6 +117,20 @@ install/verify → launch `MaintenanceOrchestrator.ps1` under `pwsh`.
   next real run unless the change is also pushed to `master`. Because `cmd.exe` streams the
   running `.bat` from disk, the launcher cannot overwrite itself mid-run; it hands the fresh
   copy to the orchestrator via `PENDING_SCRIPT_UPDATE`, which applies it after the launcher exits.
+- **Branch selection (interactive only):** immediately before downloading, an interactive
+  session gets a 30s `TIMEOUT` ("press any key to download the Testing branch instead") so
+  in-progress work on `Testing` can be verified without editing the script. The branch
+  decision is made from the **same early `%1` check** used later for `ORCH_EXTRA_ARGS`
+  (`-TaskNumbers`/`-NonInteractive`), never from `TIMEOUT`'s own `ERRORLEVEL`: under
+  redirected stdin (every unattended invocation, including the monthly SYSTEM task) `TIMEOUT`
+  returns instantly with `ERRORLEVEL 1` ("Input redirection is not supported"), identical to a
+  real keypress — trusting it there would make unattended runs randomly select `Testing`.
+  Gating on `%1` first means unattended runs skip the wait entirely (there is no human who
+  could press a key, so there is nothing to wait for) and always get `master`; only a genuine
+  interactive session with a real keypress can select `Testing`. Both possible extracted
+  folders (`script_mentenanta-master` and `script_mentenanta-Testing`) are removed at the top
+  of `:DOWNLOAD_REPOSITORY` regardless of which branch this run selected, so a folder left
+  behind by a crashed run on the other branch doesn't linger forever.
 - **Single unified `maintenance.log`:** the launcher creates `maintenance.log` next to
   `script.bat` at the very top of `:MAIN_SCRIPT`, before the first log line (append mode so
   elevation/PS7 relaunches continue it), so the whole bootstrap phase is captured. After
