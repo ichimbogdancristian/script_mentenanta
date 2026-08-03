@@ -117,6 +117,28 @@ install/verify → launch `MaintenanceOrchestrator.ps1` under `pwsh`.
   next real run unless the change is also pushed to `master`. Because `cmd.exe` streams the
   running `.bat` from disk, the launcher cannot overwrite itself mid-run; it hands the fresh
   copy to the orchestrator via `PENDING_SCRIPT_UPDATE`, which applies it after the launcher exits.
+- **Branch-selection countdown (`:DOWNLOAD_REPOSITORY`):** immediately before the download,
+  the launcher runs a 30s branch choice that always defaults to `master` unless a human
+  intervenes. Which behavior it takes is decided from the invocation args
+  (`%1`=`-NonInteractive`/`-TaskNumbers`), **not** from `TIMEOUT`'s own exit code:
+  - **Unattended** (SYSTEM scheduled task, or `script.bat` called with `-NonInteractive`/
+    `-TaskNumbers`): no countdown is shown; `ping -n 31` silently waits 30s and `master` is
+    used. This exists because `TIMEOUT` sets `ERRORLEVEL 1` both for a real keypress *and*
+    for "input redirection is not supported" (the guaranteed case under a scheduled task) —
+    the two are indistinguishable from the return code alone, so the branch can't be picked
+    that way; the invocation args are the only reliable signal.
+  - **Interactive:** a visible `TIMEOUT /T 30` is shown ("press any key to download the
+    Testing branch instead"). A keypress sets `ERRORLEVEL 1` (unambiguous here, since stdin
+    isn't redirected) and switches `REPO_URL`/`EXTRACT_FOLDER` to the `Testing` branch
+    (`…/archive/refs/heads/Testing.zip` → `script_mentenanta-Testing\`); letting it expire
+    keeps `master`.
+  - The leftover-folder cleanup that follows sweeps **both** `script_mentenanta-master` and
+    `script_mentenanta-Testing` unconditionally (not just the branch chosen this run), so a
+    prior run's opposite pick can't survive as an orphaned tree if it crashed before Stage 5
+    could delete it.
+  - The `Testing` branch is a manual push target for trying in-progress changes against a
+    real unattended-style run before merging to `master` — it is not auto-synced from
+    `master` and can diverge; nothing in the pipeline merges it back.
 - **Single unified `maintenance.log`:** the launcher creates `maintenance.log` next to
   `script.bat` at the very top of `:MAIN_SCRIPT`, before the first log line (append mode so
   elevation/PS7 relaunches continue it), so the whole bootstrap phase is captured. After

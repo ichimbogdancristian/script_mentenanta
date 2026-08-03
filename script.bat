@@ -464,14 +464,56 @@ REM ----------------------------------------------------------------------------
 :DOWNLOAD_REPOSITORY
 CALL :LOG_MESSAGE "Downloading latest repository from GitHub..." "INFO" "LAUNCHER"
 
+REM -----------------------------------------------------------------------------
+REM Branch selection: 30s countdown, unattended-safe.
+REM
+REM Unattended runs (SYSTEM scheduled task, or script.bat invoked with -NonInteractive
+REM /-TaskNumbers) always continue with master - there is no console attached to press
+REM a key on, and TIMEOUT's ERRORLEVEL 1 for "input redirection not supported" is
+REM indistinguishable from a real keypress (ss64/TIMEOUT semantics), so the choice is
+REM made from the invocation args (checked directly here - ORCH_EXTRA_ARGS isn't
+REM computed until much later in the file), never from TIMEOUT's return code alone.
+REM Interactive runs get a visible 30s window: press any key to switch to the Testing
+REM branch instead; no key means master - the same outcome as an unattended run.
+REM -----------------------------------------------------------------------------
+SET "SELECTED_BRANCH=master"
+SET "EARLY_UNATTENDED=NO"
+IF "%1"=="-TaskNumbers" SET "EARLY_UNATTENDED=YES"
+IF "%1"=="-NonInteractive" SET "EARLY_UNATTENDED=YES"
+
+IF "%EARLY_UNATTENDED%"=="YES" (
+    CALL :LOG_MESSAGE "Unattended run - skipping branch-selection countdown, using master branch" "INFO" "LAUNCHER"
+    ping -n 31 127.0.0.1 >nul 2>&1
+) ELSE (
+    ECHO.
+    ECHO   Downloading master branch in 30 seconds - press any key to download the Testing branch instead...
+    TIMEOUT /T 30
+    IF !ERRORLEVEL! EQU 1 SET "SELECTED_BRANCH=Testing"
+)
+
+IF "%SELECTED_BRANCH%"=="Testing" (
+    SET "REPO_URL=https://github.com/ichimbogdancristian/script_mentenanta/archive/refs/heads/Testing.zip"
+    SET "EXTRACT_FOLDER=script_mentenanta-Testing"
+    CALL :LOG_MESSAGE "User pressed a key - switching to the Testing branch" "WARN" "LAUNCHER"
+) ELSE (
+    CALL :LOG_MESSAGE "Repository branch: master" "INFO" "LAUNCHER"
+)
+
 REM Clean up leftovers from a previous run. If the extracted folder cannot be fully
 REM removed (files held open by another process), abort NOW instead of extracting
 REM into a half-deleted tree: ZipFile.ExtractToDirectory fails on existing files and
 REM the run would otherwise die much later with a confusing "orchestrator not found".
+REM Both possible branch folders are swept - a previous run may have picked the other
+REM branch and left its extracted tree behind (Stage 5 normally deletes it, but a crash
+REM mid-run can leave it, same as the pre-existing single-folder case did).
 IF EXIST "%ZIP_FILE%" DEL /Q "%ZIP_FILE%" >nul 2>&1
-IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" (
-    CALL :LOG_MESSAGE "Removing leftover extracted folder from a previous run: %WORKING_DIR%%EXTRACT_FOLDER%" "DEBUG" "LAUNCHER"
-    RMDIR /S /Q "%WORKING_DIR%%EXTRACT_FOLDER%" >nul 2>&1
+IF EXIST "%WORKING_DIR%script_mentenanta-master" (
+    CALL :LOG_MESSAGE "Removing leftover extracted folder from a previous run: %WORKING_DIR%script_mentenanta-master" "DEBUG" "LAUNCHER"
+    RMDIR /S /Q "%WORKING_DIR%script_mentenanta-master" >nul 2>&1
+)
+IF EXIST "%WORKING_DIR%script_mentenanta-Testing" (
+    CALL :LOG_MESSAGE "Removing leftover extracted folder from a previous run: %WORKING_DIR%script_mentenanta-Testing" "DEBUG" "LAUNCHER"
+    RMDIR /S /Q "%WORKING_DIR%script_mentenanta-Testing" >nul 2>&1
 )
 IF EXIST "%WORKING_DIR%%EXTRACT_FOLDER%" (
     CALL :LOG_MESSAGE "Could not remove previous extracted folder - files are in use (a previous run's window still open? antivirus scan?)" "ERROR" "LAUNCHER"
