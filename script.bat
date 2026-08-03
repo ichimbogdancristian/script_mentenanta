@@ -489,6 +489,9 @@ IF "%EARLY_UNATTENDED%"=="YES" (
 ) ELSE (
     ECHO.
     ECHO   Downloading master branch in 30 seconds - press any key to download the Testing branch instead...
+    REM Console-only prompt text mirrored into the log too, so maintenance.log reflects
+    REM exactly what was shown on screen, not just the outcome that follows it.
+    ECHO   Downloading master branch in 30 seconds - press any key to download the Testing branch instead... >> "%LOG_FILE%" 2>nul
     TIMEOUT /T 30
     IF !ERRORLEVEL! EQU 1 SET "SELECTED_BRANCH=Testing"
 )
@@ -1152,8 +1155,15 @@ IF !ERRORLEVEL! EQU 0 (
 REM -----------------------------------------------------------------------------
 REM Windows Defender Exclusions (Moved after PowerShell installation)
 REM -----------------------------------------------------------------------------
+REM Two paths need excluding, not one: %WORKING_DIR% is the EXTRACTED tree (re-assigned at
+REM :DOWNLOAD_REPOSITORY to %EXTRACTED_PATH%, e.g. script_mentenanta-master\), which Stage 5
+REM deletes every run - but script.bat ITSELF lives one level up, in the stable launcher
+REM folder (%ORIGINAL_SCRIPT_DIR%, e.g. the Desktop), which is never covered by that
+REM exclusion. A batch file that self-elevates, downloads a zip from GitHub, extracts it and
+REM launches PowerShell is exactly the heuristic Defender flags, so excluding only the
+REM extracted subfolder still leaves script.bat itself exposed on every run.
 CALL :LOG_MESSAGE "Setting up Windows Defender exclusions..." "INFO" "LAUNCHER"
-powershell -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }"
+powershell -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionPath '%ORIGINAL_SCRIPT_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }"
 
 REM Package Manager Dependencies
 CALL :LOG_MESSAGE "Verifying package managers..." "INFO" "LAUNCHER"
@@ -1692,6 +1702,7 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
     ) ELSE (
         ECHO.
         ECHO   Starting the maintenance orchestrator in 30 seconds - press any key to skip...
+        ECHO   Starting the maintenance orchestrator in 30 seconds - press any key to skip... >> "%LOG_FILE%" 2>nul
         TIMEOUT /T 30
     )
     CALL :LOG_MESSAGE "Cooldown complete - handing off to the orchestrator" "INFO" "LAUNCHER"

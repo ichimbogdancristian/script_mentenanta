@@ -194,7 +194,11 @@ log is always closed via `Close-LogFile` in `finally`), then:
    reads it while it is still being written), then copies it to the launcher folder.
    `Publish-MaintenanceReport` is called again right before cleanup so the surviving copy embeds
    the complete log (incl. Stage 5).
-5. **Stage 5 – Cleanup + reboot:** removes the session's Defender exclusions unconditionally, then
+5. **Stage 5 – Cleanup + reboot:** removes the session's Defender exclusions unconditionally - both
+   the extracted working tree (`$ProjectRoot`) and the stable launcher folder script.bat itself
+   lives in (`$env:ORIGINAL_SCRIPT_DIR`), since script.bat's self-elevate/download/extract/launch
+   pattern is exactly what Defender's heuristics flag, and only excluding the extracted tree left
+   script.bat itself unexcluded - then
    a 120s countdown (configurable). Reboots and deletes the project folder unless a key is pressed,
    or skips reboot entirely when `rebootOnlyWhenRequired` is set and no module flagged `RebootRequired`.
 

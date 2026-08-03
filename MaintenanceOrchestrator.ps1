@@ -630,18 +630,26 @@ try {
     Write-Host ""
 
     # Removes the Windows Defender exclusions script.bat adds before dependency
-    # installation (working dir + powershell.exe/pwsh.exe), so this run's
-    # maintenance session doesn't leave a permanent, unscoped AV exclusion behind
-    # on the machine after cleanup. Paired setup/teardown for the same paths/processes
-    # script.bat's dependency-management phase excludes.
+    # installation (extracted working dir + the stable launcher folder script.bat itself
+    # lives in + powershell.exe/pwsh.exe), so this run's maintenance session doesn't leave a
+    # permanent, unscoped AV exclusion behind on the machine after cleanup. Paired
+    # setup/teardown for the same paths/processes script.bat's dependency-management phase
+    # excludes - see the Defender-exclusions comment in script.bat for why BOTH paths are
+    # needed (the extracted tree Stage 5 deletes, and the launcher folder that survives it).
     function Remove-DefenderSessionExclusions {
         [CmdletBinding()]
-        param([Parameter(Mandatory)] [string]$WorkingDir)
+        param(
+            [Parameter(Mandatory)] [string]$WorkingDir,
+            [Parameter()] [string]$LauncherDir
+        )
         try {
             Remove-MpPreference -ExclusionPath $WorkingDir -ErrorAction SilentlyContinue
+            if ($LauncherDir -and $LauncherDir -ne $WorkingDir) {
+                Remove-MpPreference -ExclusionPath $LauncherDir -ErrorAction SilentlyContinue
+            }
             Remove-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue
             Remove-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue
-            Write-Log -Level INFO -Component ORCH -Message "Removed Defender exclusions for $WorkingDir"
+            Write-Log -Level INFO -Component ORCH -Message "Removed Defender exclusions for $WorkingDir$(if ($LauncherDir -and $LauncherDir -ne $WorkingDir) { " and $LauncherDir" })"
         }
         catch {
             Write-Log -Level WARN -Component ORCH -Message "Could not remove Defender exclusions: $_"
@@ -655,7 +663,7 @@ try {
     # this only ran on the two cleanup paths, so pressing a key to keep files also silently
     # kept the AV exclusion forever.
     Write-Log -Level INFO -Component ORCH -Message "Stage 5: removing session Defender exclusions"
-    Remove-DefenderSessionExclusions -WorkingDir $ProjectRoot
+    Remove-DefenderSessionExclusions -WorkingDir $ProjectRoot -LauncherDir $env:ORIGINAL_SCRIPT_DIR
 
     $reportDisplay = if ($reportFile) { Split-Path $reportFile -Leaf } else { 'N/A' }
 
