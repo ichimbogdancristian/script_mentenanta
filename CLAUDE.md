@@ -118,19 +118,36 @@ install/verify → launch `MaintenanceOrchestrator.ps1` under `pwsh`.
   running `.bat` from disk, the launcher cannot overwrite itself mid-run; it hands the fresh
   copy to the orchestrator via `PENDING_SCRIPT_UPDATE`, which applies it after the launcher exits.
 - **Branch selection (interactive only):** immediately before downloading, an interactive
-  session gets a 30s `TIMEOUT` ("press any key to download the Testing branch instead") so
-  in-progress work on `Testing` can be verified without editing the script. The branch
-  decision is made from the **same early `%1` check** used later for `ORCH_EXTRA_ARGS`
-  (`-TaskNumbers`/`-NonInteractive`), never from `TIMEOUT`'s own `ERRORLEVEL`: under
-  redirected stdin (every unattended invocation, including the monthly SYSTEM task) `TIMEOUT`
-  returns instantly with `ERRORLEVEL 1` ("Input redirection is not supported"), identical to a
-  real keypress — trusting it there would make unattended runs randomly select `Testing`.
-  Gating on `%1` first means unattended runs skip the wait entirely (there is no human who
-  could press a key, so there is nothing to wait for) and always get `master`; only a genuine
-  interactive session with a real keypress can select `Testing`. Both possible extracted
-  folders (`script_mentenanta-master` and `script_mentenanta-Testing`) are removed at the top
-  of `:DOWNLOAD_REPOSITORY` regardless of which branch this run selected, so a folder left
-  behind by a crashed run on the other branch doesn't linger forever.
+  session gets a 30s "press any key to download the Testing branch instead" countdown so
+  in-progress work on `Testing` can be verified without editing the script. Two independent
+  guards keep unattended runs on `master`:
+  1. the **early `%1` check** (the same one used later for `ORCH_EXTRA_ARGS`,
+     `-TaskNumbers`/`-NonInteractive`) skips the prompt outright for the two unattended entry
+     points — both scheduled tasks pass `-NonInteractive` in their `/TR`, so neither ever waits;
+  2. `:PROMPT_BRANCH_CHOICE` itself fails safe to `master` when it has no usable console.
+
+  **`TIMEOUT` must never be used for this** — it was, and the feature never worked.
+  `timeout.exe` exits **0 for both "key pressed" and "wait expired"**: it does abort the wait
+  on a keypress but reports the same code either way (measured: a keypress ended a `/T 10` wait
+  after 3.16s with `ERRORLEVEL 0`; natural expiry also 0). The *only* thing that yields
+  `ERRORLEVEL 1` is redirected stdin ("Input redirection is not supported", ~0.15s). So the old
+  `TIMEOUT /T 30` + `IF ERRORLEVEL EQU 1` was inverted: a real keypress could **never** select
+  `Testing`, while any redirected-stdin run that slipped past guard 1 selected `Testing` every
+  time. `CHOICE` reports the cases correctly but only for a fixed key list, so the prompt polls
+  `[Console]::KeyAvailable` instead — true any-key semantics, a real countdown, and an
+  unambiguous exit code (1 = key pressed, 0 = expired); `KeyAvailable` throws with no console,
+  which is caught and returns `master`. Buffered keys are drained first so a stray earlier
+  keystroke can't phantom-select `Testing`.
+
+  Caveat: this is genuinely *any* key, so anything that injects synthetic input into the
+  focused console (keep-awake/jiggler utilities — a `Spacebar` injector was observed on the
+  dev machine while PowerToys Awake was running) can select `Testing` on its own. Unattended
+  runs are unaffected (guard 1 skips the prompt); if it becomes a nuisance interactively,
+  narrow the accepted key rather than going back to `TIMEOUT`.
+
+  Both possible extracted folders (`script_mentenanta-master` and `script_mentenanta-Testing`)
+  are removed at the top of `:DOWNLOAD_REPOSITORY` regardless of which branch this run selected,
+  so a folder left behind by a crashed run on the other branch doesn't linger forever.
 - **Single unified `maintenance.log`:** the launcher creates `maintenance.log` next to
   `script.bat` at the very top of `:MAIN_SCRIPT`, before the first log line (append mode so
   elevation/PS7 relaunches continue it), so the whole bootstrap phase is captured. After
