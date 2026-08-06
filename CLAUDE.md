@@ -117,28 +117,29 @@ install/verify → launch `MaintenanceOrchestrator.ps1` under `pwsh`.
   next real run unless the change is also pushed to `master`. Because `cmd.exe` streams the
   running `.bat` from disk, the launcher cannot overwrite itself mid-run; it hands the fresh
   copy to the orchestrator via `PENDING_SCRIPT_UPDATE`, which applies it after the launcher exits.
-- **Branch-selection countdown (`:DOWNLOAD_REPOSITORY`):** immediately before the download,
-  the launcher runs a 30s branch choice that always defaults to `master` unless a human
-  intervenes. Which behavior it takes is decided from the invocation args
-  (`%1`=`-NonInteractive`/`-TaskNumbers`), **not** from `TIMEOUT`'s own exit code:
-  - **Unattended** (SYSTEM scheduled task, or `script.bat` called with `-NonInteractive`/
-    `-TaskNumbers`): no countdown is shown; `ping -n 31` silently waits 30s and `master` is
-    used. This exists because `TIMEOUT` sets `ERRORLEVEL 1` both for a real keypress *and*
-    for "input redirection is not supported" (the guaranteed case under a scheduled task) —
-    the two are indistinguishable from the return code alone, so the branch can't be picked
-    that way; the invocation args are the only reliable signal.
-  - **Interactive:** a visible `TIMEOUT /T 30` is shown ("press any key to download the
-    Testing branch instead"). A keypress sets `ERRORLEVEL 1` (unambiguous here, since stdin
-    isn't redirected) and switches `REPO_URL`/`EXTRACT_FOLDER` to the `Testing` branch
-    (`…/archive/refs/heads/Testing.zip` → `script_mentenanta-Testing\`); letting it expire
-    keeps `master`.
-  - The leftover-folder cleanup that follows sweeps **both** `script_mentenanta-master` and
-    `script_mentenanta-Testing` unconditionally (not just the branch chosen this run), so a
-    prior run's opposite pick can't survive as an orphaned tree if it crashed before Stage 5
-    could delete it.
-  - The `Testing` branch is a manual push target for trying in-progress changes against a
-    real unattended-style run before merging to `master` — it is not auto-synced from
-    `master` and can diverge; nothing in the pipeline merges it back.
+- **Branch selection (interactive only):** immediately before downloading, an interactive
+  session gets a 30s `TIMEOUT` ("press any key to download the Testing branch instead") so
+  in-progress work on `Testing` can be verified without editing the script. The branch
+  decision is made from the **same early `%1` check** used later for `ORCH_EXTRA_ARGS`
+  (`-TaskNumbers`/`-NonInteractive`), never from `TIMEOUT`'s own `ERRORLEVEL`: under
+  redirected stdin (every unattended invocation, including the monthly SYSTEM task) `TIMEOUT`
+  returns instantly with `ERRORLEVEL 1` ("Input redirection is not supported"), identical to a
+  real keypress — trusting it there would make unattended runs randomly select `Testing`.
+  Gating on `%1` first means unattended runs skip the wait entirely (there is no human who
+  could press a key, so there is nothing to wait for) and always get `master`; only a genuine
+  interactive session with a real keypress can select `Testing`. Both possible extracted
+  folders (`script_mentenanta-master` and `script_mentenanta-Testing`) are removed at the top
+  of `:DOWNLOAD_REPOSITORY` regardless of which branch this run selected, so a folder left
+  behind by a crashed run on the other branch doesn't linger forever.
+  **`Testing` is a manual push target, not an auto-synced mirror.** Nothing in the pipeline
+  syncs `master` → `Testing` or merges `Testing` → `master`; both can be committed to
+  independently and *will* diverge. This has already bitten once: the branch-selection
+  countdown above was implemented separately on both branches, and merging them conflicted in
+  `script.bat` and `CLAUDE.md` — the most dangerous file in the project to resolve badly, since
+  a broken launcher means the monthly task silently stops working forever. Before starting work
+  on either branch, check `git log --oneline origin/master..Testing` **and** the reverse
+  (`Testing..origin/master`) so you find out about divergence before writing code, not while
+  resolving a conflict in `:DOWNLOAD_REPOSITORY`.
 - **Single unified `maintenance.log`:** the launcher creates `maintenance.log` next to
   `script.bat` at the very top of `:MAIN_SCRIPT`, before the first log line (append mode so
   elevation/PS7 relaunches continue it), so the whole bootstrap phase is captured. After
@@ -202,7 +203,11 @@ log is always closed via `Close-LogFile` in `finally`), then:
    reads it while it is still being written), then copies it to the launcher folder.
    `Publish-MaintenanceReport` is called again right before cleanup so the surviving copy embeds
    the complete log (incl. Stage 5).
-5. **Stage 5 – Cleanup + reboot:** removes the session's Defender exclusions unconditionally, then
+5. **Stage 5 – Cleanup + reboot:** removes the session's Defender exclusions unconditionally - both
+   the extracted working tree (`$ProjectRoot`) and the stable launcher folder script.bat itself
+   lives in (`$env:ORIGINAL_SCRIPT_DIR`), since script.bat's self-elevate/download/extract/launch
+   pattern is exactly what Defender's heuristics flag, and only excluding the extracted tree left
+   script.bat itself unexcluded - then
    a 120s countdown (configurable). Reboots and deletes the project folder unless a key is pressed,
    or skips reboot entirely when `rebootOnlyWhenRequired` is set and no module flagged `RebootRequired`.
 
@@ -229,7 +234,7 @@ the action module switches on):
 | 1 | SoftwareManagement | `SoftwareManagement` | ✅ | `Action` = remove/install/upgrade | bloatware removal (40+ MS Store apps), essential-app install, app upgrade |
 | 2 | SystemConfiguration | `SystemConfiguration` | ✅ | `ConfigType` = restorepoint/security/telemetry/optimization | restore point create+prune, Defender/firewall/security registry + **Sysmon** + **password/lockout policy (secedit)** + **advanced audit policy (auditpol)**, privacy services/registry/tasks, services/power/startup/visual-fx, **plus the report-only inventory + health datasets** |
 | 3 | DiskCleanup | `DiskCleanup` | ✅ | `Type` = temp/browser/update/bin | temp/browser cache/cookies, DISM component store, recycle-bin cleanup |
-| 4 | WindowsUpdates | `WindowsUpdates` | ✅ | — | Windows Update detection (3-layer: COM/Registry/EventLog) and installation |
+| 4 | WindowsUpdates | `WindowsUpdates` | ✅ | `Type` = (blank)/`lifecycle` | Windows Update detection (COM API only, trusted even at zero) and installation; **plus** OS end-of-service detection and, opt-in, a Windows 11 feature-version auto-advance / Windows 10 Consumer ESU enrollment attempt |
 
 **`SystemConfiguration` internal ordering (the important part).** Both halves of this pair run
 their work in a deliberate order, not the order items happen to appear:
@@ -308,26 +313,115 @@ turn the two non-registry areas off. Both default to enforcing.
   provisioned packages → registry → winget `list` (parsed into Name/Id columns, never matched
   against the raw formatted line; the winget table has no JSON/CSV output option, so parsing
   validates each row's column count against the header row rather than trusting a blanket
-  minimum). Every candidate is gated by `bloatware/protected-packages.json` (hard block) +
+  minimum).
+  **Each source only sees the patterns that declare it.** `bloatware-detection.json`'s
+  per-entry `detection` array is honoured: the pattern list built in the audit carries
+  `@{ Pattern; Sources }`, and each source filters on it. Ignoring `detection` (the old
+  behaviour) meant AppX-shaped wildcards were also tested against registry `DisplayName` —
+  `*Plex*` is declared AppX/Provisioned-only but matched any `Duplex …` scanner utility.
+  An entry with no `detection` array stays permissive (all four sources) so an incomplete
+  config can never silently stop detecting.
+  **The provisioned source matches and keys on `DisplayName`, never `PackageName`.** The short
+  name (`Microsoft.BingNews`) is what patterns and protected-list keys are written against;
+  the versioned full name (`Microsoft.BingNews_2019.616.2027.0_neutral_~_8wekyb3d8bbwe`) broke
+  three things at once when it was used: (1) every bare-identifier pattern — ~100 entries that
+  use `name` with no wildcard — could never match, so those apps were undetectable when merely
+  provisioned; (2) `protected-packages.json` keys without a trailing `*` could never match
+  either, so the only hard block on removal silently did not apply to this source; (3) the dedup
+  key diverged from the AppX source's short name, so an app found by both was queued **twice** —
+  Type2 removed it on the first item and reported the second as a failure, turning a clean run
+  into `Warning` with a phantom error in the report. Type2 does not need `PackageName` from the
+  diff: `Remove-BloatwareLayered` re-queries the live provisioned list and matches on the stem.
+  Relatedly, `Get-AppxProvisionedPackageCompat`'s **DISM fallback** parser latches `DisplayName`
+  and emits the record when `PackageName` arrives — DISM prints `DisplayName` *first*, and the
+  original parser required the reverse order, so it discarded the first `DisplayName` and paired
+  every later one with the **previous** record's `PackageName`.
+  Every candidate is gated by `bloatware/protected-packages.json` (hard block) +
   `bloatware/dependency-matrix.json` via `Test-CanRemovePackage`, **plus a cascade-safety pass**
   after all sources are merged: a package is dropped from the removal set if
   `dependency-matrix.json` declares a dependent that's actually installed but not itself queued
   for removal this run (protects, never removes — the safe default for an unattended run).
+  **That pass ignores dependents that are themselves protected.** A protected package can never
+  be queued for removal, so it is permanently "installed but not queued" — which makes the rule
+  unsatisfiable and turns it into an unconditional block on the parent. `dependency-matrix.json`
+  listed the protected system component `Microsoft.XboxGameCallableUI` as a dependent of
+  `Microsoft.Xbox*`, so **every** Xbox overlay/Game Bar detection was silently dropped on every
+  run, forever, while `Microsoft.GamingApp` (which doesn't match `microsoft.xbox*`) was removed —
+  an inconsistent half-removal that looked like the config was being honoured. Both sides are
+  fixed: the entry no longer lists a protected package, and the code skips protected dependents
+  defensively. When adding a `dependents` entry, use a **real package identifier** — the values
+  are matched with `-like` against live package names, so prose like `"Many UWP apps"` silently
+  matches nothing.
   Bloatware patterns tagged `"tier": "broad"` in `bloatware-detection.json` (whole-vendor
   wildcards like `*Razer*`/`*ASUS*`/`Dell.*` that can also match software the user deliberately
-  installed) are excluded unless `modules.softwareManagement.aggressiveOemRemoval` is `true` in
+  installed — `*ASUS*` also matches `Pegasus Mail`) are excluded unless
+  `modules.softwareManagement.aggressiveOemRemoval` is `true` in
   `main-config.json`. Type2 removes each item with a layered strategy (AppX → Provisioned →
   registry **silent-uninstall only** → winget-by-id → winget-by-name), then installs essentials
   and applies upgrades, all through `Invoke-ExternalPackageCommand` (timeout-guarded — no package
-  manager call can hang an unattended run). Essential-app "already installed" detection tries the
+  manager call can hang an unattended run); `essential-apps.json`'s per-app `timeout` is threaded
+  through the diff as `TimeoutSeconds` and passed to that helper, because otherwise every install
+  silently used the 600 s default and LibreOffice (which declares 900) was killed mid-install and
+  reported as a failure. A registry uninstaller exiting **3010** (`ERROR_SUCCESS_REBOOT_REQUIRED`)
+  now sets `RebootRequired` on the module result — without it, Stage 5 skips the reboot entirely
+  when `rebootOnlyWhenRequired` is set, leaving the uninstall half-applied.
+  Post-removal validation only claims "verified" when an **AppX/Provisioned** layer was involved:
+  `Get-AppxPackageCompat` returns nothing for a Win32 or winget-Name-keyed package whether or not
+  the removal worked, so treating "no AppX package found" as proof printed *Removal verified* for
+  every such package unconditionally. Those now report the uninstaller's own exit code and say
+  plainly that it is not AppX-verifiable.
+  Essential-app "already installed" detection tries the
   precise `winget list --id --exact` check before falling back to a name-substring match (not the
   other way around — registry `DisplayName` often doesn't literally contain the baseline's `name`
   string). Nothing survives between runs except the final HTML report (copied to
   `$env:ORIGINAL_SCRIPT_DIR`, see below), so a missing essential app is queued for install on
   every run regardless of whether a prior run installed it and the user removed it since.
-- `WindowsUpdates` detects pending updates via three layers: Layer 1 COM API
-  (`Windows.Update.Session`) → Layer 2 registry pending/setup-in-progress flags → Layer 3
-  event-log analysis.
+- **`app-upgrade-config.json` exclusions must not cover something `essential-apps.json` installs.**
+  A blanket `Adobe*` used to sit in `ExcludePatterns` while the essential list installs
+  `Adobe.Acrobat.Reader.64-bit`, which pinned a heavily-targeted PDF reader at whatever version it
+  was first installed at, forever — the exact opposite of this project's CVE-reduction goal. It is
+  now replaced by specific Creative Cloud / creative-suite / Acrobat **Pro** patterns so the
+  disruptive licensed installers stay excluded while Reader still receives security updates.
+  Patterns are matched against **both** the package Name and the winget Id, so an exclusion needs
+  to be written for whichever of the two it is meant to catch.
+- `WindowsUpdates` detects pending updates via the Windows Update COM API
+  (`Microsoft.Update.Session`) alone, and trusts its result even when it is zero. Earlier
+  versions added registry pending-flag and event-log fallback layers when the COM scan
+  returned nothing; those were removed after they caused an endless reboot loop on a
+  fully-patched machine (Layer 2 mistook reboot-pending flags for installable updates, Layer 3
+  re-enqueued KBs it found as "installed" event-log entries — see `Get-PendingUpdatesMultiSource`
+  for the full history). Never re-add a "stronger fallback" here without re-reading that comment.
+- `WindowsUpdates` also runs an **OS-lifecycle check** that is deliberately separate from the
+  COM-based pending-update detection above and is NOT a CVE-to-KB map. Windows Update's own COM
+  API is already the authoritative source for what's missing on an *in-support* machine; the
+  lifecycle check instead answers "has this feature version itself fallen out of free
+  servicing," using a small, hand-maintained catalog (`config/lists/windows-updates/os-lifecycle.json`)
+  that only needs a new entry a few times a year, not per-CVE. `Get-WindowsLifecycleStatus`
+  (Type1) reads `DisplayVersion`/`EditionID` from `HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion`,
+  skips LTSC/IoT Enterprise LTSC editions entirely (different multi-year servicing model, not
+  modeled here), and compares the consumer/enterprise end-of-service date against today. When
+  out of service, it queues one of two `Type = 'lifecycle'` diff items (gated by
+  `main-config.json` → `modules.windowsUpdates`, and always surfaced in the report via
+  `ExtraData.OSSupportStatus`/`Guidance` regardless of whether either flag is on):
+  - **Windows 11**, `autoAdvanceEolFeatureVersion` (default `true`): sets Microsoft's documented
+    `TargetReleaseVersion`/`TargetReleaseVersionInfo`/`ProductVersion` policy under
+    `HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate` to the catalog's
+    `latestSupportedVersion`. This is intentionally the *only* mechanism used — Windows Update
+    itself then offers and installs the newer feature version through the exact same COM path
+    already used for regular updates, so no separate download/install code was added for this.
+  - **Windows 10**, `attemptConsumerEsuEnrollment` (default `false`, opt-in): Windows 10 22H2 was
+    the final feature version, so there is no version to advance to — only free Consumer ESU
+    (through the date in the catalog) helps. This sets the undocumented
+    `FeatureManagement\Overrides` flag `4011992206` and runs the built-in
+    `ClipESUConsumer.exe -evaluateEligibility`, then re-reads
+    `HKCU:\...\Windows\ConsumerESU` → `ESUEligibility` to confirm. It is off by default and
+    reports Warning (never Success) when unconfirmed, because Microsoft's consumer ESU flow is
+    built around an interactively signed-in account and this task normally runs as SYSTEM with
+    no such session — treat it as a best-effort nudge, not a guaranteed fix. Do not build a
+    hand-maintained CVE→KB→download-URL list as an alternative to this: a single cumulative
+    update fixes dozens to hundreds of CVEs at once, so Wazuh-style vulnerability feeds always
+    show large CVE counts on any machine behind by even one month, and per-CVE mapping would
+    both duplicate the COM audit above and go stale every Patch Tuesday.
 
 - **Type1** (`modules/type1/*Audit.psm1`): loads a baseline JSON from `config/lists/`, scans
   the live system, computes what needs to change, and calls `Save-DiffList -ModuleName <DiffKey>`.

@@ -43,7 +43,18 @@ function Get-AppxNameStem {
     return $Identifier
 }
 
+<#
+.SYNOPSIS
+    Removes one bloatware package using the layered AppX -> Provisioned -> Registry -> WinGet
+    strategy, and reports what actually happened.
+.OUTPUTS
+    [hashtable] Removed (bool), RebootRequired (bool), Attempts (string[]), Verified (bool).
+    Verified is $true only when live AppX state confirmed the removal - see the post-removal
+    validation block for why it cannot mean anything for a Win32/winget-only package.
+#>
 function Remove-BloatwareLayered {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [string]$PackageName,
         [string]$WingetId,
@@ -51,6 +62,7 @@ function Remove-BloatwareLayered {
     )
 
     $removed = $false
+    $rebootRequired = $false
     $attempts = @()
 
     Write-Log -Level INFO -Component SOFTWARE -Message "  Attempting layered removal of: $PackageName"
@@ -153,6 +165,14 @@ function Remove-BloatwareLayered {
                         Write-Log -Level SUCCESS -Component SOFTWARE -Message "    Layer 3: Registry uninstall (exit $($proc.ExitCode))"
                         $attempts += 'Registry'
                         $removed = $true
+                        # 3010 = ERROR_SUCCESS_REBOOT_REQUIRED. The uninstall succeeded but is
+                        # only fully applied after a restart, so this has to surface in the
+                        # module result - Stage 5 skips the reboot entirely when
+                        # rebootOnlyWhenRequired is set and nothing flagged RebootRequired.
+                        if ($proc.ExitCode -eq 3010) {
+                            Write-Log -Level INFO -Component SOFTWARE -Message "    Layer 3: uninstaller requests a reboot to finish"
+                            $rebootRequired = $true
+                        }
                     }
                     elseif ($proc) {
                         Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 3: uninstaller exit $($proc.ExitCode)"
@@ -217,22 +237,38 @@ function Remove-BloatwareLayered {
     # package that is merely DEPROVISIONED is still installed for every existing user, so
     # it has not actually been removed - saying otherwise is how this module reported five
     # Xbox apps as removed while they were all still listed by `winget list`.
+    #
+    # This check is only MEANINGFUL for AppX-shaped packages. Get-AppxPackageCompat returns
+    # nothing for a Win32/registry program or a winget-Name-keyed entry whether or not the
+    # removal worked, so treating "no AppX package found" as proof would print "Removal
+    # verified" for every such package unconditionally. Only claim verification when an
+    # AppX/Provisioned layer was actually involved; otherwise report the uninstaller's own
+    # result honestly as unverified.
+    $verified = $false
     if ($removed) {
-        $stillInstalled = $null
-        try {
-            $stillInstalled = @(Get-AppxPackageCompat -Name $nameStem -AllUsers -ErrorAction SilentlyContinue)
-        }
-        catch {
-            Write-Log -Level DEBUG -Component SOFTWARE -Message "    Post-removal check failed: $_"
-        }
+        $appxLayerUsed = ($attempts -contains 'AppX') -or ($attempts -contains 'Provisioned')
+        if ($appxLayerUsed) {
+            $stillInstalled = $null
+            try {
+                $stillInstalled = @(Get-AppxPackageCompat -Name $nameStem -AllUsers -ErrorAction SilentlyContinue)
+            }
+            catch {
+                Write-Log -Level DEBUG -Component SOFTWARE -Message "    Post-removal check failed: $_"
+            }
 
-        if ($stillInstalled -and $stillInstalled.Count -gt 0) {
-            $removed = $false
-            Write-Log -Level WARN -Component SOFTWARE `
-                -Message "  Still installed after $($attempts -join ' -> ') - deprovisioning alone does not uninstall it for existing users: $nameStem"
+            if ($stillInstalled -and $stillInstalled.Count -gt 0) {
+                $removed = $false
+                Write-Log -Level WARN -Component SOFTWARE `
+                    -Message "  Still installed after $($attempts -join ' -> ') - deprovisioning alone does not uninstall it for existing users: $nameStem"
+            }
+            else {
+                $verified = $true
+                Write-Log -Level SUCCESS -Component SOFTWARE -Message "  Removal verified via: $($attempts -join ' -> ')"
+            }
         }
         else {
-            Write-Log -Level SUCCESS -Component SOFTWARE -Message "  Removal verified via: $($attempts -join ' -> ')"
+            Write-Log -Level SUCCESS -Component SOFTWARE `
+                -Message "  Removal reported by: $($attempts -join ' -> ') (uninstaller exit code; not AppX-verifiable for this package type)"
         }
     }
 
@@ -242,7 +278,12 @@ function Remove-BloatwareLayered {
         Write-Log -Level WARN -Component SOFTWARE -Message "  Not found (attempted: none)"
     }
 
-    return $removed
+    return @{
+        Removed = $removed
+        RebootRequired = $rebootRequired
+        Attempts = $attempts
+        Verified = $verified
+    }
 }
 
 function Invoke-SoftwareManagement {
@@ -267,6 +308,7 @@ function Invoke-SoftwareManagement {
     $failed = 0
     $skipped = 0
     $errors = @()
+    $rebootRequired = $false
 
     # Deterministic phase ordering: remove junk, then install wanted, then upgrade.
     $removeItems = @($diff | Where-Object { $_.Action -eq 'remove' })
@@ -294,9 +336,10 @@ function Invoke-SoftwareManagement {
         $pkgName = $item.PackageName ?? $item.Name ?? ''
         $wingetId = $item.WingetId ?? ''
         try {
-            $removed = Remove-BloatwareLayered -PackageName $pkgName -WingetId $wingetId -HasWinget:$hasWinget
+            $outcome = Remove-BloatwareLayered -PackageName $pkgName -WingetId $wingetId -HasWinget:$hasWinget
+            if ($outcome.RebootRequired) { $rebootRequired = $true }
 
-            if ($removed) {
+            if ($outcome.Removed) {
                 $processed++
             }
             else {
@@ -329,12 +372,20 @@ function Invoke-SoftwareManagement {
                 continue
             }
 
+            # Honour essential-apps.json's per-app "timeout" (threaded through the diff as
+            # TimeoutSeconds). Without it every install used Invoke-ExternalPackageCommand's
+            # 600s default, so LibreOffice - which declares 900 precisely because it is a slow
+            # install - had its process tree killed at 600s and was reported as a failure.
+            $timeoutArgs = @{}
+            $declaredTimeout = [int]($item.TimeoutSeconds ?? 0)
+            if ($declaredTimeout -gt 0) { $timeoutArgs['TimeoutSeconds'] = $declaredTimeout }
+
             $installed = $false
             if ($wingetId -and $hasWinget) {
                 $scopeArgs = if ($scope -eq 'user') { @('--scope', 'user') } else { @('--scope', 'machine') }
                 $wingetArgs = @('install', '--id', $wingetId, '--source', 'winget', '--silent',
                     '--disable-interactivity', '--accept-package-agreements', '--accept-source-agreements') + $scopeArgs
-                $exitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) -ArgumentList $wingetArgs
+                $exitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) -ArgumentList $wingetArgs @timeoutArgs
                 if ($exitCode -in 0, -1978335135, -1978335189) {
                     Write-Log -Level SUCCESS -Component SOFTWARE -Message "Installed (winget): $name"
                     $installed = $true
@@ -345,7 +396,7 @@ function Invoke-SoftwareManagement {
             }
 
             if (-not $installed -and $chocoId -and $hasChoco) {
-                $exitCode = Invoke-ExternalPackageCommand -FilePath 'choco' -ArgumentList @('install', $chocoId, '--yes', '--no-progress')
+                $exitCode = Invoke-ExternalPackageCommand -FilePath 'choco' -ArgumentList @('install', $chocoId, '--yes', '--no-progress') @timeoutArgs
                 if ($exitCode -eq 0) {
                     Write-Log -Level SUCCESS -Component SOFTWARE -Message "Installed (choco): $name"
                     $installed = $true
@@ -460,9 +511,13 @@ function Invoke-SoftwareManagement {
 
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
     Write-Log -Level INFO -Component SOFTWARE -Message "Done: $processed processed, $skipped skipped, $failed failed"
+    if ($rebootRequired) {
+        Write-Log -Level WARN -Component SOFTWARE -Message 'One or more uninstallers require a reboot to finish'
+    }
 
     return New-ModuleResult -ModuleName 'SoftwareManagement' -Status $status -ModuleType 'Type2' `
-        -ItemsDetected $diff.Count -ItemsProcessed $processed -ItemsSkipped $skipped -ItemsFailed $failed -Errors $errors
+        -ItemsDetected $diff.Count -ItemsProcessed $processed -ItemsSkipped $skipped -ItemsFailed $failed `
+        -RebootRequired $rebootRequired -Errors $errors
 }
 
 Export-ModuleMember -Function 'Invoke-SoftwareManagement'

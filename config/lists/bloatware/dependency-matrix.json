@@ -1,44 +1,39 @@
 {
-  "_comment": "Dependency relationships between packages. Removing a package may break its dependents.",
+  "_comment": "Dependency relationships between packages. Two independent mechanisms read this file, and they use DIFFERENT fields - see SoftwareManagementAudit.psm1. (1) 'protected': true is a hard block, checked by Test-CanRemovePackage exactly like protected-packages.json - the key is used AS a -like pattern. (2) 'dependents' feeds the cascade-safety pass: a parent is kept when one of its dependents is installed but is NOT itself queued for removal in the same run, because removing the parent alone would orphan it. Entries in 'dependents' MUST be real package identifiers (they are matched with -like against live package names); prose descriptions are silently unmatchable. Dependents that are protected are ignored by the cascade pass - a protected package can never be queued for removal, so listing one would make the rule unsatisfiable and permanently block the parent.",
   "dependencies": {
-    "Microsoft.WindowsSearch": {
+    "Microsoft.Windows.Search": {
       "protected": true,
-      "reason": "Cortana integration; removing breaks Windows Search",
-      "dependents": ["Microsoft.Cortana"],
+      "reason": "Windows Search UI; removing breaks search and Cortana integration",
+      "_dependents_note": "Left empty on purpose: this entry is protected: true, so the hard block above already prevents removal and the cascade pass is moot. The previous key was 'Microsoft.WindowsSearch' and the dependent was 'Microsoft.Cortana' - neither is a real package identifier (the real ids are Microsoft.Windows.Search, and Microsoft.549981C3F5F10 / Microsoft.Windows.Cortana), so the whole entry never matched anything.",
+      "dependents": [],
       "cascadeRisk": "High"
     },
     "Microsoft.Xbox*": {
       "protected": false,
-      "reason": "Xbox services often come as package group",
-      "dependents": ["Microsoft.XboxGameCallableUI", "Microsoft.XboxGameOverlay", "Microsoft.XboxIdentityProvider"],
+      "reason": "Xbox services ship as a package group; the overlays depend on the identity provider",
+      "_dependents_note": "Microsoft.XboxGameCallableUI was REMOVED from this list. It is a protected system UI component (see protected-packages.json), so it is never queued for removal, which made the cascade rule unsatisfiable and silently dropped EVERY Microsoft.Xbox* detection on every run - Game Bar and the overlays were never actually removed. The code now also ignores protected dependents defensively.",
+      "dependents": ["Microsoft.XboxGameOverlay", "Microsoft.XboxIdentityProvider"],
       "cascadeRisk": "High"
     },
     "Microsoft.XboxIdentityProvider": {
       "protected": false,
-      "reason": "Required by all Xbox services",
+      "reason": "Xbox Live sign-in; removing it can break Xbox Live authentication inside games",
       "dependents": ["Microsoft.XboxApp", "Microsoft.XboxGameOverlay"],
       "cascadeRisk": "High"
     },
     "Microsoft.WebMediaExtensions": {
       "protected": true,
-      "reason": "Required by video playback in apps",
-      "dependents": ["Media.* apps"],
+      "reason": "Required for web media playback in Photos/Media Player and other apps",
+      "_dependents_note": "Was [\"Media.* apps\"] - prose, not an identifier, so it could never match. Emptied: protected: true already blocks removal outright.",
+      "dependents": [],
       "cascadeRisk": "Medium"
     },
     "Microsoft.Advertising.Xaml": {
       "protected": true,
-      "reason": "Common XAML framework; many apps depend on it",
-      "dependents": ["Many UWP apps"],
+      "reason": "Common XAML framework; many UWP apps declare it as a dependency",
+      "_dependents_note": "Was [\"Many UWP apps\"] - prose, not an identifier. Emptied: protected: true already blocks removal outright.",
+      "dependents": [],
       "cascadeRisk": "Critical"
     }
-  },
-  "cascade_safety": {
-    "safe_to_cascade": [
-      { "parent": "Microsoft.CandyCrush*", "no_dependents": true },
-      { "parent": "Microsoft.BingNews", "no_dependents": true },
-      { "parent": "Microsoft.BingWeather", "no_dependents": true },
-      { "parent": "Facebook.Facebook", "no_dependents": true },
-      { "parent": "Netflix.Netflix", "no_dependents": true }
-    ]
   }
 }

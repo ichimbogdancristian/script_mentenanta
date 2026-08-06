@@ -15,28 +15,53 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
 }
 
+<#
+.SYNOPSIS
+    Silent predicate: is this identifier covered by a protected=true entry in
+    protected-packages.json?
+.DESCRIPTION
+    Split out of Test-CanRemovePackage so the cascade-safety pass can ask the same question
+    WITHOUT emitting a WARN per check (it evaluates every declared dependent, so logging
+    there would bury the real findings).
+
+    The configs are hashtables (Get-BaselineList uses -AsHashtable), so they MUST be walked
+    via .Values / .GetEnumerator(). Iterating .PSObject.Properties on a hashtable yields the
+    CLR members (Count/Keys/Values/...) instead of the package keys, which silently made this
+    entire protection check a no-op (a protected app like Microsoft.WindowsStore was reported
+    removable). The key may itself contain a wildcard (e.g. 'Microsoft.VCLibs.*'), so use
+    -like with the key AS the pattern.
+.OUTPUTS
+    [bool] $true when the identifier is protected.
+#>
+function Test-PackageProtected {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param([string]$PackageName, $Protected)
+
+    if (-not $PackageName) { return $false }
+    if ($Protected -isnot [System.Collections.IDictionary]) { return $false }
+
+    $lowerName = $PackageName.ToLowerInvariant()
+    foreach ($section in $Protected.Values) {
+        if ($section -isnot [System.Collections.IDictionary]) { continue }
+        foreach ($entry in $section.GetEnumerator()) {
+            if ($entry.Value.protected -eq $true -and $lowerName -like $entry.Key.ToLowerInvariant()) {
+                return $true
+            }
+        }
+    }
+    return $false
+}
+
 function Test-CanRemovePackage {
     param([string]$PackageName, $Protected, $Dependencies)
 
     $lowerName = $PackageName.ToLowerInvariant()
 
-    # The configs are hashtables (Get-BaselineList uses -AsHashtable), so they MUST be walked
-    # via .Values / .GetEnumerator(). Iterating .PSObject.Properties on a hashtable yields the
-    # CLR members (Count/Keys/Values/...) instead of the package keys, which silently made this
-    # entire protection check a no-op (a protected app like Microsoft.WindowsStore was reported
-    # removable). The key may itself contain a wildcard (e.g. 'Microsoft.Xbox*'), so use -like
-    # with the key AS the pattern.
-    if ($Protected -is [System.Collections.IDictionary]) {
-        foreach ($section in $Protected.Values) {
-            if ($section -isnot [System.Collections.IDictionary]) { continue }
-            foreach ($entry in $section.GetEnumerator()) {
-                if ($entry.Value.protected -eq $true -and $lowerName -like $entry.Key.ToLowerInvariant()) {
-                    Write-Log -Level WARN -Component SOFTWARE-AUDIT `
-                        -Message "Package '$PackageName' is protected - will NOT remove"
-                    return $false
-                }
-            }
-        }
+    if (Test-PackageProtected -PackageName $PackageName -Protected $Protected) {
+        Write-Log -Level WARN -Component SOFTWARE-AUDIT `
+            -Message "Package '$PackageName' is protected - will NOT remove"
+        return $false
     }
 
     # Packages that other packages depend on.
@@ -54,6 +79,89 @@ function Test-CanRemovePackage {
     return $true
 }
 
+<#
+.SYNOPSIS
+    Parses winget's fixed-width 'list'/'upgrade' table output into Name/Id rows.
+.DESCRIPTION
+    winget has no machine-readable output for 'list' (confirmed against current winget CLI
+    docs - no --output/-o option exists), so the table has to be parsed. Captures the
+    HEADER row's column count (the line right before the '----' divider) and requires each
+    data row to split into no more columns than the header declared - catches the case where
+    a double-space inside a Name field would otherwise be mistaken for a column boundary and
+    shift Id into the wrong slot.
+#>
+function ConvertFrom-WingetListTable {
+    [CmdletBinding()]
+    [OutputType([hashtable[]])]
+    param([Parameter()] [AllowEmptyCollection()] [string[]]$Lines = @())
+
+    $rows = [System.Collections.Generic.List[hashtable]]::new()
+    $inTable = $false
+    $headerCols = 0
+    $prevLine = $null
+    foreach ($line in $Lines) {
+        if ($line -match '^-{3,}') {
+            $inTable = $true
+            if ($prevLine) { $headerCols = @($prevLine -split '\s{2,}').Count }
+            continue
+        }
+        if (-not $inTable) { $prevLine = $line; continue }
+        if ($line -match '^\s*$') { continue }
+        $cols = @($line -split '\s{2,}')
+        if ($cols.Count -ge 2 -and ($headerCols -eq 0 -or $cols.Count -le $headerCols) -and $cols[0].Trim()) {
+            $rows.Add(@{ Name = $cols[0].Trim(); Id = $cols[1].Trim() })
+        }
+    }
+    return $rows.ToArray()
+}
+
+<#
+.SYNOPSIS
+    Resolves an exact, unambiguous winget package Id for a single detected bloatware
+    candidate via a targeted 'winget list <query>' - the same lookup a human would run by
+    hand (e.g. `winget list maps` -> Windows Maps [MSIX\Microsoft.WindowsMaps_...]).
+.DESCRIPTION
+    The bulk winget-list scan in Get-BloatwareFromAllSources only correlates a candidate
+    with winget when the BLOATWARE PATTERN ITSELF happens to match winget's Name/Id text.
+    Most AppX/Provisioned/Registry-only detections never satisfy that, even though winget
+    can resolve them fine once queried directly by the candidate's own detected name - this
+    closes exactly that gap so Type2's existing WinGet-by-id removal layer has a real Id to
+    act on instead of falling back to less reliable layers.
+
+    Deliberately conservative: only returns an Id when the query returns EXACTLY ONE row, so
+    an ambiguous/multi-match query (a short or generic name) is left unresolved rather than
+    risking an uninstall of the wrong package. A failed or ambiguous lookup is silently
+    treated as "not resolved" - this is best-effort enrichment on top of the four existing
+    sources, never a hard requirement for the candidate to still be queued for removal.
+.OUTPUTS
+    [string] the exact winget Id, or $null if no unambiguous match was found.
+#>
+function Resolve-WingetIdForCandidate {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)] [string]$WingetExe,
+        [Parameter(Mandatory)] [string]$Query
+    )
+
+    if (-not $Query) { return $null }
+    try {
+        $raw = & $WingetExe list $Query --accept-source-agreements --disable-interactivity 2>&1 |
+            Where-Object { $_ -is [string] }
+        $rows = ConvertFrom-WingetListTable -Lines $raw
+        if ($rows.Count -eq 1 -and $rows[0].Id) {
+            return $rows[0].Id
+        }
+        if ($rows.Count -gt 1) {
+            Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "winget list '$Query' returned $($rows.Count) ambiguous match(es) - not resolving an Id"
+        }
+    }
+    catch {
+        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "winget list '$Query' failed: $_"
+    }
+    return $null
+}
+
 function Get-BloatwareFromAllSources {
     param(
         [hashtable]$BloatwareConfig,
@@ -66,28 +174,44 @@ function Get-BloatwareFromAllSources {
     )
 
     $detected = @{}  # hashtable for deduplication
+    $hasWinget = Test-CommandAvailable 'winget'
+    $wingetExe = if ($hasWinget) { Resolve-WingetPath } else { $null }
     # Flat set of every identifier seen across all four sources this run, used by the
     # cascade-safety pass below to tell "not installed" apart from "installed but not queued
     # for removal" when checking a dependency-matrix entry's declared dependents.
     $allInstalledNames = [System.Collections.Generic.HashSet[string]]::new()
 
-    # Source 1: AppX packages (modern UWP apps)
+    # $BloatwareConfig.patterns is a list of @{ Pattern; Sources } - see the pattern-extraction
+    # block in Invoke-SoftwareManagementAudit. Each entry declares which detection sources it is
+    # valid for (bloatware-detection.json's "detection" array), so a pattern only ever runs
+    # against the surfaces it was written for. Matching every pattern against every source (the
+    # old behaviour, which ignored "detection" entirely) turned AppX-shaped wildcards into
+    # registry false positives: '*Plex*' is declared AppX/Provisioned-only but was also tested
+    # against registry DisplayName, where it matches any "Duplex ..." scanner/printer utility.
+    $allPatterns = @($BloatwareConfig.patterns)
+    $appxPatterns = @($allPatterns | Where-Object { $_.Sources -contains 'AppX' })
+    $provPatterns = @($allPatterns | Where-Object { $_.Sources -contains 'Provisioned' })
+    $regPatterns = @($allPatterns | Where-Object { $_.Sources -contains 'Registry' })
+    $wingetPatterns = @($allPatterns | Where-Object { $_.Sources -contains 'WinGet' })
+    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Patterns per source - AppX: $($appxPatterns.Count), Provisioned: $($provPatterns.Count), Registry: $($regPatterns.Count), WinGet: $($wingetPatterns.Count)"
+
+    # Source 1: AppX packages (modern UWP apps). Matched on the SHORT package Name.
     Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning AppX packages...'
     try {
         $appxPackages = Get-AppxPackageCompat -AllUsers -ErrorAction Stop |
             Select-Object -ExpandProperty Name | Where-Object { $_ }
         foreach ($n in $appxPackages) { $null = $allInstalledNames.Add($n.ToLowerInvariant()) }
 
-        foreach ($pattern in $BloatwareConfig.patterns) {
+        foreach ($pat in $appxPatterns) {
             foreach ($app in $appxPackages) {
-                if ($app -like $pattern) {
+                if ($app -like $pat.Pattern) {
                     if ((Test-CanRemovePackage -PackageName $app -Protected $Protected -Dependencies $Dependencies)) {
                         $key = $app.ToLowerInvariant()
                         if (-not $detected.ContainsKey($key)) {
                             $detected[$key] = @{
                                 Name = $app
                                 Sources = @('AppX')
-                                Patterns = @($pattern)
+                                Patterns = @($pat.Pattern)
                             }
                         }
                     }
@@ -100,25 +224,46 @@ function Get-BloatwareFromAllSources {
         Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "AppX query failed: $_"
     }
 
-    # Source 2: Provisioned packages (pre-installed for new users)
+    # Source 2: Provisioned packages (staged for NEW user profiles).
+    #
+    # Matched and keyed on DisplayName (the short package name, e.g. Microsoft.BingNews), NOT
+    # PackageName (the versioned full name, e.g. Microsoft.BingNews_2019.616.2027.0_neutral_~_
+    # 8wekyb3d8bbwe). Using PackageName - as this did - broke three things at once:
+    #   1. Every bare-identifier pattern (~100 entries that use "name" with no wildcard) could
+    #      never match, so those apps were only ever detectable when already installed for a
+    #      user, never when merely provisioned.
+    #   2. protected-packages.json keys without a trailing wildcard could never match either,
+    #      so the ONLY hard block on removal silently did not apply to this source.
+    #   3. The dedup key differed from Source 1's short name, so an app found by BOTH sources
+    #      was queued TWICE; Type2 removed it on the first item and reported the second as a
+    #      failure, degrading a clean run to Warning with a phantom error in the report.
+    # Type2 does not need PackageName from the diff - Remove-BloatwareLayered re-queries the
+    # live provisioned list and matches on the name stem.
     Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning provisioned packages...'
     try {
-        $provisionedPackages = Get-AppxProvisionedPackageCompat -ErrorAction Stop |
-            Select-Object -ExpandProperty PackageName | Where-Object { $_ }
-        foreach ($n in $provisionedPackages) { $null = $allInstalledNames.Add($n.ToLowerInvariant()) }
+        $provisioned = @(Get-AppxProvisionedPackageCompat -ErrorAction Stop)
+        # Fall back to the stem of PackageName when DisplayName is absent (older DISM output).
+        $provNames = @($provisioned | ForEach-Object {
+                if ($_.DisplayName) { $_.DisplayName }
+                elseif ($_.PackageName -match '^([A-Za-z0-9.\-]+?)_\d') { $Matches[1] }
+            } | Where-Object { $_ })
+        foreach ($n in $provNames) { $null = $allInstalledNames.Add($n.ToLowerInvariant()) }
 
-        foreach ($pattern in $BloatwareConfig.patterns) {
-            foreach ($pkg in $provisionedPackages) {
-                if ($pkg -like $pattern) {
+        foreach ($pat in $provPatterns) {
+            foreach ($pkg in $provNames) {
+                if ($pkg -like $pat.Pattern) {
                     if ((Test-CanRemovePackage -PackageName $pkg -Protected $Protected -Dependencies $Dependencies)) {
                         $key = $pkg.ToLowerInvariant()
                         if ($detected.ContainsKey($key)) {
-                            $detected[$key].Sources += 'Provisioned'
-                        } else {
+                            if ($detected[$key].Sources -notcontains 'Provisioned') {
+                                $detected[$key].Sources += 'Provisioned'
+                            }
+                        }
+                        else {
                             $detected[$key] = @{
                                 Name = $pkg
                                 Sources = @('Provisioned')
-                                Patterns = @($pattern)
+                                Patterns = @($pat.Pattern)
                             }
                         }
                     }
@@ -139,18 +284,21 @@ function Get-BloatwareFromAllSources {
         $regApps = @($InstalledApps) | Select-Object -ExpandProperty Name | Where-Object { $_ }
         foreach ($n in $regApps) { $null = $allInstalledNames.Add($n.ToLowerInvariant()) }
 
-        foreach ($pattern in $BloatwareConfig.patterns) {
+        foreach ($pat in $regPatterns) {
             foreach ($app in $regApps) {
-                if ($app -like $pattern) {
+                if ($app -like $pat.Pattern) {
                     if ((Test-CanRemovePackage -PackageName $app -Protected $Protected -Dependencies $Dependencies)) {
                         $key = $app.ToLowerInvariant()
                         if ($detected.ContainsKey($key)) {
-                            $detected[$key].Sources += 'Registry'
-                        } else {
+                            if ($detected[$key].Sources -notcontains 'Registry') {
+                                $detected[$key].Sources += 'Registry'
+                            }
+                        }
+                        else {
                             $detected[$key] = @{
                                 Name = $app
                                 Sources = @('Registry')
-                                Patterns = @($pattern)
+                                Patterns = @($pat.Pattern)
                             }
                         }
                     }
@@ -167,56 +315,34 @@ function Get-BloatwareFromAllSources {
     # the pattern against those - NEVER against the raw formatted line (the old code stored the
     # whole "Name  Id  Version  Source" line as the package name, producing junk detections that
     # Type2 could not act on). The winget Id is captured so Type2's winget-uninstall fallback works.
-    if ((Test-CommandAvailable 'winget')) {
+    if ($hasWinget) {
         Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning WinGet packages...'
         try {
-            $wingetExe = Resolve-WingetPath
             $wingetRaw = & $wingetExe list --accept-source-agreements --disable-interactivity 2>&1 |
                 Where-Object { $_ -is [string] }
-
-            # winget has no machine-readable output for 'list' (confirmed against current winget
-            # CLI docs - no --output/-o option exists), so the fixed-width table has to be
-            # parsed. Capture the header row's column count (the line right before the '----'
-            # divider) and require each data row to split into no more columns than the header
-            # declared - catches the case where a double-space inside a Name field would
-            # otherwise be mistaken for a column boundary and shift Id into the wrong slot.
-            $wingetApps = [System.Collections.Generic.List[hashtable]]::new()
-            $inTable = $false
-            $headerCols = 0
-            $prevLine = $null
-            foreach ($line in $wingetRaw) {
-                if ($line -match '^-{3,}') {
-                    $inTable = $true
-                    if ($prevLine) { $headerCols = @($prevLine -split '\s{2,}').Count }
-                    continue
-                }
-                if (-not $inTable) { $prevLine = $line; continue }
-                if ($line -match '^\s*$') { continue }
-                $cols = @($line -split '\s{2,}')
-                if ($cols.Count -ge 2 -and ($headerCols -eq 0 -or $cols.Count -le $headerCols) -and $cols[0].Trim()) {
-                    $wingetApps.Add(@{ Name = $cols[0].Trim(); Id = $cols[1].Trim() })
-                }
-            }
+            $wingetApps = ConvertFrom-WingetListTable -Lines $wingetRaw
             foreach ($wa in $wingetApps) {
                 if ($wa.Name) { $null = $allInstalledNames.Add($wa.Name.ToLowerInvariant()) }
                 if ($wa.Id) { $null = $allInstalledNames.Add($wa.Id.ToLowerInvariant()) }
             }
 
-            foreach ($pattern in $BloatwareConfig.patterns) {
+            foreach ($pat in $wingetPatterns) {
                 foreach ($wa in $wingetApps) {
-                    if ($wa.Name -like $pattern -or $wa.Id -like $pattern) {
+                    if ($wa.Name -like $pat.Pattern -or $wa.Id -like $pat.Pattern) {
                         $target = if ($wa.Name) { $wa.Name } else { $wa.Id }
                         if ((Test-CanRemovePackage -PackageName $target -Protected $Protected -Dependencies $Dependencies)) {
                             $key = $target.ToLowerInvariant()
                             if ($detected.ContainsKey($key)) {
-                                $detected[$key].Sources += 'WinGet'
+                                if ($detected[$key].Sources -notcontains 'WinGet') {
+                                    $detected[$key].Sources += 'WinGet'
+                                }
                                 if (-not $detected[$key].WingetId) { $detected[$key].WingetId = $wa.Id }
                             }
                             else {
                                 $detected[$key] = @{
-                                    Name     = $target
-                                    Sources  = @('WinGet')
-                                    Patterns = @($pattern)
+                                    Name = $target
+                                    Sources = @('WinGet')
+                                    Patterns = @($pat.Pattern)
                                     WingetId = $wa.Id
                                 }
                             }
@@ -250,6 +376,21 @@ function Get-BloatwareFromAllSources {
             foreach ($parentKey in $parentKeys) {
                 foreach ($dependent in $dependents) {
                     $depLower = "$dependent".ToLowerInvariant()
+
+                    # A PROTECTED dependent can never be queued for removal, so it is always
+                    # "installed but not queued" - which made this rule unsatisfiable and turned
+                    # it into a permanent block on the parent. dependency-matrix.json listed the
+                    # protected system component Microsoft.XboxGameCallableUI as a dependent of
+                    # Microsoft.Xbox*, so EVERY Xbox overlay/Game Bar detection was silently
+                    # dropped on every run, forever. A protected dependent is not evidence that
+                    # the parent is needed - it is simply a package this tool never touches, so
+                    # it cannot inform the parent's fate. Skip it.
+                    if (Test-PackageProtected -PackageName $dependent -Protected $Protected) {
+                        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message `
+                            "Cascade safety: ignoring protected dependent '$dependent' (never removable, so it cannot block '$($detected[$parentKey].Name)')"
+                        continue
+                    }
+
                     $dependentQueued = $detected.Keys | Where-Object { $_ -like $depLower -or $depLower -like $_ }
                     $dependentInstalled = $allInstalledNames | Where-Object { $_ -like $depLower -or $depLower -like $_ }
                     if ($dependentInstalled -and -not $dependentQueued) {
@@ -258,6 +399,29 @@ function Get-BloatwareFromAllSources {
                         $detected.Remove($parentKey)
                         break
                     }
+                }
+            }
+        }
+    }
+
+    # Per-candidate WinGet Id resolution: for every SURVIVING candidate (after cascade-safety,
+    # so no winget calls are wasted on items that just got protected) that doesn't already have
+    # a WingetId from the bulk scan above, run a targeted 'winget list <name>' - the same lookup
+    # a human would run by hand. This closes the gap where a package is only known via AppX/
+    # Provisioned/Registry (its detected name never matched winget's Name/Id text directly in
+    # the bulk scan) but winget CAN resolve and remove it once queried by that name specifically.
+    # Every resolved Id flows straight into Type2's existing WinGet-by-id removal layer -
+    # already fully non-interactive (--silent --disable-interactivity) - no Type2 change needed.
+    if ($hasWinget) {
+        $toResolve = @($detected.Values | Where-Object { -not $_.WingetId })
+        if ($toResolve.Count -gt 0) {
+            Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Resolving winget Id for $($toResolve.Count) candidate(s) with no bulk-scan match..."
+            foreach ($item in $toResolve) {
+                $resolvedId = Resolve-WingetIdForCandidate -WingetExe $wingetExe -Query $item.Name
+                if ($resolvedId) {
+                    $item.WingetId = $resolvedId
+                    $item.Sources += 'WinGet(verified)'
+                    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "  Resolved '$($item.Name)' -> $resolvedId"
                 }
             }
         }
@@ -325,13 +489,16 @@ function Invoke-SoftwareManagementAudit {
                 Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message 'No bloatware configuration available - skipping remove audit'
             }
             else {
-                $allPatterns = [System.Collections.Generic.List[string]]::new()
-                $legacyBaseline.common | ForEach-Object { $allPatterns.Add($_) }
+                # The legacy format carries no per-entry source information, so every legacy
+                # pattern is valid for all four sources (the pre-existing behaviour).
+                $allSources = @('AppX', 'Provisioned', 'Registry', 'WinGet')
+                $allPatterns = [System.Collections.Generic.List[hashtable]]::new()
+                $legacyBaseline.common | ForEach-Object { $allPatterns.Add(@{ Pattern = $_; Sources = $allSources }) }
                 if ($osCtx.IsWindows11 -and $legacyBaseline.windows11) {
-                    $legacyBaseline.windows11 | ForEach-Object { $allPatterns.Add($_) }
+                    $legacyBaseline.windows11 | ForEach-Object { $allPatterns.Add(@{ Pattern = $_; Sources = $allSources }) }
                 }
                 elseif (-not $osCtx.IsWindows11 -and $legacyBaseline.windows10) {
-                    $legacyBaseline.windows10 | ForEach-Object { $allPatterns.Add($_) }
+                    $legacyBaseline.windows10 | ForEach-Object { $allPatterns.Add(@{ Pattern = $_; Sources = $allSources }) }
                 }
                 $bloatConfig = @{ patterns = $allPatterns }
             }
@@ -340,7 +507,15 @@ function Invoke-SoftwareManagementAudit {
             # Extract all patterns from the new config. Walk the categories hashtable via
             # .Values (NOT .PSObject.Properties, which yields CLR members on a hashtable and
             # only produced patterns before by accident through the 'Values' member).
-            $patterns = [System.Collections.Generic.List[string]]::new()
+            #
+            # Each pattern now carries the entry's "detection" array, which the audit HONOURS
+            # (Get-BloatwareFromAllSources filters per source). It used to be dropped here and
+            # every pattern was tested against all four surfaces - that is what let AppX-shaped
+            # wildcards like '*Plex*' hit registry DisplayNames such as "Duplex Scanning
+            # Utility". Entries with no "detection" array keep the permissive all-sources
+            # behaviour so an incomplete config never silently stops detecting.
+            $validSources = @('AppX', 'Provisioned', 'Registry', 'WinGet')
+            $patterns = [System.Collections.Generic.List[hashtable]]::new()
             $broadSkipped = 0
             foreach ($category in $bloatConfig.categories.Values) {
                 if (-not ($category -is [System.Collections.IDictionary]) -or -not $category.apps) { continue }
@@ -351,8 +526,15 @@ function Invoke-SoftwareManagementAudit {
                     # the peripheral config app, not just OEM bloat). Only included when the
                     # operator has explicitly opted in via main-config.json.
                     if ($app.tier -eq 'broad' -and -not $aggressiveOemRemoval) { $broadSkipped++; continue }
-                    if ($app.appx_pattern) { $patterns.Add($app.appx_pattern) }
-                    elseif ($app.name) { $patterns.Add($app.name) }
+
+                    $pattern = if ($app.appx_pattern) { $app.appx_pattern } elseif ($app.name) { $app.name } else { $null }
+                    if (-not $pattern) { continue }
+
+                    # Keep only recognised source names so a typo in the config cannot silently
+                    # disable a pattern for every source.
+                    $declared = @(@($app.detection) | Where-Object { $_ -and $validSources -contains $_ })
+                    $sources = if ($declared.Count -gt 0) { $declared } else { $validSources }
+                    $patterns.Add(@{ Pattern = $pattern; Sources = $sources })
                 }
             }
             if ($broadSkipped -gt 0) {
@@ -418,13 +600,18 @@ function Invoke-SoftwareManagementAudit {
                 }
                 if ($alreadyInstalled) { continue }
 
+                # TimeoutSeconds carries essential-apps.json's per-app "timeout" through to
+                # Type2. It used to be dropped here, so every install fell back to
+                # Invoke-ExternalPackageCommand's 600s default - LibreOffice declares 900 and
+                # was being killed mid-install at 600 and reported as a failure.
                 $diff.Add(@{
-                        Action      = 'install'
-                        Name        = $app.name
-                        WingetId    = $app.winget ?? ''
-                        ChocoId     = $app.choco ?? ''
-                        Scope       = $app.scope ?? 'machine'
-                        ExcludeOn   = $app.excludeOn ?? @()
+                        Action = 'install'
+                        Name = $app.name
+                        WingetId = $app.winget ?? ''
+                        ChocoId = $app.choco ?? ''
+                        Scope = $app.scope ?? 'machine'
+                        ExcludeOn = $app.excludeOn ?? @()
+                        TimeoutSeconds = $app.timeout ?? 0
                     })
                 $installFound++
                 Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "  MISSING: $($app.name)"

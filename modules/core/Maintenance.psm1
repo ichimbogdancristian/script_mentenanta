@@ -1327,15 +1327,25 @@ function Get-AppxProvisionedPackageCompat {
     try {
         $dismExe = Join-Path $env:SystemRoot 'System32\dism.exe'
         $output = & $dismExe /Online /Get-ProvisionedAppxPackages 2>&1 | Where-Object { $_ -is [string] }
-        $currentPackage = $null
+
+        # DISM emits DisplayName BEFORE PackageName within each record:
+        #     DisplayName  : Microsoft.BingNews
+        #     Version      : ...
+        #     PackageName  : Microsoft.BingNews_2019.616.2027.0_neutral_~_8wekyb3d8bbwe
+        # The previous parser required PackageName FIRST and only then accepted a DisplayName,
+        # which silently produced MISALIGNED records: the first DisplayName was discarded and
+        # every later DisplayName was paired with the PREVIOUS record's PackageName. That was
+        # invisible while only PackageName was consumed, but callers now match on DisplayName,
+        # so the pairing has to be right. Latch DisplayName, then emit the record when its
+        # PackageName arrives.
+        $pendingDisplayName = $null
         foreach ($line in $output) {
-            if ($line -match 'PackageName\s*:\s*(.+)') {
-                $currentPackage = $matches[1].Trim()
+            if ($line -match '^\s*DisplayName\s*:\s*(.+)$') {
+                $pendingDisplayName = $Matches[1].Trim()
             }
-            elseif ($line -match 'DisplayName\s*:\s*(.+)' -and $currentPackage) {
-                $displayName = $matches[1].Trim()
-                $result.Add(@{ PackageName = $currentPackage; DisplayName = $displayName })
-                $currentPackage = $null
+            elseif ($line -match '^\s*PackageName\s*:\s*(.+)$') {
+                $result.Add(@{ PackageName = $Matches[1].Trim(); DisplayName = $pendingDisplayName })
+                $pendingDisplayName = $null
             }
         }
         if ($result.Count -gt 0) { return $result.ToArray() }
@@ -1398,6 +1408,60 @@ function Remove-AppxProvisionedPackageCompat {
 #endregion
 
 #region ─── SHARED SYSTEM QUERIES ─────────────────────────────────────────────
+
+<#
+.SYNOPSIS
+    Detects whether Windows has a pending reboot from Component Based Servicing (CBS) or
+    Windows Update, which blocks operations like DISM /StartComponentCleanup.
+.DESCRIPTION
+    DISM's component-store cleanup fails with 0x800F0806 ("the operation could not be
+    completed due to pending operations") whenever a prior servicing operation - most
+    commonly a .NET Framework update - is waiting for a reboot to finish applying. Retrying
+    the same cleanup without rebooting just repeats the same failure every run. This checks
+    the well-known registry indicators for that state so a caller can skip the attempt
+    entirely and signal RebootRequired instead of logging a hard error for a condition a
+    reboot (handled centrally at Stage 5, per the operating contract - modules never reboot
+    themselves) will resolve on its own.
+.OUTPUTS
+    [bool] $true if a reboot is pending for any of these reasons.
+#>
+function Test-CbsRebootPending {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+
+    $indicators = @(
+        @{ Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'; Kind = 'KeyExists' }
+        @{ Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootInProgress'; Kind = 'KeyExists' }
+        @{ Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\PackagesPending'; Kind = 'HasSubkeys' }
+        @{ Path = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'; Kind = 'KeyExists' }
+        @{ Path = 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager'; Kind = 'ValueExists'; Name = 'PendingFileRenameOperations' }
+    )
+
+    foreach ($indicator in $indicators) {
+        try {
+            switch ($indicator.Kind) {
+                'KeyExists' {
+                    if (Test-Path -Path $indicator.Path -ErrorAction SilentlyContinue) { return $true }
+                }
+                'HasSubkeys' {
+                    if (Test-Path -Path $indicator.Path -ErrorAction SilentlyContinue) {
+                        if (@(Get-ChildItem -Path $indicator.Path -ErrorAction SilentlyContinue).Count -gt 0) { return $true }
+                    }
+                }
+                'ValueExists' {
+                    $val = (Get-ItemProperty -Path $indicator.Path -Name $indicator.Name -ErrorAction SilentlyContinue).($indicator.Name)
+                    if ($val) { return $true }
+                }
+            }
+        }
+        catch {
+            Write-Log -Level DEBUG -Component CORE -Message "Reboot-pending indicator check failed for $($indicator.Path): $_"
+        }
+    }
+
+    return $false
+}
 
 <#
 .SYNOPSIS
@@ -1769,6 +1833,7 @@ Export-ModuleMember -Function @(
     'Save-DiffList',
     'Get-DiffList',
     'New-ModuleResult',
+    'Test-CbsRebootPending',
     'Get-InstalledApp',
     'Get-WingetUpgrade',
     'Test-CommandAvailable',

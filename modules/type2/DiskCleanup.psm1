@@ -27,7 +27,7 @@ function Invoke-DiskCleanup {
         return New-ModuleResult -ModuleName 'DiskCleanup' -Status 'Skipped' -ModuleType 'Type2' -Message 'No cleanup candidates found'
     }
 
-    $processed = 0; $failed = 0; $errors = @(); $reclaimedMB = 0.0
+    $processed = 0; $failed = 0; $errors = @(); $reclaimedMB = 0.0; $rebootRequired = $false
     $reclaimedByCategory = @{
         'temp' = 0
         'browser-cache' = 0
@@ -93,20 +93,37 @@ function Invoke-DiskCleanup {
                     }
                 }
                 'update-cleanup' {
-                    $dismArgs = @('/Online', '/Cleanup-Image', '/StartComponentCleanup')
-                    if ($item.ResetBase) { $dismArgs += '/ResetBase' }
-                    $exitCode = Invoke-ExternalPackageCommand -FilePath (Join-Path $env:SystemRoot 'System32\dism.exe') `
-                        -ArgumentList $dismArgs -TimeoutSeconds 1800
-                    if ($exitCode -eq 0) {
-                        $freedMB = [double]($item.SizeMB ?? 0)
-                        $reclaimedMB += $freedMB
-                        $reclaimedByCategory['update-cleanup'] += $freedMB
-                        Write-Log -Level SUCCESS -Component DISKCLEAN -Message 'Windows Update component cleanup completed'
-                        $changed = $true
+                    # DISM /StartComponentCleanup hard-fails with 0x800F0806 whenever a prior
+                    # servicing operation (most commonly a .NET update) is waiting on a reboot
+                    # to finish - retrying without rebooting just repeats the same failure
+                    # every run. Check up front and defer to Stage 5's reboot instead of
+                    # logging a hard error for a condition only a reboot can resolve.
+                    if (Test-CbsRebootPending) {
+                        Write-Log -Level INFO -Component DISKCLEAN -Message "$name`: skipped - a reboot is already pending from a prior servicing operation; component cleanup will retry after Stage 5 reboots"
+                        $rebootRequired = $true
                     }
                     else {
-                        Write-Log -Level ERROR -Component DISKCLEAN -Message "DISM component cleanup failed (exit $exitCode)"
-                        $errors += "[$name] DISM exit $exitCode"; $failed++
+                        $dismArgs = @('/Online', '/Cleanup-Image', '/StartComponentCleanup')
+                        if ($item.ResetBase) { $dismArgs += '/ResetBase' }
+                        $exitCode = Invoke-ExternalPackageCommand -FilePath (Join-Path $env:SystemRoot 'System32\dism.exe') `
+                            -ArgumentList $dismArgs -TimeoutSeconds 1800
+                        if ($exitCode -eq 0) {
+                            $freedMB = [double]($item.SizeMB ?? 0)
+                            $reclaimedMB += $freedMB
+                            $reclaimedByCategory['update-cleanup'] += $freedMB
+                            Write-Log -Level SUCCESS -Component DISKCLEAN -Message 'Windows Update component cleanup completed'
+                            $changed = $true
+                        }
+                        elseif ($exitCode -eq -2146498554) {
+                            # 0x800F0806 slipped past the upfront check (a servicing operation
+                            # started mid-run) - same non-fatal defer, not a real failure.
+                            Write-Log -Level WARN -Component DISKCLEAN -Message "$name`: DISM reported pending operations (0x800F0806) - will retry after a reboot"
+                            $rebootRequired = $true
+                        }
+                        else {
+                            Write-Log -Level ERROR -Component DISKCLEAN -Message "DISM component cleanup failed (exit $exitCode)"
+                            $errors += "[$name] DISM exit $exitCode"; $failed++
+                        }
                     }
                 }
                 'recyclebin' {
@@ -137,9 +154,9 @@ function Invoke-DiskCleanup {
     @($reclaimedByCategory.Keys) | ForEach-Object { $reclaimedByCategory[$_] = [math]::Round($reclaimedByCategory[$_], 1) }
 
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
-    Write-Log -Level INFO -Component DISKCLEAN -Message "Done: $processed cleaned, $failed failed, ~$reclaimedMB MB reclaimed"
+    Write-Log -Level INFO -Component DISKCLEAN -Message "Done: $processed cleaned, $failed failed, ~$reclaimedMB MB reclaimed$(if ($rebootRequired) { ' (component cleanup deferred - reboot pending)' })"
     return New-ModuleResult -ModuleName 'DiskCleanup' -Status $status -ModuleType 'Type2' -ItemsDetected $diff.Count `
-        -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors `
+        -ItemsProcessed $processed -ItemsFailed $failed -Errors $errors -RebootRequired $rebootRequired `
         -ExtraData @{
             ReclaimedMB = $reclaimedMB
             BreakdownByCategory = $reclaimedByCategory

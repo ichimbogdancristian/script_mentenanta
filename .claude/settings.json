@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(pwsh -NoProfile -File \"C:\\\\Users\\\\Bogdan\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Bogdan-OneDrive-Desktop-Projects-script-mentenanta\\\\22ab2129-7606-49c2-b5d6-4e88b9d1cde2\\\\scratchpad\\\\test-audit.ps1\")",
+      "PowerShell(pwsh -NoProfile -File \"C:\\\\Users\\\\Bogdan\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Bogdan-OneDrive-Desktop-Projects-script-mentenanta\\\\22ab2129-7606-49c2-b5d6-4e88b9d1cde2\\\\scratchpad\\\\diag.ps1\")",
+      "PowerShell(pwsh -NoProfile -File \"C:\\\\Users\\\\Bogdan\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Bogdan-OneDrive-Desktop-Projects-script-mentenanta\\\\22ab2129-7606-49c2-b5d6-4e88b9d1cde2\\\\scratchpad\\\\diag2.ps1\")",
+      "PowerShell(pwsh -NoProfile -File \"C:\\\\Users\\\\Bogdan\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Bogdan-OneDrive-Desktop-Projects-script-mentenanta\\\\22ab2129-7606-49c2-b5d6-4e88b9d1cde2\\\\scratchpad\\\\lintcheck.ps1\" -Path 'c:\\\\Users\\\\Bogdan\\\\OneDrive\\\\Desktop\\\\Projects\\\\script_mentenanta\\\\modules\\\\type2\\\\SoftwareManagement.psm1' -MinLine 40 -MaxLine 340)",
+      "PowerShell(pwsh -NoProfile -File \"C:\\\\Users\\\\Bogdan\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Bogdan-OneDrive-Desktop-Projects-script-mentenanta\\\\22ab2129-7606-49c2-b5d6-4e88b9d1cde2\\\\scratchpad\\\\lintcheck.ps1\" -Path 'c:\\\\Users\\\\Bogdan\\\\OneDrive\\\\Desktop\\\\Projects\\\\script_mentenanta\\\\modules\\\\core\\\\Maintenance.psm1' -MinLine 1320 -MaxLine 1365)",
+      "PowerShell(pwsh -NoProfile -File \"C:\\\\Users\\\\Bogdan\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-Bogdan-OneDrive-Desktop-Projects-script-mentenanta\\\\22ab2129-7606-49c2-b5d6-4e88b9d1cde2\\\\scratchpad\\\\jsoncheck.ps1\")",
+      "Bash(git fetch *)",
+      "Bash(git merge-tree *)",
+      "Bash(echo \"--- exit: $? ---\")"
+    ]
+  }
+}

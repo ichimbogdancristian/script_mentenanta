@@ -259,11 +259,7 @@
     }
   },
   "optional_but_safe": {
-    "Microsoft.Paint": {
-      "protected": false,
-      "reason": "Can be removed if Paint 3D provides equivalent",
-      "severity": "Low"
-    },
+    "_comment": "DOCUMENTATION ONLY - this section has no effect on behaviour. Test-CanRemovePackage only ever acts on \"protected\": true; a false value is not a way to un-protect something listed as protected elsewhere in this file, it is simply ignored. Whether these apps are actually removed is decided solely by bloatware-detection.json. Microsoft.Paint was previously listed here with protected: false while ALSO being listed in essential_system with protected: true - a direct contradiction. It has been removed from this section: classic Paint stays protected (only Paint 3D, Microsoft.MSPaint / Microsoft.Paint3D, is treated as bloatware).",
     "Microsoft.People": {
       "protected": false,
       "reason": "Contact management; can remove if not using Mail",
