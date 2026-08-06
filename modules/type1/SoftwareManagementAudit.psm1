@@ -54,6 +54,89 @@ function Test-CanRemovePackage {
     return $true
 }
 
+<#
+.SYNOPSIS
+    Parses winget's fixed-width 'list'/'upgrade' table output into Name/Id rows.
+.DESCRIPTION
+    winget has no machine-readable output for 'list' (confirmed against current winget CLI
+    docs - no --output/-o option exists), so the table has to be parsed. Captures the
+    HEADER row's column count (the line right before the '----' divider) and requires each
+    data row to split into no more columns than the header declared - catches the case where
+    a double-space inside a Name field would otherwise be mistaken for a column boundary and
+    shift Id into the wrong slot.
+#>
+function ConvertFrom-WingetListTable {
+    [CmdletBinding()]
+    [OutputType([hashtable[]])]
+    param([Parameter()] [AllowEmptyCollection()] [string[]]$Lines = @())
+
+    $rows = [System.Collections.Generic.List[hashtable]]::new()
+    $inTable = $false
+    $headerCols = 0
+    $prevLine = $null
+    foreach ($line in $Lines) {
+        if ($line -match '^-{3,}') {
+            $inTable = $true
+            if ($prevLine) { $headerCols = @($prevLine -split '\s{2,}').Count }
+            continue
+        }
+        if (-not $inTable) { $prevLine = $line; continue }
+        if ($line -match '^\s*$') { continue }
+        $cols = @($line -split '\s{2,}')
+        if ($cols.Count -ge 2 -and ($headerCols -eq 0 -or $cols.Count -le $headerCols) -and $cols[0].Trim()) {
+            $rows.Add(@{ Name = $cols[0].Trim(); Id = $cols[1].Trim() })
+        }
+    }
+    return $rows.ToArray()
+}
+
+<#
+.SYNOPSIS
+    Resolves an exact, unambiguous winget package Id for a single detected bloatware
+    candidate via a targeted 'winget list <query>' - the same lookup a human would run by
+    hand (e.g. `winget list maps` -> Windows Maps [MSIX\Microsoft.WindowsMaps_...]).
+.DESCRIPTION
+    The bulk winget-list scan in Get-BloatwareFromAllSources only correlates a candidate
+    with winget when the BLOATWARE PATTERN ITSELF happens to match winget's Name/Id text.
+    Most AppX/Provisioned/Registry-only detections never satisfy that, even though winget
+    can resolve them fine once queried directly by the candidate's own detected name - this
+    closes exactly that gap so Type2's existing WinGet-by-id removal layer has a real Id to
+    act on instead of falling back to less reliable layers.
+
+    Deliberately conservative: only returns an Id when the query returns EXACTLY ONE row, so
+    an ambiguous/multi-match query (a short or generic name) is left unresolved rather than
+    risking an uninstall of the wrong package. A failed or ambiguous lookup is silently
+    treated as "not resolved" - this is best-effort enrichment on top of the four existing
+    sources, never a hard requirement for the candidate to still be queued for removal.
+.OUTPUTS
+    [string] the exact winget Id, or $null if no unambiguous match was found.
+#>
+function Resolve-WingetIdForCandidate {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)] [string]$WingetExe,
+        [Parameter(Mandatory)] [string]$Query
+    )
+
+    if (-not $Query) { return $null }
+    try {
+        $raw = & $WingetExe list $Query --accept-source-agreements --disable-interactivity 2>&1 |
+            Where-Object { $_ -is [string] }
+        $rows = ConvertFrom-WingetListTable -Lines $raw
+        if ($rows.Count -eq 1 -and $rows[0].Id) {
+            return $rows[0].Id
+        }
+        if ($rows.Count -gt 1) {
+            Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "winget list '$Query' returned $($rows.Count) ambiguous match(es) - not resolving an Id"
+        }
+    }
+    catch {
+        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "winget list '$Query' failed: $_"
+    }
+    return $null
+}
+
 function Get-BloatwareFromAllSources {
     param(
         [hashtable]$BloatwareConfig,
@@ -66,6 +149,8 @@ function Get-BloatwareFromAllSources {
     )
 
     $detected = @{}  # hashtable for deduplication
+    $hasWinget = Test-CommandAvailable 'winget'
+    $wingetExe = if ($hasWinget) { Resolve-WingetPath } else { $null }
     # Flat set of every identifier seen across all four sources this run, used by the
     # cascade-safety pass below to tell "not installed" apart from "installed but not queued
     # for removal" when checking a dependency-matrix entry's declared dependents.
@@ -167,36 +252,12 @@ function Get-BloatwareFromAllSources {
     # the pattern against those - NEVER against the raw formatted line (the old code stored the
     # whole "Name  Id  Version  Source" line as the package name, producing junk detections that
     # Type2 could not act on). The winget Id is captured so Type2's winget-uninstall fallback works.
-    if ((Test-CommandAvailable 'winget')) {
+    if ($hasWinget) {
         Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning WinGet packages...'
         try {
-            $wingetExe = Resolve-WingetPath
             $wingetRaw = & $wingetExe list --accept-source-agreements --disable-interactivity 2>&1 |
                 Where-Object { $_ -is [string] }
-
-            # winget has no machine-readable output for 'list' (confirmed against current winget
-            # CLI docs - no --output/-o option exists), so the fixed-width table has to be
-            # parsed. Capture the header row's column count (the line right before the '----'
-            # divider) and require each data row to split into no more columns than the header
-            # declared - catches the case where a double-space inside a Name field would
-            # otherwise be mistaken for a column boundary and shift Id into the wrong slot.
-            $wingetApps = [System.Collections.Generic.List[hashtable]]::new()
-            $inTable = $false
-            $headerCols = 0
-            $prevLine = $null
-            foreach ($line in $wingetRaw) {
-                if ($line -match '^-{3,}') {
-                    $inTable = $true
-                    if ($prevLine) { $headerCols = @($prevLine -split '\s{2,}').Count }
-                    continue
-                }
-                if (-not $inTable) { $prevLine = $line; continue }
-                if ($line -match '^\s*$') { continue }
-                $cols = @($line -split '\s{2,}')
-                if ($cols.Count -ge 2 -and ($headerCols -eq 0 -or $cols.Count -le $headerCols) -and $cols[0].Trim()) {
-                    $wingetApps.Add(@{ Name = $cols[0].Trim(); Id = $cols[1].Trim() })
-                }
-            }
+            $wingetApps = ConvertFrom-WingetListTable -Lines $wingetRaw
             foreach ($wa in $wingetApps) {
                 if ($wa.Name) { $null = $allInstalledNames.Add($wa.Name.ToLowerInvariant()) }
                 if ($wa.Id) { $null = $allInstalledNames.Add($wa.Id.ToLowerInvariant()) }
@@ -258,6 +319,29 @@ function Get-BloatwareFromAllSources {
                         $detected.Remove($parentKey)
                         break
                     }
+                }
+            }
+        }
+    }
+
+    # Per-candidate WinGet Id resolution: for every SURVIVING candidate (after cascade-safety,
+    # so no winget calls are wasted on items that just got protected) that doesn't already have
+    # a WingetId from the bulk scan above, run a targeted 'winget list <name>' - the same lookup
+    # a human would run by hand. This closes the gap where a package is only known via AppX/
+    # Provisioned/Registry (its detected name never matched winget's Name/Id text directly in
+    # the bulk scan) but winget CAN resolve and remove it once queried by that name specifically.
+    # Every resolved Id flows straight into Type2's existing WinGet-by-id removal layer -
+    # already fully non-interactive (--silent --disable-interactivity) - no Type2 change needed.
+    if ($hasWinget) {
+        $toResolve = @($detected.Values | Where-Object { -not $_.WingetId })
+        if ($toResolve.Count -gt 0) {
+            Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Resolving winget Id for $($toResolve.Count) candidate(s) with no bulk-scan match..."
+            foreach ($item in $toResolve) {
+                $resolvedId = Resolve-WingetIdForCandidate -WingetExe $wingetExe -Query $item.Name
+                if ($resolvedId) {
+                    $item.WingetId = $resolvedId
+                    $item.Sources += 'WinGet(verified)'
+                    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "  Resolved '$($item.Name)' -> $resolvedId"
                 }
             }
         }
