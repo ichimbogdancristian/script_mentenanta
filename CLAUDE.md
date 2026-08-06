@@ -305,6 +305,45 @@ turn the two non-registry areas off. Both default to enforcing.
   against the raw formatted line; the winget table has no JSON/CSV output option, so parsing
   validates each row's column count against the header row rather than trusting a blanket
   minimum).
+  **The winget source matches on the Id's normalised *stem*, not just Name/Id.** This is
+  load-bearing, not a refinement. `winget list` reports a *display* Name and a source-prefixed,
+  version-suffixed Id:
+
+  | display Name | Id |
+  |---|---|
+  | `AV1 Video Extension` | `MSIX\Microsoft.AV1VideoExtension_2.0.24.0_x64__8wekyb3d8bbwe` |
+  | `BabyWare` | `ARP\Machine\X64\BabyWare` |
+  | `Angry IP Scanner` | `angryziber.AngryIPScanner` |
+
+  `bloatware-detection.json` writes patterns as AppX short names (`Microsoft.AV1VideoExtension`),
+  which `-like`-matches **neither** column — so before stem matching the winget source was blind
+  to every one of the ~100 exact-identifier entries and only wildcards like `*Netflix*` ever hit
+  it. `ConvertFrom-WingetPackageId` strips the `MSIX\` / `ARP\Machine\X64\` prefix and the
+  `_<version>_<arch>__<hash>` tail (splitting at the first `_` before a digit is unambiguous —
+  MSIX package names cannot contain `_`), recovering exactly the string the patterns target.
+  `ConvertFrom-WingetListTable` carries `Stem` on every row so no caller re-derives it, and the
+  stem is also used as the dedup **key**, so a winget hit merges into the Source 1/2/3 entry
+  instead of creating a second candidate under the display Name.
+
+  **Every surviving candidate gets an exact winget Id resolved, in two passes, cheapest first.**
+  Type2's Layer 4 needs an Id that `winget uninstall <Id>` can act on:
+  - *Pass A (free)* — correlate against `$wingetApps`, the **single** bulk `winget list` already
+    run by Source 4. Matches the candidate name against a row's stem / raw Id / display Name, and
+    for AppX detections against `MSIX\<PackageFullName>` (verified an **exact** string match on
+    3/3 live samples, which is also why Source 1 can derive the Id straight from
+    `Get-AppxPackageCompat`'s `PackageFullName` without asking winget at all).
+  - *Pass B (one process each)* — only for what Pass A could not place: a targeted
+    `winget list <name>`, capped at 40 (`$maxTargetedLookups`). It accepts an Id **only** when the
+    query returns exactly one row, so an ambiguous short name is left unresolved rather than
+    risking the wrong uninstall.
+
+  Do **not** "simplify" this into querying `winget list` once per baseline entry, and do not make
+  winget the primary removal path: 166 entries × ~1–2 s of process launch would add minutes to
+  every unattended run for nothing the bulk table doesn't already contain, and winget is
+  officially **unsupported under `NT AUTHORITY\SYSTEM`** (MSIX registers per-user; SYSTEM has no
+  such registration) — which is precisely the context of the monthly scheduled task. AppX-via-PS5.1
+  must stay Layers 1–3; the resolved Id feeds Layer 4 as a *precise fallback*.
+
   **Each source only sees the patterns that declare it.** `bloatware-detection.json`'s
   per-entry `detection` array is honoured: the pattern list built in the audit carries
   `@{ Pattern; Sources }`, and each source filters on it. Ignoring `detection` (the old
@@ -348,7 +387,7 @@ turn the two non-registry areas off. Both default to enforcing.
   installed — `*ASUS*` also matches `Pegasus Mail`) are excluded unless
   `modules.softwareManagement.aggressiveOemRemoval` is `true` in
   `main-config.json`. Type2 removes each item with a layered strategy (AppX → Provisioned →
-  registry **silent-uninstall only** → winget-by-id → winget-by-name), then installs essentials
+  registry **silent-uninstall only** → winget-by-exact-Id → winget-by-name), then installs essentials
   and applies upgrades, all through `Invoke-ExternalPackageCommand` (timeout-guarded — no package
   manager call can hang an unattended run); `essential-apps.json`'s per-app `timeout` is threaded
   through the diff as `TimeoutSeconds` and passed to that helper, because otherwise every install

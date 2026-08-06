@@ -109,10 +109,57 @@ function ConvertFrom-WingetListTable {
         if ($line -match '^\s*$') { continue }
         $cols = @($line -split '\s{2,}')
         if ($cols.Count -ge 2 -and ($headerCols -eq 0 -or $cols.Count -le $headerCols) -and $cols[0].Trim()) {
-            $rows.Add(@{ Name = $cols[0].Trim(); Id = $cols[1].Trim() })
+            $id = $cols[1].Trim()
+            # Stem is carried on every row so callers never have to re-derive it. See
+            # ConvertFrom-WingetPackageId for why matching needs it as well as Name/Id.
+            $rows.Add(@{ Name = $cols[0].Trim(); Id = $id; Stem = (ConvertFrom-WingetPackageId -PackageId $id) })
         }
     }
     return $rows.ToArray()
+}
+
+<#
+.SYNOPSIS
+    Reduces a winget package Id to the bare package stem that bloatware patterns are
+    written against.
+.DESCRIPTION
+    winget's Id column is NOT the AppX package name - it is source-prefixed, and for
+    MSIX/ARP packages it also carries version/architecture/publisher detail. Verified live
+    against `winget list` on a real machine:
+
+        Name                   Id
+        ----                   --
+        AV1 Video Extension    MSIX\Microsoft.AV1VideoExtension_2.0.24.0_x64__8wekyb3d8bbwe
+        BabyWare               ARP\Machine\X64\BabyWare
+        Angry IP Scanner       angryziber.AngryIPScanner
+
+    bloatware-detection.json writes patterns as AppX short names (`Microsoft.AV1VideoExtension`),
+    and the display Name is "AV1 Video Extension". So for the ~100 entries that use an exact
+    identifier with no wildcard, NEITHER the Name column nor the raw Id column can ever
+    -like-match, which silently made the whole winget source blind to every Microsoft in-box
+    app - only wildcard patterns such as `*Netflix*` ever worked there. Normalising the Id to
+    its stem recovers exactly the string the patterns target.
+.OUTPUTS
+    [string] the stem (e.g. 'Microsoft.AV1VideoExtension'), or the input unchanged when it
+    carries no recognised prefix/suffix.
+#>
+function ConvertFrom-WingetPackageId {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([string]$PackageId)
+
+    if (-not $PackageId) { return $PackageId }
+
+    # Strip the source prefix: MSIX\ , ARP\Machine\X64\ , ARP\User\X86\ , ...
+    $stem = $PackageId -replace '^(MSIX|ARP)\\(Machine\\|User\\)?(X64\\|X86\\|ARM64\\)?', ''
+
+    # Strip the _<version>_<arch>__<publisherHash> tail that MSIX ids carry. MSIX package
+    # names cannot contain '_' (allowed set is [A-Za-z0-9.-]) and the segment after the first
+    # '_' is the version, so splitting at the first '_' that precedes a digit is unambiguous -
+    # same rule as Get-AppxNameStem in the Type2 module.
+    if ($stem -match '^([A-Za-z0-9.\-]+?)_\d') { $stem = $Matches[1] }
+
+    return $stem
 }
 
 <#
@@ -176,6 +223,10 @@ function Get-BloatwareFromAllSources {
     $detected = @{}  # hashtable for deduplication
     $hasWinget = Test-CommandAvailable 'winget'
     $wingetExe = if ($hasWinget) { Resolve-WingetPath } else { $null }
+    # Every row of the single bulk `winget list` (Name/Id/Version/Source + a derived Id Stem),
+    # hoisted here so the Id-correlation pass after cascade-safety can reuse it instead of
+    # re-shelling out. Stays empty when winget is unavailable.
+    $wingetApps = @()
     # Flat set of every identifier seen across all four sources this run, used by the
     # cascade-safety pass below to tell "not installed" apart from "installed but not queued
     # for removal" when checking a dependency-matrix entry's declared dependents.
@@ -196,23 +247,37 @@ function Get-BloatwareFromAllSources {
     Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Patterns per source - AppX: $($appxPatterns.Count), Provisioned: $($provPatterns.Count), Registry: $($regPatterns.Count), WinGet: $($wingetPatterns.Count)"
 
     # Source 1: AppX packages (modern UWP apps). Matched on the SHORT package Name.
+    #
+    # PackageFullName is captured here (it was previously discarded) purely so the exact winget
+    # Id can be DERIVED without spending a winget invocation: for an MSIX package the winget Id
+    # is literally 'MSIX\' + PackageFullName. Verified live against `winget list` - three of
+    # three sampled MSIX rows matched Get-AppxPackage's PackageFullName exactly, e.g.
+    #     MSIX\Microsoft.AV1VideoExtension_2.0.24.0_x64__8wekyb3d8bbwe
+    # That is the precise Id form `winget uninstall <id>` accepts, so Type2 gets a targeted,
+    # unambiguous uninstall for every AppX-detected package at zero extra cost - no per-entry
+    # `winget list` probing, no table parsing, and nothing that can be truncated or mis-parsed.
     Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning AppX packages...'
     try {
-        $appxPackages = Get-AppxPackageCompat -AllUsers -ErrorAction Stop |
-            Select-Object -ExpandProperty Name | Where-Object { $_ }
-        foreach ($n in $appxPackages) { $null = $allInstalledNames.Add($n.ToLowerInvariant()) }
+        $appxPackages = @(Get-AppxPackageCompat -AllUsers -ErrorAction Stop | Where-Object { $_.Name })
+        foreach ($p in $appxPackages) { $null = $allInstalledNames.Add($p.Name.ToLowerInvariant()) }
 
         foreach ($pat in $appxPatterns) {
-            foreach ($app in $appxPackages) {
+            foreach ($appPkg in $appxPackages) {
+                $app = $appPkg.Name
                 if ($app -like $pat.Pattern) {
                     if ((Test-CanRemovePackage -PackageName $app -Protected $Protected -Dependencies $Dependencies)) {
                         $key = $app.ToLowerInvariant()
                         if (-not $detected.ContainsKey($key)) {
-                            $detected[$key] = @{
+                            $entry = @{
                                 Name = $app
                                 Sources = @('AppX')
                                 Patterns = @($pat.Pattern)
                             }
+                            if ($appPkg.PackageFullName) {
+                                $entry.WingetId = "MSIX\$($appPkg.PackageFullName)"
+                                $entry.PackageFullName = $appPkg.PackageFullName
+                            }
+                            $detected[$key] = $entry
                         }
                     }
                 }
@@ -315,21 +380,33 @@ function Get-BloatwareFromAllSources {
     # the pattern against those - NEVER against the raw formatted line (the old code stored the
     # whole "Name  Id  Version  Source" line as the package name, producing junk detections that
     # Type2 could not act on). The winget Id is captured so Type2's winget-uninstall fallback works.
+    #
+    # Patterns are tested against the Name, the raw Id AND the Id's normalised STEM. The stem is
+    # what makes this source work at all for Microsoft in-box apps: winget reports
+    #   Name = 'AV1 Video Extension'   Id = 'MSIX\Microsoft.AV1VideoExtension_2.0.24.0_x64__...'
+    # while bloatware-detection.json writes the pattern as 'Microsoft.AV1VideoExtension'. Neither
+    # column -like-matches that, so before this every exact-identifier pattern (~100 of the 166
+    # entries) was invisible to the winget source and only wildcards like '*Netflix*' ever hit.
+    # See ConvertFrom-WingetPackageId for the verified Id shapes.
     if ($hasWinget) {
         Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning WinGet packages...'
         try {
             $wingetRaw = & $wingetExe list --accept-source-agreements --disable-interactivity 2>&1 |
                 Where-Object { $_ -is [string] }
-            $wingetApps = ConvertFrom-WingetListTable -Lines $wingetRaw
+            $wingetApps = @(ConvertFrom-WingetListTable -Lines $wingetRaw)
             foreach ($wa in $wingetApps) {
                 if ($wa.Name) { $null = $allInstalledNames.Add($wa.Name.ToLowerInvariant()) }
                 if ($wa.Id) { $null = $allInstalledNames.Add($wa.Id.ToLowerInvariant()) }
+                if ($wa.Stem) { $null = $allInstalledNames.Add($wa.Stem.ToLowerInvariant()) }
             }
 
             foreach ($pat in $wingetPatterns) {
                 foreach ($wa in $wingetApps) {
-                    if ($wa.Name -like $pat.Pattern -or $wa.Id -like $pat.Pattern) {
-                        $target = if ($wa.Name) { $wa.Name } else { $wa.Id }
+                    if ($wa.Name -like $pat.Pattern -or $wa.Id -like $pat.Pattern -or ($wa.Stem -and $wa.Stem -like $pat.Pattern)) {
+                        # Prefer the stem as the identity: it is the AppX/package short name, so
+                        # it dedups against Source 1/2/3 keys instead of creating a second entry
+                        # under winget's human-readable display Name.
+                        $target = if ($wa.Stem) { $wa.Stem } elseif ($wa.Name) { $wa.Name } else { $wa.Id }
                         if ((Test-CanRemovePackage -PackageName $target -Protected $Protected -Dependencies $Dependencies)) {
                             $key = $target.ToLowerInvariant()
                             if ($detected.ContainsKey($key)) {
@@ -404,19 +481,56 @@ function Get-BloatwareFromAllSources {
         }
     }
 
-    # Per-candidate WinGet Id resolution: for every SURVIVING candidate (after cascade-safety,
-    # so no winget calls are wasted on items that just got protected) that doesn't already have
-    # a WingetId from the bulk scan above, run a targeted 'winget list <name>' - the same lookup
-    # a human would run by hand. This closes the gap where a package is only known via AppX/
-    # Provisioned/Registry (its detected name never matched winget's Name/Id text directly in
-    # the bulk scan) but winget CAN resolve and remove it once queried by that name specifically.
-    # Every resolved Id flows straight into Type2's existing WinGet-by-id removal layer -
-    # already fully non-interactive (--silent --disable-interactivity) - no Type2 change needed.
+    # ------------------------------------------------------------------------------------------
+    # WinGet Id resolution for every SURVIVING candidate (run after cascade-safety, so no lookup
+    # is wasted on an item that just got protected). The goal is the one Type2 actually needs: an
+    # exact, unambiguous Id that `winget uninstall <Id>` can act on, e.g.
+    #   winget list maps  ->  Windows Maps  MSIX\Microsoft.WindowsMaps_5.1906.1972.0_x64__8wek...
+    #
+    # Done in two passes, cheapest first:
+    #
+    #   Pass A - correlate against $wingetApps, the SINGLE bulk `winget list` already run above.
+    #            Free (no new process). Matches the candidate's own name against a row's Id stem,
+    #            raw Id or display Name, and - for AppX/Provisioned detections - against the
+    #            PackageFullName embedded in the row's MSIX Id. This resolves the large majority.
+    #
+    #   Pass B - only for what Pass A could not place: one targeted `winget list <name>`, the
+    #            lookup a human would type. Capped by $maxTargetedLookups because each one is a
+    #            process launch (~1-2s); querying all ~166 baseline entries unconditionally would
+    #            add minutes to every unattended run for no gain over the bulk table.
+    #
+    # Deliberately NOT restructured so winget becomes the PRIMARY removal path: winget is
+    # officially unsupported under NT AUTHORITY\SYSTEM (MSIX packages register per-user and
+    # SYSTEM has no such registration), and SYSTEM is exactly the context of the monthly
+    # scheduled task. AppX-via-PS5.1 stays Layer 1-3; the Id resolved here feeds Layer 4.
+    # ------------------------------------------------------------------------------------------
     if ($hasWinget) {
+        $unresolved = @($detected.Values | Where-Object { -not $_.WingetId })
+        if ($unresolved.Count -gt 0 -and $wingetApps.Count -gt 0) {
+            foreach ($item in $unresolved) {
+                $needle = $item.Name.ToLowerInvariant()
+                $fullName = if ($item.PackageFullName) { $item.PackageFullName.ToLowerInvariant() } else { $null }
+                $row = $wingetApps | Where-Object {
+                    ($_.Stem -and $_.Stem.ToLowerInvariant() -eq $needle) -or
+                    ($_.Id -and $_.Id.ToLowerInvariant() -eq $needle) -or
+                    ($_.Name -and $_.Name.ToLowerInvariant() -eq $needle) -or
+                    ($fullName -and $_.Id -and $_.Id.ToLowerInvariant() -eq "msix\$fullName")
+                } | Select-Object -First 1
+                if ($row -and $row.Id) {
+                    $item.WingetId = $row.Id
+                    if ($item.Sources -notcontains 'WinGet(correlated)') { $item.Sources += 'WinGet(correlated)' }
+                    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "  Correlated '$($item.Name)' -> $($row.Id)"
+                }
+            }
+        }
+
         $toResolve = @($detected.Values | Where-Object { -not $_.WingetId })
         if ($toResolve.Count -gt 0) {
-            Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Resolving winget Id for $($toResolve.Count) candidate(s) with no bulk-scan match..."
-            foreach ($item in $toResolve) {
+            $maxTargetedLookups = 40
+            $lookups = @($toResolve | Select-Object -First $maxTargetedLookups)
+            Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message `
+                "Targeted winget lookup for $($lookups.Count) of $($toResolve.Count) candidate(s) still without an Id..."
+            foreach ($item in $lookups) {
                 $resolvedId = Resolve-WingetIdForCandidate -WingetExe $wingetExe -Query $item.Name
                 if ($resolvedId) {
                     $item.WingetId = $resolvedId
@@ -425,6 +539,10 @@ function Get-BloatwareFromAllSources {
                 }
             }
         }
+
+        $withId = @($detected.Values | Where-Object { $_.WingetId }).Count
+        Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message `
+            "WinGet Id resolved for $withId of $($detected.Count) removal candidate(s)"
     }
 
     return $detected.Values

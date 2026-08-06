@@ -188,24 +188,41 @@ function Remove-BloatwareLayered {
         }
     }
 
-    # Layer 4: WinGet removal by resolved Id (fallback). Routed through
+    # Layer 4: WinGet removal by the exact Id the audit resolved. Routed through
     # Invoke-ExternalPackageCommand (timeout-guarded, kills a hung process tree) rather than a
     # bare '&' call - this must never be able to hang an unattended run.
+    #
+    # Two forms are tried, in this order, because they are NOT interchangeable:
+    #   1. positional query  ->  winget uninstall MSIX\Microsoft.WindowsMaps_5.1906....
+    #      The audit's Id is globally unique (it came straight out of `winget list`), so the
+    #      positional query resolves to exactly one package. This is the form verified by hand to
+    #      actually uninstall a source-prefixed MSIX package.
+    #   2. --id --exact      ->  winget uninstall --id <Id> --exact
+    #      Kept as a second attempt for plain 'Publisher.Package' ARP ids, where --id is the
+    #      documented selector. --exact is mandatory here: without it winget substring-matches and
+    #      can bail with -1978335129 (multiple matches) instead of removing anything.
     if (-not $removed -and $WingetId -and $HasWinget) {
-        try {
-            $exitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) `
-                -ArgumentList @('uninstall', '--id', $WingetId, '--silent', '--accept-source-agreements', '--disable-interactivity')
-            if ($exitCode -eq 0) {
-                Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 4: WinGet uninstall (by id) succeeded"
-                $attempts += 'WinGet'
-                $removed = $true
+        $wingetCommon = @('--silent', '--accept-source-agreements', '--disable-interactivity')
+        $wingetForms = @(
+            @{ Label = 'exact id'; Args = @('uninstall', $WingetId) + $wingetCommon }
+            @{ Label = '--id --exact'; Args = @('uninstall', '--id', $WingetId, '--exact') + $wingetCommon }
+        )
+        foreach ($form in $wingetForms) {
+            if ($removed) { break }
+            try {
+                $exitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) -ArgumentList $form.Args
+                if ($exitCode -eq 0) {
+                    Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 4: WinGet uninstall ($($form.Label)) succeeded: $WingetId"
+                    $attempts += 'WinGet'
+                    $removed = $true
+                }
+                else {
+                    Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 4 (WinGet $($form.Label)) exit $exitCode for '$WingetId'"
+                }
             }
-            else {
-                Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 4 (WinGet by id) exit $exitCode"
+            catch {
+                Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 4 (WinGet $($form.Label)) failed: $_"
             }
-        }
-        catch {
-            Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 4 (WinGet) failed: $_"
         }
     }
 
