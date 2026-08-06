@@ -1327,15 +1327,25 @@ function Get-AppxProvisionedPackageCompat {
     try {
         $dismExe = Join-Path $env:SystemRoot 'System32\dism.exe'
         $output = & $dismExe /Online /Get-ProvisionedAppxPackages 2>&1 | Where-Object { $_ -is [string] }
-        $currentPackage = $null
+
+        # DISM emits DisplayName BEFORE PackageName within each record:
+        #     DisplayName  : Microsoft.BingNews
+        #     Version      : ...
+        #     PackageName  : Microsoft.BingNews_2019.616.2027.0_neutral_~_8wekyb3d8bbwe
+        # The previous parser required PackageName FIRST and only then accepted a DisplayName,
+        # which silently produced MISALIGNED records: the first DisplayName was discarded and
+        # every later DisplayName was paired with the PREVIOUS record's PackageName. That was
+        # invisible while only PackageName was consumed, but callers now match on DisplayName,
+        # so the pairing has to be right. Latch DisplayName, then emit the record when its
+        # PackageName arrives.
+        $pendingDisplayName = $null
         foreach ($line in $output) {
-            if ($line -match 'PackageName\s*:\s*(.+)') {
-                $currentPackage = $matches[1].Trim()
+            if ($line -match '^\s*DisplayName\s*:\s*(.+)$') {
+                $pendingDisplayName = $Matches[1].Trim()
             }
-            elseif ($line -match 'DisplayName\s*:\s*(.+)' -and $currentPackage) {
-                $displayName = $matches[1].Trim()
-                $result.Add(@{ PackageName = $currentPackage; DisplayName = $displayName })
-                $currentPackage = $null
+            elseif ($line -match '^\s*PackageName\s*:\s*(.+)$') {
+                $result.Add(@{ PackageName = $Matches[1].Trim(); DisplayName = $pendingDisplayName })
+                $pendingDisplayName = $null
             }
         }
         if ($result.Count -gt 0) { return $result.ToArray() }

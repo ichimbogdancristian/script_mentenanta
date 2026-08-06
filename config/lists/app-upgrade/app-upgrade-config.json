@@ -2,7 +2,9 @@
   "ModuleName": "AppUpgrade",
   "ModuleEnabled": true,
   "Description": "Automated application upgrade management via Winget and Chocolatey package managers",
-  "Version": "1.0.0",
+  "Version": "1.1.0",
+  "_comment": "ExcludePatterns are matched with -like against BOTH the package Name and the winget Id (see SoftwareManagementAudit.psm1), so a pattern needs to cover whichever of the two it is written for. Exclusions exist for packages where an unattended upgrade is disruptive or risky (long installs, licensed suites, dev toolchains whose version is pinned by a project) - NOT as a general 'skip vendor' switch.",
+  "_adobe_note": "A blanket \"Adobe*\" used to be listed here. That silently pinned Adobe Acrobat Reader - which essential-apps.json INSTALLS on every machine - at whatever version it was first installed at, forever. A permanently unpatched PDF reader is one of the most heavily targeted attack surfaces on a Windows desktop, so the blanket directly worked against this project's goal of reducing CVE exposure. It is now replaced by specific Creative Cloud / creative-suite / Acrobat Pro exclusions, which keep the disruptive licensed installers out while letting Reader receive security updates.",
   "EnabledSources": [
     "Winget",
     "Chocolatey"
@@ -25,10 +27,25 @@
     "Windows SDK*",
     "Microsoft Office*",
     "Office 365*",
-    "Adobe*",
     "AutoCAD*",
     "JetBrains*",
     "IntelliJ*",
-    "Android Studio*"
+    "Android Studio*",
+    "Adobe Creative Cloud*",
+    "Adobe.CreativeCloud*",
+    "Adobe Photoshop*",
+    "Adobe.Photoshop*",
+    "Adobe Illustrator*",
+    "Adobe.Illustrator*",
+    "Adobe Premiere*",
+    "Adobe.Premiere*",
+    "Adobe After Effects*",
+    "Adobe.AfterEffects*",
+    "Adobe Lightroom*",
+    "Adobe.Lightroom*",
+    "Adobe InDesign*",
+    "Adobe.InDesign*",
+    "Adobe Acrobat Pro*",
+    "Adobe.Acrobat.Pro*"
   ]
 }

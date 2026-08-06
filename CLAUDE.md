@@ -304,23 +304,77 @@ turn the two non-registry areas off. Both default to enforcing.
   provisioned packages → registry → winget `list` (parsed into Name/Id columns, never matched
   against the raw formatted line; the winget table has no JSON/CSV output option, so parsing
   validates each row's column count against the header row rather than trusting a blanket
-  minimum). Every candidate is gated by `bloatware/protected-packages.json` (hard block) +
+  minimum).
+  **Each source only sees the patterns that declare it.** `bloatware-detection.json`'s
+  per-entry `detection` array is honoured: the pattern list built in the audit carries
+  `@{ Pattern; Sources }`, and each source filters on it. Ignoring `detection` (the old
+  behaviour) meant AppX-shaped wildcards were also tested against registry `DisplayName` —
+  `*Plex*` is declared AppX/Provisioned-only but matched any `Duplex …` scanner utility.
+  An entry with no `detection` array stays permissive (all four sources) so an incomplete
+  config can never silently stop detecting.
+  **The provisioned source matches and keys on `DisplayName`, never `PackageName`.** The short
+  name (`Microsoft.BingNews`) is what patterns and protected-list keys are written against;
+  the versioned full name (`Microsoft.BingNews_2019.616.2027.0_neutral_~_8wekyb3d8bbwe`) broke
+  three things at once when it was used: (1) every bare-identifier pattern — ~100 entries that
+  use `name` with no wildcard — could never match, so those apps were undetectable when merely
+  provisioned; (2) `protected-packages.json` keys without a trailing `*` could never match
+  either, so the only hard block on removal silently did not apply to this source; (3) the dedup
+  key diverged from the AppX source's short name, so an app found by both was queued **twice** —
+  Type2 removed it on the first item and reported the second as a failure, turning a clean run
+  into `Warning` with a phantom error in the report. Type2 does not need `PackageName` from the
+  diff: `Remove-BloatwareLayered` re-queries the live provisioned list and matches on the stem.
+  Relatedly, `Get-AppxProvisionedPackageCompat`'s **DISM fallback** parser latches `DisplayName`
+  and emits the record when `PackageName` arrives — DISM prints `DisplayName` *first*, and the
+  original parser required the reverse order, so it discarded the first `DisplayName` and paired
+  every later one with the **previous** record's `PackageName`.
+  Every candidate is gated by `bloatware/protected-packages.json` (hard block) +
   `bloatware/dependency-matrix.json` via `Test-CanRemovePackage`, **plus a cascade-safety pass**
   after all sources are merged: a package is dropped from the removal set if
   `dependency-matrix.json` declares a dependent that's actually installed but not itself queued
   for removal this run (protects, never removes — the safe default for an unattended run).
+  **That pass ignores dependents that are themselves protected.** A protected package can never
+  be queued for removal, so it is permanently "installed but not queued" — which makes the rule
+  unsatisfiable and turns it into an unconditional block on the parent. `dependency-matrix.json`
+  listed the protected system component `Microsoft.XboxGameCallableUI` as a dependent of
+  `Microsoft.Xbox*`, so **every** Xbox overlay/Game Bar detection was silently dropped on every
+  run, forever, while `Microsoft.GamingApp` (which doesn't match `microsoft.xbox*`) was removed —
+  an inconsistent half-removal that looked like the config was being honoured. Both sides are
+  fixed: the entry no longer lists a protected package, and the code skips protected dependents
+  defensively. When adding a `dependents` entry, use a **real package identifier** — the values
+  are matched with `-like` against live package names, so prose like `"Many UWP apps"` silently
+  matches nothing.
   Bloatware patterns tagged `"tier": "broad"` in `bloatware-detection.json` (whole-vendor
   wildcards like `*Razer*`/`*ASUS*`/`Dell.*` that can also match software the user deliberately
-  installed) are excluded unless `modules.softwareManagement.aggressiveOemRemoval` is `true` in
+  installed — `*ASUS*` also matches `Pegasus Mail`) are excluded unless
+  `modules.softwareManagement.aggressiveOemRemoval` is `true` in
   `main-config.json`. Type2 removes each item with a layered strategy (AppX → Provisioned →
   registry **silent-uninstall only** → winget-by-id → winget-by-name), then installs essentials
   and applies upgrades, all through `Invoke-ExternalPackageCommand` (timeout-guarded — no package
-  manager call can hang an unattended run). Essential-app "already installed" detection tries the
+  manager call can hang an unattended run); `essential-apps.json`'s per-app `timeout` is threaded
+  through the diff as `TimeoutSeconds` and passed to that helper, because otherwise every install
+  silently used the 600 s default and LibreOffice (which declares 900) was killed mid-install and
+  reported as a failure. A registry uninstaller exiting **3010** (`ERROR_SUCCESS_REBOOT_REQUIRED`)
+  now sets `RebootRequired` on the module result — without it, Stage 5 skips the reboot entirely
+  when `rebootOnlyWhenRequired` is set, leaving the uninstall half-applied.
+  Post-removal validation only claims "verified" when an **AppX/Provisioned** layer was involved:
+  `Get-AppxPackageCompat` returns nothing for a Win32 or winget-Name-keyed package whether or not
+  the removal worked, so treating "no AppX package found" as proof printed *Removal verified* for
+  every such package unconditionally. Those now report the uninstaller's own exit code and say
+  plainly that it is not AppX-verifiable.
+  Essential-app "already installed" detection tries the
   precise `winget list --id --exact` check before falling back to a name-substring match (not the
   other way around — registry `DisplayName` often doesn't literally contain the baseline's `name`
   string). Nothing survives between runs except the final HTML report (copied to
   `$env:ORIGINAL_SCRIPT_DIR`, see below), so a missing essential app is queued for install on
   every run regardless of whether a prior run installed it and the user removed it since.
+- **`app-upgrade-config.json` exclusions must not cover something `essential-apps.json` installs.**
+  A blanket `Adobe*` used to sit in `ExcludePatterns` while the essential list installs
+  `Adobe.Acrobat.Reader.64-bit`, which pinned a heavily-targeted PDF reader at whatever version it
+  was first installed at, forever — the exact opposite of this project's CVE-reduction goal. It is
+  now replaced by specific Creative Cloud / creative-suite / Acrobat **Pro** patterns so the
+  disruptive licensed installers stay excluded while Reader still receives security updates.
+  Patterns are matched against **both** the package Name and the winget Id, so an exclusion needs
+  to be written for whichever of the two it is meant to catch.
 - `WindowsUpdates` detects pending updates via the Windows Update COM API
   (`Microsoft.Update.Session`) alone, and trusts its result even when it is zero. Earlier
   versions added registry pending-flag and event-log fallback layers when the COM scan
