@@ -1274,25 +1274,46 @@ function Get-AppxPackageCompat {
 
 <#
 .SYNOPSIS
-    PS7-safe wrapper for Remove-AppxPackage.
+    PS7-safe wrapper for Remove-AppxPackage. Returns $true only when the package is
+    VERIFIED gone afterwards.
 .PARAMETER PackageFullName
     Full name of the package to remove.
 .PARAMETER AllUsers
     Remove for all user accounts.
+.OUTPUTS
+    [bool] $true if the package is no longer present, $false otherwise.
 #>
 function Remove-AppxPackageCompat {
     [CmdletBinding()]
+    [OutputType([bool])]
     param(
         [Parameter(Mandatory)]
         [string]$PackageFullName,
         [switch]$AllUsers
     )
 
-    $cmd = "Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Where-Object { `$_.PackageFullName -eq '$PackageFullName' } | Remove-AppxPackage"
-    if ($AllUsers) { $cmd += ' -AllUsers' }
-    $cmd += ' -ErrorAction SilentlyContinue'
+    # Return value is VERIFIED against the live AppX list inside the SAME child process, never
+    # assumed - exactly like Remove-AppxProvisionedPackageCompat below, and for the same reason:
+    # Invoke-AppxInWinPS shells out to powershell.exe with 2>$null, so a failing CHILD PROCESS
+    # raises no PowerShell exception here and '-ErrorAction SilentlyContinue' discards the error
+    # inside the child too. This function used to return nothing at all, so Layer 1 of
+    # Remove-BloatwareLayered declared success merely because Get-AppxPackageCompat had FOUND a
+    # package - printing "[OK] Removed AppX" for packages that were still fully installed, and
+    # (worse) setting its $removed flag, which SKIPPED the winget-by-exact-Id layer that would
+    # actually have removed them. Verifying in-process also avoids a second powershell.exe launch
+    # per package.
+    $allUsersArg = if ($AllUsers) { ' -AllUsers' } else { '' }
+    $cmd = @"
+`$ErrorActionPreference = 'SilentlyContinue'
+Get-AppxPackage -AllUsers | Where-Object { `$_.PackageFullName -eq '$PackageFullName' } | Remove-AppxPackage$allUsersArg
+`$still = Get-AppxPackage -AllUsers | Where-Object { `$_.PackageFullName -eq '$PackageFullName' }
+if (`$still) { 'APPX_PRESENT' } else { 'APPX_REMOVED' }
+"@
 
-    Invoke-AppxInWinPS -ScriptBlock $cmd
+    $out = Invoke-AppxInWinPS -ScriptBlock $cmd
+    # Absent output means the child process died before printing a sentinel - treat as failure
+    # rather than success, so callers fall through to their next removal layer.
+    return ([bool](@($out) -contains 'APPX_REMOVED'))
 }
 
 <#

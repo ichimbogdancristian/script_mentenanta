@@ -61,7 +61,15 @@ function Remove-BloatwareLayered {
         [switch]$HasWinget
     )
 
-    $removed = $false
+    # $done means "stop trying later layers" and is set ONLY by a layer that actually uninstalls
+    # the package for existing users - never by deprovisioning. Keeping these separate is the
+    # whole point: an in-box app is normally installed AND provisioned, so when Layer 1's removal
+    # silently failed but Layer 2's deprovision succeeded, the old single $removed flag went
+    # $true and Layers 3/4/5 were all skipped. The winget-by-exact-Id removal (which does work on
+    # these packages) therefore never ran, and the post-removal check at the bottom correctly
+    # reported failure for a package the module had never really tried to uninstall.
+    $done = $false
+    $appxFound = $false
     $rebootRequired = $false
     $attempts = @()
 
@@ -69,10 +77,13 @@ function Remove-BloatwareLayered {
 
     # Both the installed copy AND the provisioning must go: Layer 1 uninstalls it for existing
     # users, Layer 2 stops it returning for new ones. They are NOT alternatives, so neither is
-    # gated on $removed.
+    # gated on the other's result.
     $nameStem = Get-AppxNameStem -Identifier $PackageName
 
-    # Layer 1: AppX removal (current user + all users)
+    # Layer 1: AppX removal for every user profile. -AllUsers is essential: without it the
+    # removal only affects the calling profile (SYSTEM under the monthly task), leaving the real
+    # user's copy installed. Remove-AppxPackageCompat now VERIFIES and returns a bool, so a
+    # failure here falls through to the later layers instead of masking them.
     try {
         # Match on the Name stem - see Get-AppxNameStem for why the raw diff identifier fails.
         $pkg = Get-AppxPackageCompat -Name $nameStem -AllUsers -ErrorAction SilentlyContinue
@@ -80,12 +91,23 @@ function Remove-BloatwareLayered {
             $pkg = Get-AppxPackageCompat -Name "*$nameStem*" -AllUsers -ErrorAction SilentlyContinue
         }
         if ($pkg) {
-            $pkg | ForEach-Object {
-                Remove-AppxPackageCompat -PackageFullName $_.PackageFullName -AllUsers -ErrorAction Continue
+            $appxFound = $true
+            $gone = 0
+            $left = 0
+            foreach ($p in @($pkg)) {
+                if (Remove-AppxPackageCompat -PackageFullName $p.PackageFullName -AllUsers) { $gone++ }
+                else { $left++ }
             }
-            Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 1: Removed AppX ($nameStem)"
-            $attempts += 'AppX'
-            $removed = $true
+            if ($left -eq 0) {
+                Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 1: AppX removal verified ($nameStem, $gone package(s))"
+                $attempts += 'AppX'
+                $done = $true
+            }
+            else {
+                Write-Log -Level WARN -Component SOFTWARE `
+                    -Message "    Layer 1: AppX removal did NOT take effect for $left of $($gone + $left) package(s) ($nameStem) - continuing to later layers"
+                $attempts += 'AppX(failed)'
+            }
         }
         else {
             Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 1: no installed AppX package matching '$nameStem'"
@@ -113,7 +135,9 @@ function Remove-BloatwareLayered {
             if ($deprovisioned -gt 0) {
                 Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 2: Deprovisioned $deprovisioned package(s)"
                 $attempts += 'Provisioned'
-                $removed = $true
+                # Deliberately does NOT set $done: deprovisioning only stops the app returning
+                # for NEW profiles, it does not uninstall it for existing users. Treating it as
+                # "removed" is what suppressed Layers 3/4/5.
             }
         }
         else {
@@ -124,12 +148,12 @@ function Remove-BloatwareLayered {
         Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 2 (Provisioned) skipped: $_"
     }
 
-    # Layer 3: Registry (Win32) uninstall - ONLY if the AppX/Provisioned layers did not already
-    # remove it, and ONLY when the uninstaller can be run SILENTLY. An interactive UninstallString
+    # Layer 3: Registry (Win32) uninstall - ONLY if no earlier layer has verifiably uninstalled it,
+    # and ONLY when the uninstaller can be run SILENTLY. An interactive UninstallString
     # (e.g. a setup EXE, or MSI without /qn) would hang an unattended run forever. The old code
     # ran unconditionally, matched a broad DisplayName wildcard (could hit an unrelated program),
     # launched a possibly-interactive uninstaller, and leaked '-ErrorAction Continue' to cmd.exe.
-    if (-not $removed) {
+    if (-not $done) {
         try {
             $regPaths = @(
                 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
@@ -164,7 +188,7 @@ function Remove-BloatwareLayered {
                     if ($proc -and $proc.ExitCode -in 0, 1605, 3010) {   # 1605 = not installed; 3010 = reboot required
                         Write-Log -Level SUCCESS -Component SOFTWARE -Message "    Layer 3: Registry uninstall (exit $($proc.ExitCode))"
                         $attempts += 'Registry'
-                        $removed = $true
+                        $done = $true
                         # 3010 = ERROR_SUCCESS_REBOOT_REQUIRED. The uninstall succeeded but is
                         # only fully applied after a restart, so this has to surface in the
                         # module result - Stage 5 skips the reboot entirely when
@@ -201,20 +225,20 @@ function Remove-BloatwareLayered {
     #      Kept as a second attempt for plain 'Publisher.Package' ARP ids, where --id is the
     #      documented selector. --exact is mandatory here: without it winget substring-matches and
     #      can bail with -1978335129 (multiple matches) instead of removing anything.
-    if (-not $removed -and $WingetId -and $HasWinget) {
+    if (-not $done -and $WingetId -and $HasWinget) {
         $wingetCommon = @('--silent', '--accept-source-agreements', '--disable-interactivity')
         $wingetForms = @(
             @{ Label = 'exact id'; Args = @('uninstall', $WingetId) + $wingetCommon }
             @{ Label = '--id --exact'; Args = @('uninstall', '--id', $WingetId, '--exact') + $wingetCommon }
         )
         foreach ($form in $wingetForms) {
-            if ($removed) { break }
+            if ($done) { break }
             try {
                 $exitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) -ArgumentList $form.Args
                 if ($exitCode -eq 0) {
                     Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 4: WinGet uninstall ($($form.Label)) succeeded: $WingetId"
                     $attempts += 'WinGet'
-                    $removed = $true
+                    $done = $true
                 }
                 else {
                     Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 4 (WinGet $($form.Label)) exit $exitCode for '$WingetId'"
@@ -226,19 +250,22 @@ function Remove-BloatwareLayered {
         }
     }
 
-    # Layer 5: WinGet removal by name (fallback). Only tried when no WingetId was resolved
-    # during audit - a package detected solely via the Registry source has no correlated
-    # winget id, but winget may still be able to remove it once queried by name. Only attempted
-    # when Layer 4 didn't already run (WingetId known) so the more precise --id form is always
-    # preferred when available.
-    if (-not $removed -and -not $WingetId -and $HasWinget -and $PackageName) {
+    # Layer 5: WinGet removal by name - the last resort. Reached either when the audit resolved no
+    # WingetId (a package known only via the Registry source) or when Layer 4 had an Id but both
+    # of its forms failed. Layer 4 always runs first when an Id exists, so the precise form is
+    # still preferred; this only ever adds an attempt that would otherwise not have happened.
+    # No --exact here on purpose: $PackageName is the package STEM (Microsoft.WindowsMaps), not
+    # winget's display Name ("Windows Maps"), so an exact match would never bind. winget refuses
+    # to act on an ambiguous query (-1978335129) rather than picking one, so the substring form
+    # cannot silently uninstall a different package.
+    if (-not $done -and $HasWinget -and $PackageName) {
         try {
             $exitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) `
                 -ArgumentList @('uninstall', '--name', $PackageName, '--silent', '--accept-source-agreements', '--disable-interactivity')
             if ($exitCode -eq 0) {
                 Write-Log -Level SUCCESS -Component SOFTWARE -Message "    [OK]Layer 5: WinGet uninstall (by name) succeeded"
                 $attempts += 'WinGet-byname'
-                $removed = $true
+                $done = $true
             }
             else {
                 Write-Log -Level DEBUG -Component SOFTWARE -Message "    Layer 5 (WinGet by name) exit $exitCode - no match or already absent"
@@ -261,22 +288,35 @@ function Remove-BloatwareLayered {
     # verified" for every such package unconditionally. Only claim verification when an
     # AppX/Provisioned layer was actually involved; otherwise report the uninstaller's own
     # result honestly as unverified.
+    # Verification is keyed on $appxFound - whether Layer 1 actually saw an installed AppX package
+    # - NOT on which layer claimed the removal. That matters now that winget (Layer 4/5) is
+    # reachable for AppX packages: a winget uninstall of an MSIX package IS checkable against the
+    # live AppX list, and the old '$attempts contains AppX/Provisioned' condition skipped exactly
+    # that case, reporting an unverified success for the one path most likely to be doing the work.
+    # For a genuine Win32/registry program Get-AppxPackageCompat returns nothing whether or not
+    # the uninstall worked, so those still report the uninstaller's own exit code honestly rather
+    # than claiming verification.
     $verified = $false
-    if ($removed) {
-        $appxLayerUsed = ($attempts -contains 'AppX') -or ($attempts -contains 'Provisioned')
-        if ($appxLayerUsed) {
+    if ($done) {
+        if ($appxFound) {
             $stillInstalled = $null
             try {
+                # Mirror Layer 1's two-step lookup exactly. Querying only the exact stem here
+                # while Layer 1 may have matched via the '*stem*' wildcard would report "verified"
+                # for a wildcard-matched package that is still installed.
                 $stillInstalled = @(Get-AppxPackageCompat -Name $nameStem -AllUsers -ErrorAction SilentlyContinue)
+                if (-not $stillInstalled -or $stillInstalled.Count -eq 0) {
+                    $stillInstalled = @(Get-AppxPackageCompat -Name "*$nameStem*" -AllUsers -ErrorAction SilentlyContinue)
+                }
             }
             catch {
                 Write-Log -Level DEBUG -Component SOFTWARE -Message "    Post-removal check failed: $_"
             }
 
             if ($stillInstalled -and $stillInstalled.Count -gt 0) {
-                $removed = $false
+                $done = $false
                 Write-Log -Level WARN -Component SOFTWARE `
-                    -Message "  Still installed after $($attempts -join ' -> ') - deprovisioning alone does not uninstall it for existing users: $nameStem"
+                    -Message "  Still installed after $($attempts -join ' -> '): $nameStem"
             }
             else {
                 $verified = $true
@@ -289,14 +329,24 @@ function Remove-BloatwareLayered {
         }
     }
 
-    if (-not $removed -and $attempts.Count -eq 0) {
+    # Deprovisioning is real progress worth reporting even when the app is still installed for
+    # existing users - it stops the app returning on new profiles - but it is NOT removal, so it
+    # does not make $done true and the caller still counts this item as failed.
+    $deprovisionedOnly = (-not $done) -and ($attempts -contains 'Provisioned')
+    if ($deprovisionedOnly) {
+        Write-Log -Level WARN -Component SOFTWARE `
+            -Message "  Deprovisioned only - still installed for existing users: $nameStem"
+    }
+
+    if (-not $done -and $attempts.Count -eq 0) {
         # NOTE: 'default' is not a PowerShell command - the old '| default ''none''' threw inside
         # the string interpolation on every not-found package, turning a clean WARN into an ERROR.
         Write-Log -Level WARN -Component SOFTWARE -Message "  Not found (attempted: none)"
     }
 
     return @{
-        Removed = $removed
+        Removed = $done
+        Deprovisioned = ($attempts -contains 'Provisioned')
         RebootRequired = $rebootRequired
         Attempts = $attempts
         Verified = $verified
@@ -360,9 +410,11 @@ function Invoke-SoftwareManagement {
                 $processed++
             }
             else {
-                Write-Log -Level WARN -Component SOFTWARE -Message "Could not remove: $name"
+                $detail = if ($outcome.Deprovisioned) { ' (deprovisioned only - still installed for existing users)' } else { '' }
+                $tried = if ($outcome.Attempts.Count -gt 0) { " [tried: $($outcome.Attempts -join ' -> ')]" } else { '' }
+                Write-Log -Level WARN -Component SOFTWARE -Message "Could not remove: $name$detail$tried"
                 $failed++
-                $errors += "Removal failed: $name"
+                $errors += "Removal failed: $name$detail"
             }
         }
         catch {

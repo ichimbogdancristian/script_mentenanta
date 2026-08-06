@@ -395,11 +395,33 @@ turn the two non-registry areas off. Both default to enforcing.
   reported as a failure. A registry uninstaller exiting **3010** (`ERROR_SUCCESS_REBOOT_REQUIRED`)
   now sets `RebootRequired` on the module result — without it, Stage 5 skips the reboot entirely
   when `rebootOnlyWhenRequired` is set, leaving the uninstall half-applied.
-  Post-removal validation only claims "verified" when an **AppX/Provisioned** layer was involved:
-  `Get-AppxPackageCompat` returns nothing for a Win32 or winget-Name-keyed package whether or not
-  the removal worked, so treating "no AppX package found" as proof printed *Removal verified* for
-  every such package unconditionally. Those now report the uninstaller's own exit code and say
-  plainly that it is not AppX-verifiable.
+  **Only a layer that verifiably *uninstalls* may suppress the later layers.** This is the single
+  most important rule in `Remove-BloatwareLayered`, and getting it wrong made the whole phase
+  ineffective for exactly the packages it targets most:
+  - `Remove-AppxPackageCompat` **returns a verified `[bool]`** (re-queries the live AppX list
+    inside the same PS5.1 child process). It previously returned nothing at all, and it cannot
+    signal failure any other way: `Invoke-AppxInWinPS` shells out to `powershell.exe` with
+    `2>$null`, so a failing **child process** raises no exception in the caller, and the
+    `-ErrorAction SilentlyContinue` inside the child discards the error there too. This is the
+    same false-positive shape already fixed once in `Remove-AppxProvisionedPackageCompat`.
+  - Layer 1 therefore sets its "stop trying" flag only when removal is **confirmed**, and records
+    `AppX(failed)` in `Attempts` otherwise, falling through to the later layers.
+  - **Layer 2 (deprovision) must never set that flag.** Deprovisioning only stops the app
+    returning for *new* profiles; it does not uninstall it for existing users. An in-box app is
+    normally installed *and* provisioned, so when Layer 1's removal silently failed and Layer 2
+    succeeded, the old single `$removed` flag went `$true` and Layers 3/4/5 were **all skipped** —
+    the winget-by-exact-Id removal that does work on these packages never ran. The post-removal
+    check then correctly reported failure for a package the module had never really tried to
+    uninstall. `Deprovisioned` is returned separately so that partial progress is still visible
+    without counting as removal.
+
+  Post-removal validation keys on **whether Layer 1 saw an installed AppX package**, not on which
+  layer claimed the removal. A winget uninstall of an MSIX package *is* checkable against the live
+  AppX list, and the old "`Attempts` contains AppX/Provisioned" condition skipped exactly that
+  case — leaving the path most likely to be doing the real work unverified. For a genuine
+  Win32/registry program `Get-AppxPackageCompat` returns nothing whether or not the uninstall
+  worked, so those still report the uninstaller's own exit code and say plainly that it is not
+  AppX-verifiable rather than claiming proof.
   Essential-app "already installed" detection tries the
   precise `winget list --id --exact` check before falling back to a name-substring match (not the
   other way around — registry `DisplayName` often doesn't literally contain the baseline's `name`
