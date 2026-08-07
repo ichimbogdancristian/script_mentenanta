@@ -172,6 +172,59 @@ function ConvertFrom-WingetPackageId {
 
 <#
 .SYNOPSIS
+    Parses `choco outdated --limit-output` rows into Name/CurrentVersion/AvailableVersion.
+.DESCRIPTION
+    Chocolatey's --limit-output (-r) row format is "name|current|available|pinned", e.g.
+    "chocolatey|2.6.0|2.7.3|false".
+
+    This MUST split on the delimiter. It must NOT be matched with '^(\S+)\|(\S+)\|(\S+)',
+    which is what it used to do: '\S' matches '|' as well as everything else, so the greedy
+    groups swallow a delimiter and shift every field one place left. The row above parsed as
+    Name='chocolatey|2.6.0', Current='2.7.3', Available='false' - and since a 4-field row is
+    what --limit-output ALWAYS emits, this mis-parsed every chocolatey package, every run.
+    The mangled Name was written into the diff verbatim and reached Type2, which ran
+    `choco upgrade 'chocolatey|2.6.0'`; chocolatey reported "is not installed. Installing..."
+    then "not installed. The package was not found with the source(s) listed", exited 1, and
+    the module ended as Failed with 0 processed.
+
+    Pinned packages are dropped. A chocolatey pin means "hold this version deliberately", so
+    queueing one guarantees a refusal or no-op from `choco upgrade` that Type2 can only
+    report as a failure - the same false failure this parser exists to stop producing.
+
+    Rows with fewer than 3 fields (banner text, blank lines, anything a future chocolatey
+    version prints alongside the data) are skipped rather than trusted.
+.OUTPUTS
+    [hashtable[]] one row per upgradable package: Name, CurrentVersion, AvailableVersion.
+#>
+function ConvertFrom-ChocoOutdatedTable {
+    [CmdletBinding()]
+    [OutputType([hashtable[]])]
+    param([Parameter()] [AllowEmptyCollection()] [string[]]$Lines = @())
+
+    $rows = [System.Collections.Generic.List[hashtable]]::new()
+    foreach ($line in $Lines) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $parts = @($line -split '\|')
+        if ($parts.Count -lt 3) { continue }
+
+        $pname = $parts[0].Trim()
+        $curVer = $parts[1].Trim()
+        $newVer = $parts[2].Trim()
+        if (-not $pname -or -not $newVer) { continue }
+
+        # 4th field is the pin flag. -eq on strings is case-insensitive in PowerShell.
+        if ($parts.Count -ge 4 -and $parts[3].Trim() -eq 'true') { continue }
+
+        $rows.Add(@{ Name = $pname; CurrentVersion = $curVer; AvailableVersion = $newVer })
+    }
+    # `,` (array-wrap) is REQUIRED - see ConvertFrom-WingetListTable for the full reason: a
+    # single-row result would otherwise be unrolled to a bare hashtable and .Count would
+    # report its key count instead of 1.
+    return , $rows.ToArray()
+}
+
+<#
+.SYNOPSIS
     Resolves an exact, unambiguous winget package Id for a single detected bloatware
     candidate via a targeted 'winget list <query>' - the same lookup a human would run by
     hand (e.g. `winget list maps` -> Windows Maps [MSIX\Microsoft.WindowsMaps_...]).
@@ -920,26 +973,25 @@ function Invoke-SoftwareManagementAudit {
                     try {
                         # --limit-output forces the pipe-delimited "name|current|available|pinned"
                         # format explicitly, rather than relying on it being the default across
-                        # every Chocolatey version/locale.
+                        # every Chocolatey version/locale. Parsing (and the pinned-package
+                        # filter) lives in ConvertFrom-ChocoOutdatedTable - see the header there
+                        # for why this must not be done with a '\S+' regex.
                         $chocoOutput = & choco outdated --no-progress --no-color --limit-output 2>&1 | Where-Object { $_ -is [string] }
-                        foreach ($line in $chocoOutput) {
-                            if ($line -match '^(\S+)\|(\S+)\|(\S+)') {
-                                $pname = $Matches[1]; $curVer = $Matches[2]; $newVer = $Matches[3]
-                                $excluded = $false
-                                foreach ($pattern in $excludePatterns) {
-                                    if ($pname -like $pattern) { $excluded = $true; break }
-                                }
-                                if ($excluded) { continue }
-                                $diff.Add(@{
-                                        Action           = 'upgrade'
-                                        Name             = $pname
-                                        Id               = $pname
-                                        CurrentVersion   = $curVer
-                                        AvailableVersion = $newVer
-                                        Source           = 'choco'
-                                    })
-                                $upgradeFound++
+                        foreach ($row in (ConvertFrom-ChocoOutdatedTable -Lines @($chocoOutput))) {
+                            $excluded = $false
+                            foreach ($pattern in $excludePatterns) {
+                                if ($row.Name -like $pattern) { $excluded = $true; break }
                             }
+                            if ($excluded) { continue }
+                            $diff.Add(@{
+                                    Action           = 'upgrade'
+                                    Name             = $row.Name
+                                    Id               = $row.Name
+                                    CurrentVersion   = $row.CurrentVersion
+                                    AvailableVersion = $row.AvailableVersion
+                                    Source           = 'choco'
+                                })
+                            $upgradeFound++
                         }
                     }
                     catch { Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "choco outdated failed: $_" }
