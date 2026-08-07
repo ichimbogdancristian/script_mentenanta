@@ -791,130 +791,170 @@ function Invoke-SoftwareManagementAudit {
             Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message "Bloatware to remove: $removeFound (from $($detected.Count) detection(s))"
         }
 
+        # ── CHECKPOINT: PERSIST THE BLOATWARE DIFF NOW ───────────────────────
+        # Everything above is the expensive, high-value half of this audit: four detection
+        # sources, a bulk `winget list`, AppX enumeration through the PS5.1 compat layer, up to
+        # 40 targeted winget lookups, dedup, cascade-safety and Id resolution.
+        #
+        # Everything BELOW is optional enrichment that shells out to external package managers
+        # (`winget upgrade`, `choco outdated`). Those fail in novel ways. Before this checkpoint
+        # existed there was a single Save-DiffList at the very end inside one big try/catch, so
+        # ANY throw in the optional tail discarded the completed bloatware work entirely - the
+        # diff file was never written, Stage 2 saw zero items, and Stage 3 skipped the whole
+        # Type2 module. The most valuable result was the easiest to lose.
+        #
+        # Same principle SystemConfigurationAudit already applies by saving at the end of its
+        # Phase A before the slow report-only Phase B. The diff is re-saved with the full set
+        # after the optional sections below; saving twice is one small JSON write.
+        Save-DiffList -ModuleName 'SoftwareManagement' -DiffList $diff.ToArray()
+        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Checkpoint: $($diff.Count) bloatware item(s) persisted before optional scans"
+
+        # Optional-section failures degrade the module result to Warning rather than losing the
+        # run's work. Collected here, applied to the return value at the bottom.
+        $optionalWarnings = @()
+
         # ─── ESSENTIAL APPS (INSTALL) AUDIT ──────────────────────────────────
-        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Auditing essential apps to install...'
+        # Isolated: a failure here must not cost the bloatware diff, nor prevent the upgrade
+        # scan below from running.
+        try {
+            Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Auditing essential apps to install...'
 
-        $essential = Get-BaselineList -ModuleFolder 'essential-apps' -FileName 'essential-apps.json'
-        if (-not $essential) {
-            Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message 'Essential apps baseline not found'
-        }
-        else {
-            $baselineApps = @($essential)
-            $installedNames = $installedApps | ForEach-Object { $_.Name.ToLowerInvariant() } | Where-Object { $_ }
-            $hasWinget = Test-CommandAvailable 'winget'
-            $hasMsOffice = [bool]($installedNames | Where-Object { $_ -match 'microsoft.*(office|word|excel|outlook)' })
-
-            foreach ($app in $baselineApps) {
-                $appNameLow = if ($app.name) { $app.name.ToLowerInvariant() } else { continue }
-
-                if ($appNameLow -match 'libreoffice' -and $hasMsOffice) {
-                    Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'LibreOffice skipped - MS Office detected'
-                    continue
-                }
-
-                # Precise check first: an exact winget --id match is authoritative when
-                # available. Name-substring is only a fallback (winget unavailable, or this app
-                # has no winget id) - registry DisplayName often doesn't literally contain the
-                # baseline's "name" string (e.g. "Java Runtime Environment" vs. an installed
-                # "Java(TM) SE Runtime Environment 8u401"), so trying substring FIRST used to
-                # both miss real installs and mask the more precise check below.
-                $wingetId = $app.winget
-                $alreadyInstalled = $false
-                if ($hasWinget -and $wingetId) {
-                    $null = & (Resolve-WingetPath) list --id $wingetId --exact --accept-source-agreements --disable-interactivity 2>&1
-                    if ($LASTEXITCODE -eq 0) { $alreadyInstalled = $true }
-                }
-                if (-not $alreadyInstalled) {
-                    $foundByName = $installedNames | Where-Object { $_ -like "*$appNameLow*" }
-                    if ($foundByName) { $alreadyInstalled = $true }
-                }
-                if ($alreadyInstalled) { continue }
-
-                # TimeoutSeconds carries essential-apps.json's per-app "timeout" through to
-                # Type2. It used to be dropped here, so every install fell back to
-                # Invoke-ExternalPackageCommand's 600s default - LibreOffice declares 900 and
-                # was being killed mid-install at 600 and reported as a failure.
-                $diff.Add(@{
-                        Action = 'install'
-                        Name = $app.name
-                        WingetId = $app.winget ?? ''
-                        ChocoId = $app.choco ?? ''
-                        Scope = $app.scope ?? 'machine'
-                        ExcludeOn = $app.excludeOn ?? @()
-                        TimeoutSeconds = $app.timeout ?? 0
-                    })
-                $installFound++
-                Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "  MISSING: $($app.name)"
+            $essential = Get-BaselineList -ModuleFolder 'essential-apps' -FileName 'essential-apps.json'
+            if (-not $essential) {
+                Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message 'Essential apps baseline not found'
             }
+            else {
+                $baselineApps = @($essential)
+                $installedNames = $installedApps | ForEach-Object { $_.Name.ToLowerInvariant() } | Where-Object { $_ }
+                $hasWinget = Test-CommandAvailable 'winget'
+                $hasMsOffice = [bool]($installedNames | Where-Object { $_ -match 'microsoft.*(office|word|excel|outlook)' })
+
+                foreach ($app in $baselineApps) {
+                    $appNameLow = if ($app.name) { $app.name.ToLowerInvariant() } else { continue }
+
+                    if ($appNameLow -match 'libreoffice' -and $hasMsOffice) {
+                        Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'LibreOffice skipped - MS Office detected'
+                        continue
+                    }
+
+                    # Precise check first: an exact winget --id match is authoritative when
+                    # available. Name-substring is only a fallback (winget unavailable, or this app
+                    # has no winget id) - registry DisplayName often doesn't literally contain the
+                    # baseline's "name" string (e.g. "Java Runtime Environment" vs. an installed
+                    # "Java(TM) SE Runtime Environment 8u401"), so trying substring FIRST used to
+                    # both miss real installs and mask the more precise check below.
+                    $wingetId = $app.winget
+                    $alreadyInstalled = $false
+                    if ($hasWinget -and $wingetId) {
+                        $null = & (Resolve-WingetPath) list --id $wingetId --exact --accept-source-agreements --disable-interactivity 2>&1
+                        if ($LASTEXITCODE -eq 0) { $alreadyInstalled = $true }
+                    }
+                    if (-not $alreadyInstalled) {
+                        $foundByName = $installedNames | Where-Object { $_ -like "*$appNameLow*" }
+                        if ($foundByName) { $alreadyInstalled = $true }
+                    }
+                    if ($alreadyInstalled) { continue }
+
+                    # TimeoutSeconds carries essential-apps.json's per-app "timeout" through to
+                    # Type2. It used to be dropped here, so every install fell back to
+                    # Invoke-ExternalPackageCommand's 600s default - LibreOffice declares 900 and
+                    # was being killed mid-install at 600 and reported as a failure.
+                    $diff.Add(@{
+                            Action = 'install'
+                            Name = $app.name
+                            WingetId = $app.winget ?? ''
+                            ChocoId = $app.choco ?? ''
+                            Scope = $app.scope ?? 'machine'
+                            ExcludeOn = $app.excludeOn ?? @()
+                            TimeoutSeconds = $app.timeout ?? 0
+                        })
+                    $installFound++
+                    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "  MISSING: $($app.name)"
+                }
+            }
+        }
+        catch {
+            Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "Essential-apps audit failed (bloatware diff is already safe): $_"
+            $optionalWarnings += "EssentialApps: $_"
         }
 
         # ─── APP UPGRADE AUDIT ───────────────────────────────────────────────
-        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Auditing app upgrades...'
+        # Isolated for the same reason as the section above, and more so: this one shells out to
+        # BOTH winget and chocolatey, so it is the likeliest thing in the whole audit to throw.
+        try {
+            Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Auditing app upgrades...'
 
-        $upgradeCfg = Get-BaselineList -ModuleFolder 'app-upgrade' -FileName 'app-upgrade-config.json'
-        if (-not $upgradeCfg -or $upgradeCfg.ModuleEnabled -eq $false) {
-            Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'App upgrade disabled in config'
-        }
-        elseif (-not $upgradeCfg.EnabledSources) {
-            Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message 'Invalid app upgrade config (missing EnabledSources)'
-        }
-        else {
-            $excludePatterns = if ($upgradeCfg.ExcludePatterns) { $upgradeCfg.ExcludePatterns } else { @() }
-
-            if ((Test-CommandAvailable 'winget') -and $upgradeCfg.EnabledSources -contains 'Winget') {
-                Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'Querying winget for upgrades...'
-                foreach ($item in (Get-WingetUpgrade)) {
-                    if (-not $item.Name) { continue }
-                    $excluded = $false
-                    foreach ($pattern in $excludePatterns) {
-                        if ($item.Name -like $pattern -or $item.Id -like $pattern) { $excluded = $true; break }
-                    }
-                    if ($excluded) { continue }
-                    $diff.Add(@{
-                            Action           = 'upgrade'
-                            Name             = $item.Name
-                            Id               = $item.Id
-                            CurrentVersion   = $item.CurrentVersion
-                            AvailableVersion = $item.AvailableVersion
-                            Source           = 'winget'
-                        })
-                    $upgradeFound++
-                }
+            $upgradeCfg = Get-BaselineList -ModuleFolder 'app-upgrade' -FileName 'app-upgrade-config.json'
+            if (-not $upgradeCfg -or $upgradeCfg.ModuleEnabled -eq $false) {
+                Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'App upgrade disabled in config'
             }
+            elseif (-not $upgradeCfg.EnabledSources) {
+                Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message 'Invalid app upgrade config (missing EnabledSources)'
+            }
+            else {
+                $excludePatterns = if ($upgradeCfg.ExcludePatterns) { $upgradeCfg.ExcludePatterns } else { @() }
 
-            if ((Test-CommandAvailable 'choco') -and $upgradeCfg.EnabledSources -contains 'Chocolatey') {
-                Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'Querying chocolatey for upgrades...'
-                try {
-                    # --limit-output forces the pipe-delimited "name|current|available|pinned"
-                    # format explicitly, rather than relying on it being the default across
-                    # every Chocolatey version/locale.
-                    $chocoOutput = & choco outdated --no-progress --no-color --limit-output 2>&1 | Where-Object { $_ -is [string] }
-                    foreach ($line in $chocoOutput) {
-                        if ($line -match '^(\S+)\|(\S+)\|(\S+)') {
-                            $pname = $Matches[1]; $curVer = $Matches[2]; $newVer = $Matches[3]
-                            $excluded = $false
-                            foreach ($pattern in $excludePatterns) {
-                                if ($pname -like $pattern) { $excluded = $true; break }
+                if ((Test-CommandAvailable 'winget') -and $upgradeCfg.EnabledSources -contains 'Winget') {
+                    Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'Querying winget for upgrades...'
+                    foreach ($item in (Get-WingetUpgrade)) {
+                        if (-not $item.Name) { continue }
+                        $excluded = $false
+                        foreach ($pattern in $excludePatterns) {
+                            if ($item.Name -like $pattern -or $item.Id -like $pattern) { $excluded = $true; break }
+                        }
+                        if ($excluded) { continue }
+                        $diff.Add(@{
+                                Action           = 'upgrade'
+                                Name             = $item.Name
+                                Id               = $item.Id
+                                CurrentVersion   = $item.CurrentVersion
+                                AvailableVersion = $item.AvailableVersion
+                                Source           = 'winget'
+                            })
+                        $upgradeFound++
+                    }
+                }
+
+                if ((Test-CommandAvailable 'choco') -and $upgradeCfg.EnabledSources -contains 'Chocolatey') {
+                    Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'Querying chocolatey for upgrades...'
+                    try {
+                        # --limit-output forces the pipe-delimited "name|current|available|pinned"
+                        # format explicitly, rather than relying on it being the default across
+                        # every Chocolatey version/locale.
+                        $chocoOutput = & choco outdated --no-progress --no-color --limit-output 2>&1 | Where-Object { $_ -is [string] }
+                        foreach ($line in $chocoOutput) {
+                            if ($line -match '^(\S+)\|(\S+)\|(\S+)') {
+                                $pname = $Matches[1]; $curVer = $Matches[2]; $newVer = $Matches[3]
+                                $excluded = $false
+                                foreach ($pattern in $excludePatterns) {
+                                    if ($pname -like $pattern) { $excluded = $true; break }
+                                }
+                                if ($excluded) { continue }
+                                $diff.Add(@{
+                                        Action           = 'upgrade'
+                                        Name             = $pname
+                                        Id               = $pname
+                                        CurrentVersion   = $curVer
+                                        AvailableVersion = $newVer
+                                        Source           = 'choco'
+                                    })
+                                $upgradeFound++
                             }
-                            if ($excluded) { continue }
-                            $diff.Add(@{
-                                    Action           = 'upgrade'
-                                    Name             = $pname
-                                    Id               = $pname
-                                    CurrentVersion   = $curVer
-                                    AvailableVersion = $newVer
-                                    Source           = 'choco'
-                                })
-                            $upgradeFound++
                         }
                     }
+                    catch { Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "choco outdated failed: $_" }
                 }
-                catch { Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "choco outdated failed: $_" }
             }
+        }
+        catch {
+            Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "App-upgrade audit failed (bloatware + essential-apps diff is already safe): $_"
+            $optionalWarnings += "AppUpgrade: $_"
         }
 
         Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message "Software items found: $($diff.Count) (Remove: $removeFound, Install: $installFound, Upgrade: $upgradeFound)"
 
+        # Final save with the complete set. The checkpoint above already persisted the bloatware
+        # half, so this either adds the optional items or harmlessly rewrites the same content.
         Save-DiffList -ModuleName 'SoftwareManagement' -DiffList $diff.ToArray()
 
         $auditPath = Get-TempPath -Category 'data' -FileName 'software-management-audit.json'
@@ -927,9 +967,15 @@ function Invoke-SoftwareManagementAudit {
             OS           = $osCtx.DisplayText
         } | ConvertTo-Json -Depth 8 | Set-Content -Path $auditPath -Encoding UTF8 -Force
 
-        return New-ModuleResult -ModuleName 'SoftwareManagementAudit' -Status 'Success' `
-            -ItemsDetected $diff.Count `
-            -Message "$($diff.Count) software action(s): $removeFound remove, $installFound install, $upgradeFound upgrade"
+        # A failed OPTIONAL section degrades to Warning, never Failed: the diff - the actual
+        # contract with Stage 2/3 - was computed and saved successfully. Same reasoning as
+        # SystemConfigurationAudit's Phase B report-only failures.
+        $status = if ($optionalWarnings.Count -gt 0) { 'Warning' } else { 'Success' }
+        $suffix = if ($optionalWarnings.Count -gt 0) { " ($($optionalWarnings.Count) optional scan(s) failed)" } else { '' }
+
+        return New-ModuleResult -ModuleName 'SoftwareManagementAudit' -Status $status `
+            -ItemsDetected $diff.Count -Errors $optionalWarnings `
+            -Message "$($diff.Count) software action(s): $removeFound remove, $installFound install, $upgradeFound upgrade$suffix"
     }
     catch {
         Write-Log -Level ERROR -Component SOFTWARE-AUDIT -Message "Audit failed: $_"

@@ -660,16 +660,40 @@ function Invoke-ConfigurationItem {
                         $result.Changed = $true
                     }
                     'visualfx' {
-                        $null = Set-RegistryValue -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -Name 'VisualFXSetting' -Value 3 -Type DWord
+                        # Values come from the diff item, which the audit populates from
+                        # system-optimization-config.json -> common.visualEffects. They used to
+                        # be hardcoded here; the JSON happened to match, so the behaviour was
+                        # right but the config was decorative and editing it did nothing.
+                        # ?? defaults keep the previous behaviour if a field is ever absent.
+                        $fxSetting = if ($null -ne $item.DesiredState) { [int]$item.DesiredState } else { 3 }
+                        $null = Set-RegistryValue -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -Name 'VisualFXSetting' -Value $fxSetting -Type DWord
+
                         $desktop = 'HKCU:\Control Panel\Desktop'
-                        $null = Set-RegistryValue -Path $desktop -Name 'MinAnimate' -Value '0' -Type String
-                        $null = Set-RegistryValue -Path $desktop -Name 'FontSmoothing' -Value '2' -Type String
-                        $null = Set-RegistryValue -Path $desktop -Name 'DragFullWindows' -Value '1' -Type String
                         $adv = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
-                        $null = Set-RegistryValue -Path $adv -Name 'TaskbarAnimations' -Value 0 -Type DWord
-                        $null = Set-RegistryValue -Path $adv -Name 'ListviewShadow' -Value 0 -Type DWord
-                        $null = Set-RegistryValue -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'EnableTransparency' -Value 0 -Type DWord
-                        Write-Log -Level SUCCESS -Component CONFIG -Message 'Visual effects set to balanced (custom)'
+
+                        # MinAnimate/TaskbarAnimations are INVERTED: 0 disables the animation.
+                        $animOff = [bool]($item.DisableAnimations ?? $true)
+                        $null = Set-RegistryValue -Path $desktop -Name 'MinAnimate' -Value $(if ($animOff) { '0' } else { '1' }) -Type String
+                        $null = Set-RegistryValue -Path $adv -Name 'TaskbarAnimations' -Value $(if ($animOff) { 0 } else { 1 }) -Type DWord
+
+                        # FontSmoothing: 2 = ClearType on, 0 = off.
+                        $null = Set-RegistryValue -Path $desktop -Name 'FontSmoothing' `
+                            -Value $(if ([bool]($item.EnableSmoothEdges ?? $true)) { '2' } else { '0' }) -Type String
+
+                        # DragFullWindows: 1 = show contents while dragging.
+                        $null = Set-RegistryValue -Path $desktop -Name 'DragFullWindows' `
+                            -Value $(if ([bool]($item.ShowWindowContents ?? $true)) { '1' } else { '0' }) -Type String
+
+                        # ListviewShadow: 0 disables the shadow.
+                        $null = Set-RegistryValue -Path $adv -Name 'ListviewShadow' `
+                            -Value $(if ([bool]($item.DisableShadows ?? $true)) { 0 } else { 1 }) -Type DWord
+
+                        # EnableTransparency: 0 disables it.
+                        $null = Set-RegistryValue -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' `
+                            -Name 'EnableTransparency' `
+                            -Value $(if ([bool]($item.DisableTransparency ?? $true)) { 0 } else { 1 }) -Type DWord
+
+                        Write-Log -Level SUCCESS -Component CONFIG -Message "Visual effects applied (VisualFXSetting=$fxSetting) from baseline"
                         $result.Changed = $true
                     }
                     'background' {

@@ -1183,11 +1183,28 @@ REM The result is captured into the log rather than only echoed: this call used 
 REM 'EXCLUSIONS_ADDED'/'EXCLUSIONS_FAILED' to a console nobody reads on an unattended run, so
 REM a failure to exclude - the thing most likely to make Defender interfere with the run -
 REM left no trace anywhere in maintenance.log.
-CALL :LOG_MESSAGE "Setting up Windows Defender exclusions..." "INFO" "LAUNCHER"
+REM PATH exclusions ONLY - no -ExclusionProcess. Two process exclusions
+REM ('powershell.exe' and 'pwsh.exe') were removed deliberately and must not come back:
+REM   * -ExclusionProcess does not exclude the binary, it excludes EVERY FILE THAT PROCESS
+REM     OPENS from scanning, and it matches on process NAME rather than full path. Excluding
+REM     powershell.exe therefore left any process of that name, anywhere on the machine, doing
+REM     unscanned file I/O for the whole run. PowerShell is the most abused living-off-the-land
+REM     binary on Windows, so that single line undercut both the Sysmon install and the CIS
+REM     baseline this project applies.
+REM   * They were also redundant. The stated reason for excluding anything at all is that
+REM     script.bat's self-elevate/download/extract/launch pattern trips Defender's heuristics -
+REM     that is about THIS PROJECT'S OWN FILES, which the two path exclusions below already
+REM     cover. All the process exclusions added on top was cover for files our PowerShell
+REM     touches outside those folders (winget/MSI downloads in %TEMP%), and Defender scanning
+REM     a signed installer is fast and correct.
+REM   * And they could leak permanently: exclusion removal used to run only in Stage 5, so any
+REM     crash before that point left powershell.exe excluded forever. Removal now also runs in
+REM     the orchestrator's finally block, but the narrower exclusion set is the real fix.
+CALL :LOG_MESSAGE "Setting up Windows Defender path exclusions..." "INFO" "LAUNCHER"
 SET "EXCL_RESULT="
-FOR /F "usebackq tokens=* delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction Stop; Add-MpPreference -ExclusionPath '%ORIGINAL_SCRIPT_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Output 'EXCLUSIONS_ADDED' } catch { Write-Output ('EXCLUSIONS_FAILED: ' + $_.Exception.Message) }" 2^>nul`) DO SET "EXCL_RESULT=%%i"
+FOR /F "usebackq tokens=* delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction Stop; Add-MpPreference -ExclusionPath '%ORIGINAL_SCRIPT_DIR%' -ErrorAction SilentlyContinue; Write-Output 'EXCLUSIONS_ADDED' } catch { Write-Output ('EXCLUSIONS_FAILED: ' + $_.Exception.Message) }" 2^>nul`) DO SET "EXCL_RESULT=%%i"
 IF "!EXCL_RESULT!"=="EXCLUSIONS_ADDED" (
-    CALL :LOG_MESSAGE "Defender exclusions added: %WORKING_DIR% + %ORIGINAL_SCRIPT_DIR% + powershell.exe/pwsh.exe" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "Defender path exclusions added: %WORKING_DIR% + %ORIGINAL_SCRIPT_DIR%" "SUCCESS" "LAUNCHER"
 ) ELSE (
     IF DEFINED EXCL_RESULT (
         CALL :LOG_MESSAGE "Defender exclusions not fully applied - !EXCL_RESULT!" "WARN" "LAUNCHER"

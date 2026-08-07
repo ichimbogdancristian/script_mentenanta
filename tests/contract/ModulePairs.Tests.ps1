@@ -156,6 +156,57 @@ Describe 'ConfigSkip keys resolve in main-config.json' {
     }
 }
 
+Describe 'ConfigSkip is honoured in BOTH stages' {
+    # main-config.json states these flags "gate a whole Type1+Type2 pair". For a long time they
+    # gated only Type2: Stage 1 ran every audit unconditionally and Stage 2 discarded the result,
+    # so `skipSoftwareManagement = true` still performed a full multi-source scan (bulk
+    # `winget list`, AppX enumeration, up to 40 targeted lookups) and wrote its diff/data JSON
+    # for a pair the operator had explicitly turned off.
+    #
+    # These tests read the orchestrator as TEXT rather than executing it - it carries
+    # '#Requires -RunAsAdministrator' and running it would drive the whole five-stage pipeline
+    # against this machine.
+
+    BeforeAll {
+        $script:OrchText = Get-Content $script:OrchPath -Raw
+        $script:SkipPredicate = '$pair.ConfigSkip -and $Config.modules.$($pair.ConfigSkip)'
+    }
+
+    It 'checks ConfigSkip in exactly two places (Stage 1 and Stage 2)' {
+        $hits = [regex]::Matches($script:OrchText, [regex]::Escape($script:SkipPredicate)).Count
+        $hits | Should -Be 2 -Because 'the audit half and the action half must both be gated'
+    }
+
+    It 'uses an IDENTICAL predicate in both, so the stages cannot disagree' {
+        # Any divergence here means a pair could be audited but not actioned, or vice versa.
+        $lines = @(Get-Content $script:OrchPath | Where-Object { $_ -match [regex]::Escape($script:SkipPredicate) })
+        $lines.Count | Should -Be 2
+        foreach ($l in $lines) { $l | Should -Match ([regex]::Escape($script:SkipPredicate)) }
+    }
+
+    It 'gates Stage 1 BEFORE the Type1 module is invoked' {
+        # Order matters: the check has to precede Invoke-ModuleFunction or the audit still runs.
+        $idxCheck = $script:OrchText.IndexOf($script:SkipPredicate)
+        $idxInvoke = $script:OrchText.IndexOf('Invoke-ModuleFunction -ModuleFile $pair.Type1File')
+        $idxCheck | Should -BeGreaterThan -1
+        $idxInvoke | Should -BeGreaterThan -1
+        $idxCheck | Should -BeLessThan $idxInvoke -Because 'checking after the call would defeat the point'
+    }
+
+    It 'records a Skipped Type1 result so the report still accounts for the pair' {
+        $script:OrchText | Should -Match "Status 'Skipped' -ModuleType 'Type1'"
+    }
+
+    It 'skips before the circuit-breaker block, so a config skip is neither failure nor success' {
+        # A skip that reset $consecutiveFailures would let a skipped pair mask two real failures
+        # either side of it.
+        $idxContinue = $script:OrchText.IndexOf('$auditsSkipped++')
+        $idxBreaker = $script:OrchText.IndexOf('$consecutiveFailures++')
+        $idxContinue | Should -BeGreaterThan -1
+        $idxContinue | Should -BeLessThan $idxBreaker
+    }
+}
+
 Describe 'Stage 3 execution order' {
     It 'references only real DiffKeys' {
         foreach ($k in $script:Stage3Order) {

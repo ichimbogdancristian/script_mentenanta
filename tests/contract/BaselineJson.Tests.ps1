@@ -64,6 +64,60 @@ Describe 'All shipped JSON parses' {
     }
 }
 
+Describe 'main-config.json has no DEAD keys' {
+    # A config key that nothing reads is worse than no key: it advertises behaviour the code
+    # does not implement, and an operator who sets it gets silence instead of an effect. Three
+    # were found this way - reporting.enableHtmlReport (never checked; the report was always
+    # generated), tools.verifySignature and tools.sysinternals.handle (declared for code that
+    # did not exist).
+    #
+    # Leaf-name matching, so it is a smoke test rather than a proof: a key whose leaf name
+    # coincides with an unrelated identifier will pass. It still catches the case that actually
+    # occurs - a key added to config and never wired up at all.
+
+    BeforeAll {
+        # main-config.json is loaded here rather than reused from ModulePairs.Tests.ps1 -
+        # $script: scope does not cross test files, and assuming it did made the first version
+        # of these tests silently examine $null and pass vacuously.
+        $script:MainConfig = Get-Content (Join-Path $script:RepoRoot 'config\settings\main-config.json') -Raw |
+            ConvertFrom-Json -Depth 20 -AsHashtable
+
+        $script:ShippedCode = (Get-ChildItem (Join-Path $script:RepoRoot 'modules') -Recurse -Include *.psm1 |
+                Get-Content -Raw) -join "`n"
+        $script:ShippedCode += "`n" + (Get-Content (Join-Path $script:RepoRoot 'MaintenanceOrchestrator.ps1') -Raw)
+
+        function Get-ConfigLeafKey {
+            param([hashtable]$Node, [string]$Prefix = '')
+            foreach ($k in $Node.Keys) {
+                if ($k -like '_*') { continue }          # _comment / _note documentation keys
+                if ($Node[$k] -is [hashtable]) { Get-ConfigLeafKey -Node $Node[$k] -Prefix "$Prefix$k." }
+                else { "$Prefix$k" }
+            }
+        }
+        $script:ConfigLeaves = @(Get-ConfigLeafKey -Node $script:MainConfig)
+    }
+
+    It 'declares at least one key (sanity)' {
+        $script:ConfigLeaves.Count | Should -BeGreaterThan 0
+    }
+
+    It 'has every declared key referenced somewhere in the shipped code' {
+        $dead = foreach ($path in $script:ConfigLeaves) {
+            $leaf = ($path -split '\.')[-1]
+            if ($script:ShippedCode -notmatch "(?<![A-Za-z0-9_])$([regex]::Escape($leaf))(?![A-Za-z0-9_])") { $path }
+        }
+        @($dead) -join ', ' | Should -BeNullOrEmpty -Because 'a config key nothing reads silently does nothing'
+    }
+
+    It 'honours reporting.enableHtmlReport at the report choke point' {
+        # Regression guard for the specific key that was dead: it must be consulted, and the
+        # report is the only artifact surviving Stage 5, so absence must default to ON.
+        $orch = Get-Content (Join-Path $script:RepoRoot 'MaintenanceOrchestrator.ps1') -Raw
+        $orch | Should -Match 'enableHtmlReport' -Because 'Stage 4 must actually check the flag'
+        $orch | Should -Match 'enableHtmlReport -eq \$false' -Because 'a missing key must default to generating the report'
+    }
+}
+
 Describe 'dependency-matrix.json' {
 
     It 'exposes a .dependencies map' {

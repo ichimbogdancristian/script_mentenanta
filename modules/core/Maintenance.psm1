@@ -1686,13 +1686,110 @@ function Resolve-WingetPath {
 .SYNOPSIS
     Reads a registry value safely, returning $null on failure.
 #>
+<#
+.SYNOPSIS
+    Returns the registry root(s) that per-user (HKCU-shaped) settings must be written to.
+.DESCRIPTION
+    THE PROBLEM THIS SOLVES. When a process runs as NT AUTHORITY\SYSTEM, its HKCU IS
+    HKEY_USERS\S-1-5-18 - the LocalSystem profile - not the logged-on user's hive. The monthly
+    scheduled task runs as SYSTEM, so every HKCU read and write it performed landed in a
+    profile no human ever sees.
+
+    That made three item types a permanent no-op loop under the unattended task: the audit read
+    the SYSTEM hive, saw defaults, queued a change; Type2 wrote it to the SYSTEM hive; next
+    month the audit read the SYSTEM hive again and queued the identical change. Every run
+    reported success. Affected the visual-effects and desktop-background arms, the
+    HKCU:\...\Run startup scan, and the 5 HKCU entries in telemetry-list.json.
+
+    Interactive elevated runs were never affected: UAC elevation keeps the same user, so HKCU
+    is already the right hive. That is why this never showed up in hand testing.
+
+    WHAT THIS DOES NOT DO. It only targets hives that are ALREADY LOADED - i.e. users who are
+    logged on. It deliberately does not `reg load` the NTUSER.DAT of logged-off profiles:
+    loading a hive that is not reliably unloaded corrupts or locks the profile, and an
+    unattended monthly task at 01:00 with nobody watching is the worst possible place to risk
+    that. When nobody is logged on there is simply no correct target, and the callers below
+    say so plainly rather than writing somewhere harmless-looking and claiming success.
+.OUTPUTS
+    [string[]] registry root prefixes. 'HKCU:' when running interactively; one
+    'Registry::HKEY_USERS\<SID>' per logged-on user when running as SYSTEM; EMPTY when running
+    as SYSTEM with no user hive loaded.
+#>
+function Get-PerUserRegistryRoot {
+    [CmdletBinding()]
+    [OutputType([string[]])]
+    param()
+
+    try {
+        $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    }
+    catch {
+        return 'HKCU:'   # cannot determine identity - behave as before
+    }
+
+    # Not SYSTEM: HKCU already points at the right hive.
+    if ($me -ne 'S-1-5-18') { return 'HKCU:' }
+
+    try {
+        # Real interactive accounts only. S-1-5-21-<domain>-<rid> is a machine/domain user;
+        # this excludes S-1-5-18/19/20 (System, LocalService, NetworkService) and the
+        # '_Classes' companion keys, which are not user profiles.
+        $sids = @(Get-ChildItem -LiteralPath 'Registry::HKEY_USERS' -ErrorAction Stop |
+                Select-Object -ExpandProperty PSChildName |
+                Where-Object { $_ -match '^S-1-5-21-[\d\-]+$' })
+        # No comma-wrap - callers use @(...). See Resolve-UserRegistryPath.
+        return @($sids | ForEach-Object { "Registry::HKEY_USERS\$_" })
+    }
+    catch {
+        Write-Log -Level DEBUG -Component CORE -Message "Could not enumerate user hives: $_"
+        return @()
+    }
+}
+
+<#
+.SYNOPSIS
+    Expands an HKCU-shaped path into the concrete path(s) it should act on.
+.DESCRIPTION
+    Any path that is NOT HKCU: is returned completely unchanged - the 307 HKLM baseline
+    entries take an early exit and behave exactly as before this function existed.
+.OUTPUTS
+    [string[]] one path per target hive; EMPTY when running as SYSTEM with no user logged on.
+#>
+function Resolve-UserRegistryPath {
+    [CmdletBinding()]
+    [OutputType([string[]])]
+    param([Parameter(Mandatory)] [string]$Path)
+
+    # NO comma-wrap on any return path. Every caller wraps with @(...), and `return , $arr`
+    # emits the array as ONE pipeline element - so @() would receive a single NESTED array
+    # instead of the paths. Verified: a 2-root expansion came back as one element whose value
+    # stringified to "…\A\S\X …\B\S\X". Same defect previously fixed in
+    # ConvertFrom-WingetListTable; the comma is only correct when callers use plain assignment
+    # (as Get-DiffList's do).
+    if ($Path -notmatch '^HKCU:\\') { return $Path }
+
+    $sub = $Path -replace '^HKCU:\\', ''
+    $roots = @(Get-PerUserRegistryRoot)
+    if ($roots.Count -eq 0) { return @() }
+
+    return @($roots | ForEach-Object {
+            if ($_ -eq 'HKCU:') { "HKCU:\$sub" } else { "$_\$sub" }
+        })
+}
+
 function Get-RegistryValue {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] [string]$Path,
         [Parameter(Mandatory)] [string]$Name
     )
-    return (Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue).$Name
+    # Non-HKCU paths resolve to themselves, so HKLM behaviour is byte-identical to before.
+    # For HKCU under SYSTEM this reads the first logged-on user's hive rather than the
+    # LocalSystem profile. With several users logged on the first is representative enough:
+    # the write side applies to all of them.
+    $targets = @(Resolve-UserRegistryPath -Path $Path)
+    if ($targets.Count -eq 0) { return $null }
+    return (Get-ItemProperty -Path $targets[0] -Name $Name -ErrorAction SilentlyContinue).$Name
 }
 
 <#
@@ -1711,14 +1808,40 @@ function Set-RegistryValue {
         [Parameter(Mandatory)] [string]$Type
     )
 
-    $current = Get-RegistryValue -Path $Path -Name $Name
-    if ($current -eq $Value) { return $false }
+    # Non-HKCU paths resolve to themselves: HKLM behaviour is unchanged from before this
+    # existed. An HKCU path under SYSTEM expands to one target per logged-on user, so a
+    # per-user setting is applied to every real user rather than to the invisible
+    # LocalSystem profile. See Get-PerUserRegistryRoot for the full rationale.
+    $targets = @(Resolve-UserRegistryPath -Path $Path)
 
-    if (-not (Test-Path $Path)) {
-        New-Item -Path $Path -Force | Out-Null
+    if ($targets.Count -eq 0) {
+        # SYSTEM with nobody logged on. There is no correct hive to write to, and inventing
+        # one would mean reporting success for a change no user will ever see.
+        Write-Log -Level WARN -Component CORE `
+            -Message "Skipped per-user setting '$Name' - running as SYSTEM with no user hive loaded ($Path)"
+        return $false
     }
-    Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force
-    return $true
+
+    # Per-target comparison: with two users logged on, one may already be compliant while the
+    # other is not, so a single up-front check would wrongly skip the second.
+    $changedAny = $false
+    foreach ($target in $targets) {
+        try {
+            $current = (Get-ItemProperty -Path $target -Name $Name -ErrorAction SilentlyContinue).$Name
+            if ($current -eq $Value) { continue }
+
+            if (-not (Test-Path $target)) {
+                New-Item -Path $target -Force | Out-Null
+            }
+            Set-ItemProperty -Path $target -Name $Name -Value $Value -Type $Type -Force
+            $changedAny = $true
+        }
+        catch {
+            # One user's hive being unwritable must not abort the others.
+            Write-Log -Level DEBUG -Component CORE -Message "Could not set '$Name' at ${target}: $_"
+        }
+    }
+    return $changedAny
 }
 
 #endregion
@@ -2156,6 +2279,8 @@ Export-ModuleMember -Function @(
     'Resolve-WingetPath',
     'Get-RegistryValue',
     'Set-RegistryValue',
+    'Get-PerUserRegistryRoot',
+    'Resolve-UserRegistryPath',
     'Invoke-ExternalPackageCommand',
     'Invoke-CapturedCommand',
     'Get-ExternalTool',

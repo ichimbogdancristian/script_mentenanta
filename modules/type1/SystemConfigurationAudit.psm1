@@ -804,11 +804,44 @@ function Get-OptimizationConfigurationDiff {
             }
         }
 
-        # Visual effects
-        $visualPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects'
-        $currentVisual = Get-RegistryValue -Path $visualPath -Name 'VisualFXSetting'
-        if ($null -eq $currentVisual -or $currentVisual -ne 3) {
-            $items.Add(@{ ConfigType = 'optimization'; Type = 'visualfx'; Name = 'VisualFXSetting'; CurrentState = $currentVisual; DesiredState = 3 })
+        # Visual effects.
+        #
+        # The baseline's visualEffects block used to be DECORATIVE: the audit hardcoded
+        # DesiredState = 3 and the Type2 arm hardcoded all six registry writes. Every value
+        # happened to match the JSON, so the behaviour was correct - but editing the JSON
+        # changed nothing, which is the more dangerous kind of wrong. The declared values are
+        # now threaded through the diff item and read by the apply arm.
+        #
+        # 'preset' maps to Windows' VisualFXSetting: 0 = let Windows choose, 1 = best
+        # appearance, 2 = best performance, 3 = custom. 'balanced' is this project's own word
+        # for "custom mix of the five toggles below", hence 3.
+        if ($Baseline.common.visualEffects) {
+            $vfx = $Baseline.common.visualEffects
+            $desiredFx = switch ("$($vfx.preset)".ToLowerInvariant()) {
+                'auto' { 0 }
+                'appearance' { 1 }
+                'performance' { 2 }
+                'balanced' { 3 }
+                default { 3 }
+            }
+            $visualPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects'
+            $currentVisual = Get-RegistryValue -Path $visualPath -Name 'VisualFXSetting'
+            if ($null -eq $currentVisual -or $currentVisual -ne $desiredFx) {
+                $items.Add(@{
+                        ConfigType   = 'optimization'
+                        Type         = 'visualfx'
+                        Name         = 'VisualFXSetting'
+                        CurrentState = $currentVisual
+                        DesiredState = $desiredFx
+                        # Individual toggles, read by the Type2 arm instead of being hardcoded
+                        # there. Defaults preserve the previous behaviour when a key is absent.
+                        DisableAnimations        = [bool]($vfx.disableAnimations ?? $true)
+                        DisableShadows           = [bool]($vfx.disableShadows ?? $true)
+                        EnableSmoothEdges        = [bool]($vfx.enableSmoothEdges ?? $true)
+                        ShowWindowContents       = [bool]($vfx.enableShowWindowContents ?? $true)
+                        DisableTransparency      = [bool]($vfx.disableTransparency ?? $true)
+                    })
+            }
         }
 
         # Desktop background (Spotlight -> Picture)

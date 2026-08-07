@@ -122,6 +122,42 @@ Add-LogRaw ('=' * 70)
 
 #endregion
 
+# ── Defender exclusion teardown ────────────────────────────────────────────────────
+# Defined HERE, outside and before the try block, on purpose. It used to live inside the
+# Stage 5 region, which meant the finally block could not call it: if the run crashed in
+# Stage 1 the function had not been defined yet, so a crash-safety net placed in finally
+# would itself have failed with "term not recognized".
+#
+# script.bat adds PATH exclusions for the extracted tree and the launcher folder before the
+# orchestrator starts. It no longer adds -ExclusionProcess entries for powershell.exe/pwsh.exe
+# (see the comment at the add site in script.bat for why those were a machine-wide hole); the
+# two Remove-MpPreference calls for them are kept below purely to clean up machines that ran
+# an older version of this script, and can be dropped once no such machine remains.
+$script:DefenderExclusionsRemoved = $false
+
+function Remove-DefenderSessionExclusions {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$WorkingDir,
+        [Parameter()] [string]$LauncherDir
+    )
+    if ($script:DefenderExclusionsRemoved) { return }
+    try {
+        Remove-MpPreference -ExclusionPath $WorkingDir -ErrorAction SilentlyContinue
+        if ($LauncherDir -and $LauncherDir -ne $WorkingDir) {
+            Remove-MpPreference -ExclusionPath $LauncherDir -ErrorAction SilentlyContinue
+        }
+        # Legacy cleanup only - this version never adds these. Harmless if absent.
+        Remove-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue
+        Remove-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue
+        $script:DefenderExclusionsRemoved = $true
+        Write-Log -Level INFO -Component ORCH -Message "Removed Defender exclusions for $WorkingDir$(if ($LauncherDir -and $LauncherDir -ne $WorkingDir) { " and $LauncherDir" })"
+    }
+    catch {
+        Write-Log -Level WARN -Component ORCH -Message "Could not remove Defender exclusions: $_"
+    }
+}
+
 # ── Everything below runs inside a fatal-capture guard so any uncaught terminating
 #    error is written to maintenance.log with a stack trace, and the log/transcript
 #    are always closed cleanly (finally). ──────────────────────────────────────────
@@ -466,8 +502,40 @@ try {
 
     $consecutiveFailures = 0
     $maxConsecutiveFailures = 3   # Circuit-breaker: abort stage after N consecutive failures
+    $auditsRun = 0
+    $auditsSkipped = 0
 
     foreach ($pair in $pairsToAudit) {
+        # ── ConfigSkip is honoured HERE as well as in Stage 2 ────────────────────────────
+        # main-config.json states these flags "gate a whole Type1+Type2 pair". Until this check
+        # existed they gated only the Type2 half: Stage 1 ran the audit unconditionally and
+        # Stage 2 then discarded the result. For SoftwareManagement that meant a full multi-source
+        # scan - bulk `winget list`, AppX enumeration through the PS5.1 compat layer, up to 40
+        # targeted winget lookups, plus the essential-app and upgrade scans - executing in full,
+        # writing its diff and data JSON, for a pair the operator had explicitly turned off.
+        #
+        # The check is deliberately identical in shape to Stage 2's (line ~524) so the two can
+        # never disagree. A MISSING key evaluates to $null -> not skipped, which is the safe
+        # default and is what tests/contract/ModulePairs.Tests.ps1 asserts every pair declares.
+        #
+        # Config wins over an explicit -TaskNumbers / menu selection. That matches what Stage 2
+        # already did, and "the operator disabled this pair in config" is the more deliberate
+        # statement of intent than a task number typed at a 10s prompt.
+        if ($pair.ConfigSkip -and $Config.modules.$($pair.ConfigSkip)) {
+            Write-Host ""
+            Write-Host "  ─  $($pair.Label) [Type1]: disabled in config — SKIPPED" -ForegroundColor DarkGray
+            Write-Log -Level INFO -Component ORCH -Message "Skipped (config: $($pair.ConfigSkip)): $($pair.Type1Func)"
+            $SessionResults.Add((New-ModuleResult -ModuleName $pair.Type1Func `
+                        -Status 'Skipped' -ModuleType 'Type1' `
+                        -Message "Disabled in main-config.json ($($pair.ConfigSkip))"))
+            $auditsSkipped++
+            # `continue` BEFORE the circuit-breaker block below: a config skip is neither a
+            # failure nor a success, so it must not increment the counter and must not reset it
+            # either - a skipped pair sitting between two real failures should not mask them.
+            continue
+        }
+
+        $auditsRun++
         Write-Host ""
         Write-Host "  ▶  $($pair.Label) [Type1]" -ForegroundColor Cyan
         Write-Log -Level INFO -Component ORCH -Message "Running Type1: $($pair.Type1Func)"
@@ -505,7 +573,10 @@ try {
         }
     }
 
-    Write-Log -Level SUCCESS -Component ORCH -Message "Stage 1 complete: $($pairsToAudit.Count) modules run"
+    # Report what actually ran, not how many pairs were considered - $pairsToAudit.Count would
+    # now overcount by every config-skipped pair.
+    $skipNote = if ($auditsSkipped -gt 0) { ", $auditsSkipped skipped by config" } else { '' }
+    Write-Log -Level SUCCESS -Component ORCH -Message "Stage 1 complete: $auditsRun module(s) run$skipNote"
 
     #endregion
 
@@ -637,6 +708,18 @@ try {
     function Publish-MaintenanceReport {
         [CmdletBinding()]
         param()
+        # reporting.enableHtmlReport was declared in main-config.json but read by nothing - its
+        # only occurrence was inside Get-MainConfig's built-in defaults fallback, so setting it
+        # false did nothing and the report was generated unconditionally. Honoured here, at the
+        # single choke point every caller goes through.
+        #
+        # Defaults to TRUE when absent: the HTML report is the ONLY artifact that survives Stage 5
+        # cleanup, so "key missing" must never silently mean "produce no record of the run".
+        if ($null -ne $Config.reporting -and $Config.reporting.enableHtmlReport -eq $false) {
+            Write-Log -Level WARN -Component ORCH `
+                -Message 'HTML report DISABLED (config: reporting.enableHtmlReport=false) - this run will leave no surviving record'
+            return
+        }
         try {
             $rf = New-MaintenanceReport -SessionResults $SessionResults.ToArray() `
                 -OSContext      $global:OSContext `
@@ -702,32 +785,9 @@ try {
     Write-Host "━━━━━━━━━━━━━━━━━━  STAGE 5 : CLEANUP & REBOOT  ━━━━━━━━━━━━━━━━━" -ForegroundColor Magenta
     Write-Host ""
 
-    # Removes the Windows Defender exclusions script.bat adds before dependency
-    # installation (extracted working dir + the stable launcher folder script.bat itself
-    # lives in + powershell.exe/pwsh.exe), so this run's maintenance session doesn't leave a
-    # permanent, unscoped AV exclusion behind on the machine after cleanup. Paired
-    # setup/teardown for the same paths/processes script.bat's dependency-management phase
-    # excludes - see the Defender-exclusions comment in script.bat for why BOTH paths are
-    # needed (the extracted tree Stage 5 deletes, and the launcher folder that survives it).
-    function Remove-DefenderSessionExclusions {
-        [CmdletBinding()]
-        param(
-            [Parameter(Mandatory)] [string]$WorkingDir,
-            [Parameter()] [string]$LauncherDir
-        )
-        try {
-            Remove-MpPreference -ExclusionPath $WorkingDir -ErrorAction SilentlyContinue
-            if ($LauncherDir -and $LauncherDir -ne $WorkingDir) {
-                Remove-MpPreference -ExclusionPath $LauncherDir -ErrorAction SilentlyContinue
-            }
-            Remove-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue
-            Remove-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue
-            Write-Log -Level INFO -Component ORCH -Message "Removed Defender exclusions for $WorkingDir$(if ($LauncherDir -and $LauncherDir -ne $WorkingDir) { " and $LauncherDir" })"
-        }
-        catch {
-            Write-Log -Level WARN -Component ORCH -Message "Could not remove Defender exclusions: $_"
-        }
-    }
+    # Remove-DefenderSessionExclusions is defined ABOVE the try block (see the comment there):
+    # it has to be reachable from the finally block, which runs even when the crash happened
+    # long before Stage 5.
 
     # Remove the exclusions FIRST, unconditionally - Stage 3/4 work (the only reason the
     # exclusions exist) is already finished by this point. Doing this before the countdown
@@ -907,6 +967,30 @@ catch {
     exit 1
 }
 finally {
+    # ── Crash-safety net for the Defender exclusions ───────────────────────────────
+    # Stage 5 removes them on the normal path, before the reboot countdown, so the machine is
+    # not left unscanned while the countdown runs. This is the backstop for every path that
+    # never reaches Stage 5: an uncaught error in Stage 1/2/3/4, or an early exit.
+    #
+    # Without it a crash left the exclusions in place PERMANENTLY - including
+    # $env:ORIGINAL_SCRIPT_DIR, which is typically the user's Desktop. Nothing ever told them.
+    #
+    # This is deliberately NOT the same trade-off as the extracted working tree, which the
+    # crash path leaves behind on purpose as evidence (the next run's RMDIR clears it). A
+    # surviving folder is recoverable and self-healing; a surviving AV exclusion is a silent,
+    # open security hole that nothing else in the system will ever clean up.
+    #
+    # Guarded by $script:DefenderExclusionsRemoved so the normal path does not log twice, and
+    # wrapped so a failure here can never mask the original fatal error.
+    try {
+        if (-not $script:DefenderExclusionsRemoved -and $ProjectRoot) {
+            Remove-DefenderSessionExclusions -WorkingDir $ProjectRoot -LauncherDir $env:ORIGINAL_SCRIPT_DIR
+        }
+    }
+    catch {
+        Write-Host "  [WARN] Could not remove Defender exclusions during cleanup: $_" -ForegroundColor Yellow
+    }
+
     # Always flush/close the unified maintenance.log, even on crash or exit.
     Close-LogFile
 }
