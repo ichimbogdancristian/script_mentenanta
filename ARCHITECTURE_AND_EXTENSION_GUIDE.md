@@ -213,7 +213,17 @@ phases assume the safety net from earlier ones.
 
 ---
 
-### Phase 0 — Build the safety net (do this first, before any other change)
+### Phase 0 — Build the safety net ✅ DONE (commit `cb081fe`)
+
+> **Outcome: 137 tests, ~7s, green.** It found a real bug on the first test file —
+> `ConvertFrom-WingetListTable` unrolled a single-row result to a bare hashtable, so
+> `Resolve-WingetIdForCandidate`'s `Count -eq 1` success condition could never be true and Pass B
+> of the bloatware Id resolution had never resolved a single Id. Same class as the defect
+> `Get-DiffList` already guarded against. See [tests/README.md](tests/README.md).
+>
+> Also worth recording: three of the first four *contract*-test failures were bugs in the **tests**,
+> not the config. `protected-packages.json` has a documented `optional_but_safe` section that is
+> explicitly documentation-only. Read the config's own comments before calling something a defect.
 
 **Why this is first:** read the bug history in CLAUDE.md. Counter increments inside
 `ForEach-Object` that silently stayed at zero. `.PSObject.Properties` on a hashtable enumerating
@@ -299,35 +309,54 @@ That last block is three tests that would each have caught a real shipped bug.
 
 ---
 
-### Phase 1 — Shrink the batch surface
+### Phase 1 — Shrink the batch surface ✅ DONE (commit `fa7c587`)
 
 `:PS7_COMPLETE` is at `script.bat:1147`. **Everything after that line runs with PowerShell 7
-confirmed present** — which means it does not have to be batch. Today it is, and it's the worst
-code in the project: 616- and 807-character `pwsh -Command` strings with batch escaping, no
-linting, no error handling beyond `ERRORLEVEL`.
+confirmed present** — which means it does not have to be batch. As batch it was the worst code in
+the project: 616- and 807-character `pwsh -Command` strings with batch escaping, no linting, no
+error handling beyond `ERRORLEVEL`.
 
-Move these into the orchestrator as a new **Stage 0 (Preflight)**:
+**Result: 1761 → 1674 lines; embedded PowerShell one-liners 39 → 30.**
 
-| Currently in `script.bat` | Move to | Notes |
-|---|---|---|
-| PSWindowsUpdate install (~1163–1175) | Stage 0 | Pure PS7 work. Keep `-Scope AllUsers` — SYSTEM cannot see CurrentUser modules. |
-| Defender exclusion **add** (1188) | Stage 0 | Reunites add with the Stage 5 remove. |
-| Final scheduled-task verification (1232+) | Stage 0 or Stage 5 | Read-only reporting; belongs with the report. |
+| Change | Outcome |
+|---|---|
+| PSWindowsUpdate install → orchestrator **Stage 0 (Preflight)** | ✅ Moved. Keeps `-Scope AllUsers` — SYSTEM cannot see a CurrentUser module. Best-effort: WindowsUpdates' primary path is the COM API. |
+| Duplicate restore-point block (~119 lines, 7 one-liners) | ✅ **Deleted.** See below. |
+| Defender exclusion add | ❌ **Deliberately NOT moved.** See below. |
+| Scheduled-task verification | ➖ Left in batch — it is `schtasks` shelling, not PowerShell, so moving it wins nothing. |
 
-**Order matters for the Defender move.** The exclusion currently goes in before the orchestrator
-launches, which protects `pwsh` startup. If you move it to Stage 0, the orchestrator's own launch
-is briefly unexcluded. In practice the launcher folder exclusion (which is the one
-`$env:ORIGINAL_SCRIPT_DIR` covers) is what matters for `script.bat` itself, and that can stay in
-batch while the extracted-tree exclusion moves. **Split the difference: keep the launcher-folder
-exclusion in `script.bat`, move the extracted-tree exclusion to Stage 0.** Then Stage 5 removes
-both, as it already does.
+**Correction to this guide's original plan — the Defender exclusion must stay in batch.** The
+first draft proposed moving the extracted-tree exclusion into Stage 0 to reunite it with the
+Stage 5 remove. That is wrong. The exclusions must be in place **before `pwsh.exe` starts** and
+**before the orchestrator imports its modules out of the extracted tree** — both of which happen
+before any Stage 0 code can run. Moving the add would leave the process launch and the module load
+unprotected: strictly worse than the asymmetry it was meant to fix. What *did* improve is that its
+result is now captured into `maintenance.log` rather than `Write-Host`'d to a console nobody reads
+on an unattended run.
+
+**The restore-point block was the real prize, and it was not in the original plan.** `script.bat`
+created a *second* restore point before launching the orchestrator, in ~119 lines and 7 embedded
+one-liners. `New-SystemRestorePoint` already did everything it did — and did it better:
+
+- the launcher block never cleared `SystemRestorePointCreationFrequency`, so Windows silently
+  reduced its `Checkpoint-Computer` to a **no-op** whenever a restore point already existed from
+  the past 24h. It reported "created" and only half-noticed via "verification inconclusive";
+- `Checkpoint-Computer` / `Enable-ComputerRestore` / `Get-ComputerRestorePoint` are **not native
+  to PS7**. They resolve only as implicit-remoting proxy functions through the Windows PowerShell
+  compatibility layer (verified: `CommandType: Function` from a `remoteIpMoProxy_…` path), backed
+  by a background WinPS 5.1 session — slow, and not something to rely on under SYSTEM in session 0.
+
+Only its shadow-storage sizing (`vssadmin resize shadowstorage /MaxSize=10GB`) was worth keeping,
+and moved into `New-SystemRestorePoint`. Net: **one restore point per run instead of two**, taken
+by the better path.
 
 **What must stay in batch, permanently:** admin elevation, pending-reboot detection, the monthly
 task creation/convergence, the branch prompt, download + extract, winget bootstrap, PS7 install,
-and the orchestrator handoff. That's the irreducible bootstrap — it all runs before PS7 exists.
+the Defender exclusion add, and the orchestrator handoff. That's the irreducible bootstrap — it
+all runs before PS7 exists, or must precede the orchestrator's own startup.
 
-Expect `script.bat` to land around 1,550 lines. The win is not the 200 lines; it's that ~5 of the
-29 embedded one-liners — including the two longest — become normal, lintable, testable PowerShell.
+**Lesson for later phases:** the biggest win here was a block the plan never mentioned, found by
+reading the code rather than the roadmap. Re-read before executing a phase.
 
 ---
 

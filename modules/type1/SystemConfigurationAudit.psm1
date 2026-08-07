@@ -519,6 +519,201 @@ function Get-SystemHealthData {
 
 #endregion
 
+<#
+.SYNOPSIS
+    Phase A2 of the configuration audit: security baseline -> diff items.
+.DESCRIPTION
+    Extracted verbatim from Invoke-SystemConfigurationAudit. Covers all three CIS
+    enforcement mechanisms, which are NOT interchangeable - a rule in the wrong baseline
+    block is silently never enforced:
+      registry       -> Compare-RegistryBaselineWithFallback  (CIS 2.3.x / 18.x)
+      securityPolicy -> Compare-SecurityPolicyBaseline (secedit, CIS 1.1 / 1.2)
+      auditPolicy    -> Compare-AuditPolicyBaseline    (auditpol, CIS 17.x)
+    plus Defender feature state, firewall profiles, services and Sysmon presence.
+.OUTPUTS
+    [hashtable[]] diff items, every one tagged ConfigType = 'security'.
+#>
+function Get-SecurityConfigurationDiff {
+    [CmdletBinding()]
+    [OutputType([hashtable[]])]
+    param(
+        [Parameter(Mandatory)] [AllowNull()] $Baseline,
+        [Parameter()] [bool]$SkipPasswordPolicy,
+        [Parameter()] [bool]$SkipAuditPolicy
+    )
+    $items = [System.Collections.Generic.List[hashtable]]::new()
+    if ($Baseline) {
+        Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message 'Auditing security settings...'
+
+        # Security registry (with fallback detection)
+        if ($Baseline.registry) {
+            Compare-RegistryBaselineWithFallback -Entries @($Baseline.registry) | ForEach-Object {
+                $_.ConfigType = 'security'
+                $items.Add($_)
+            }
+        }
+
+        # Services that must be running / disabled for a hardened baseline
+        if ($Baseline.services.ensureDisabled) {
+            Compare-ServiceBaseline -ServiceNames @($Baseline.services.ensureDisabled) -Action 'EnsureDisabled' | ForEach-Object {
+                $_.ConfigType = 'security'
+                $items.Add($_)
+            }
+        }
+        if ($Baseline.services.ensureRunning) {
+            Compare-ServiceBaseline -ServiceNames @($Baseline.services.ensureRunning) -Action 'EnsureRunning' | ForEach-Object {
+                $_.ConfigType = 'security'
+                $items.Add($_)
+            }
+        }
+
+        # Windows Defender feature checks
+        if ($Baseline.windowsDefender) {
+            $wd = $Baseline.windowsDefender
+            try {
+                $mpStatus = Get-MpComputerStatus -ErrorAction Stop
+                if ($wd.realTimeProtection -and -not $mpStatus.RealTimeProtectionEnabled) {
+                    $items.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'RealTimeProtection'; Feature = 'RealTimeProtection'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
+                    Write-Log -Level WARN -Component CONFIG-AUDIT -Message 'Defender: Real-time protection DISABLED'
+                }
+                if (-not $mpStatus.AntivirusEnabled) {
+                    $items.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'AntivirusEnabled'; Feature = 'AntivirusEnabled'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
+                }
+            }
+            catch {
+                Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Defender status query failed: $_"
+            }
+            try {
+                $mpPrefs = Get-MpPreference -ErrorAction Stop
+                if ($wd.cloudProtection -and $mpPrefs.MAPSReporting -eq 0) {
+                    $items.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'CloudProtection'; Feature = 'CloudProtection'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
+                }
+                if ($wd.networkProtection -and $mpPrefs.EnableNetworkProtection -eq 0) {
+                    $items.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'NetworkProtection'; Feature = 'NetworkProtection'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
+                }
+                if ($wd.pua -and $mpPrefs.PUAProtection -eq 0) {
+                    $items.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'PUAProtection'; Feature = 'PUAProtection'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
+                }
+            }
+            catch {
+                Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Defender preference query failed: $_"
+            }
+        }
+
+        # Firewall profiles
+        if ($Baseline.firewall.enabled) {
+            try {
+                $fwProfiles = Get-NetFirewallProfile -ErrorAction Stop
+                foreach ($profileName in @('Domain', 'Private', 'Public')) {
+                    $key = $profileName.ToLowerInvariant()
+                    if ($Baseline.firewall.enabled.$key) {
+                        $prof = $fwProfiles | Where-Object { $_.Name -eq $profileName }
+                        if ($prof -and -not $prof.Enabled) {
+                            $items.Add(@{ ConfigType = 'security'; Type = 'firewall'; Name = "Firewall.$profileName"; Profile = $profileName; CurrentState = $false; DesiredState = $true })
+                        }
+                    }
+                }
+            }
+            catch { Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Firewall query failed: $_" }
+        }
+
+        # ── Local security policy: CIS 1.1 password + 1.2 account lockout ────
+        # These are NOT registry values - they live in the Local Security Policy
+        # database and are only reachable via secedit. The baseline has declared a
+        # securityPolicy block for a long time but NOTHING read it, so every one of
+        # these CIS rules stayed non-compliant no matter how often the run completed.
+        if ($Baseline.securityPolicy -and -not $SkipPasswordPolicy) {
+            Compare-SecurityPolicyBaseline -Baseline $Baseline.securityPolicy | ForEach-Object {
+                $_.ConfigType = 'security'
+                $items.Add($_)
+            }
+        }
+        elseif ($SkipPasswordPolicy) {
+            Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Password/lockout policy skipped (config: skipPasswordPolicy)'
+        }
+
+        # ── Advanced audit policy: CIS 17.x ──────────────────────────────────
+        # Same story: auditpol-only, declared in the baseline, never consumed.
+        if ($Baseline.auditPolicy -and -not $SkipAuditPolicy) {
+            Compare-AuditPolicyBaseline -Baseline $Baseline.auditPolicy | ForEach-Object {
+                $_.ConfigType = 'security'
+                $items.Add($_)
+            }
+        }
+        elseif ($SkipAuditPolicy) {
+            Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Advanced audit policy skipped (config: skipAuditPolicy)'
+        }
+
+        # Sysmon presence check (installed via SystemConfiguration Type2 with sysmonconfig.xml)
+        $sysmonSvc = Get-Service -Name 'Sysmon', 'Sysmon64' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $sysmonSvc) {
+            $items.Add(@{ ConfigType = 'security'; Type = 'sysmon'; Name = 'Sysmon'; CurrentState = 'NotInstalled'; DesiredState = 'Installed' })
+            Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Sysmon not installed - queued for install'
+        }
+    }
+    # NO comma-wrap. `return , $arr` emits the array as ONE pipeline element, so a caller
+    # writing @(Get-...) gets a 1-element array CONTAINING the array instead of the items -
+    # and the callers below do exactly that. Returning it plainly lets the pipeline unroll,
+    # and the caller's @() then normalises 0/1/N uniformly. (Get-DiffList uses the comma
+    # because ITS callers use plain assignment, not @(). The two idioms must not be mixed.)
+    return $items.ToArray()
+}
+
+<#
+.SYNOPSIS
+    Phase A3 of the configuration audit: telemetry/privacy baseline -> diff items.
+.OUTPUTS
+    [hashtable[]] diff items, every one tagged ConfigType = 'telemetry'.
+#>
+function Get-TelemetryConfigurationDiff {
+    [CmdletBinding()]
+    [OutputType([hashtable[]])]
+    param(
+        [Parameter(Mandatory)] [AllowNull()] $Baseline
+    )
+    $items = [System.Collections.Generic.List[hashtable]]::new()
+    if ($Baseline) {
+        Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message 'Auditing telemetry/privacy settings...'
+
+        if ($Baseline.services.disable) {
+            Compare-ServiceBaseline -ServiceNames @($Baseline.services.disable) -Action 'EnsureDisabled' | ForEach-Object {
+                $_.ConfigType = 'telemetry'
+                $items.Add($_)
+            }
+        }
+
+        if ($Baseline.registry) {
+            foreach ($grp in @('telemetry', 'advertising', 'cortana', 'privacy')) {
+                if (-not $Baseline.registry.$grp) { continue }
+                Compare-RegistryBaselineWithFallback -Entries @($Baseline.registry.$grp) | ForEach-Object {
+                    $_.ConfigType = 'telemetry'
+                    $items.Add($_)
+                }
+            }
+        }
+
+        if ($Baseline.scheduledTasks.disable) {
+            foreach ($taskPath in $Baseline.scheduledTasks.disable) {
+                try {
+                    $taskName = Split-Path $taskPath -Leaf
+                    $taskFolder = Split-Path $taskPath -Parent
+                    $task = Get-ScheduledTask -TaskName $taskName -TaskPath "$taskFolder\" -ErrorAction SilentlyContinue
+                    if ($task -and $task.State -ne 'Disabled') {
+                        $items.Add(@{ ConfigType = 'telemetry'; Type = 'scheduledtask'; Name = $taskPath; TaskPath = "$taskFolder\"; TaskName = $taskName; CurrentState = $task.State.ToString(); DesiredState = 'Disabled' })
+                    }
+                }
+                catch { Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Task query failed '$taskPath': $_" }
+            }
+        }
+    }
+    # NO comma-wrap. `return , $arr` emits the array as ONE pipeline element, so a caller
+    # writing @(Get-...) gets a 1-element array CONTAINING the array instead of the items -
+    # and the callers below do exactly that. Returning it plainly lets the pipeline unroll,
+    # and the caller's @() then normalises 0/1/N uniformly. (Get-DiffList uses the comma
+    # because ITS callers use plain assignment, not @(). The two idioms must not be mixed.)
+    return $items.ToArray()
+}
+
 #region ─── MAIN AUDIT ────────────────────────────────────────────────────────
 
 function Invoke-SystemConfigurationAudit {
@@ -612,152 +807,12 @@ function Invoke-SystemConfigurationAudit {
 
         # ═══ A2. SECURITY ════════════════════════════════════════════════════
         $securityBaseline = Get-BaselineList -ModuleFolder 'security' -FileName 'security-baseline.json'
-        if ($securityBaseline) {
-            Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message 'Auditing security settings...'
-
-            # Security registry (with fallback detection)
-            if ($securityBaseline.registry) {
-                Compare-RegistryBaselineWithFallback -Entries @($securityBaseline.registry) | ForEach-Object {
-                    $_.ConfigType = 'security'
-                    $diff.Add($_)
-                }
-            }
-
-            # Services that must be running / disabled for a hardened baseline
-            if ($securityBaseline.services.ensureDisabled) {
-                Compare-ServiceBaseline -ServiceNames @($securityBaseline.services.ensureDisabled) -Action 'EnsureDisabled' | ForEach-Object {
-                    $_.ConfigType = 'security'
-                    $diff.Add($_)
-                }
-            }
-            if ($securityBaseline.services.ensureRunning) {
-                Compare-ServiceBaseline -ServiceNames @($securityBaseline.services.ensureRunning) -Action 'EnsureRunning' | ForEach-Object {
-                    $_.ConfigType = 'security'
-                    $diff.Add($_)
-                }
-            }
-
-            # Windows Defender feature checks
-            if ($securityBaseline.windowsDefender) {
-                $wd = $securityBaseline.windowsDefender
-                try {
-                    $mpStatus = Get-MpComputerStatus -ErrorAction Stop
-                    if ($wd.realTimeProtection -and -not $mpStatus.RealTimeProtectionEnabled) {
-                        $diff.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'RealTimeProtection'; Feature = 'RealTimeProtection'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
-                        Write-Log -Level WARN -Component CONFIG-AUDIT -Message 'Defender: Real-time protection DISABLED'
-                    }
-                    if (-not $mpStatus.AntivirusEnabled) {
-                        $diff.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'AntivirusEnabled'; Feature = 'AntivirusEnabled'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
-                    }
-                }
-                catch {
-                    Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Defender status query failed: $_"
-                }
-                try {
-                    $mpPrefs = Get-MpPreference -ErrorAction Stop
-                    if ($wd.cloudProtection -and $mpPrefs.MAPSReporting -eq 0) {
-                        $diff.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'CloudProtection'; Feature = 'CloudProtection'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
-                    }
-                    if ($wd.networkProtection -and $mpPrefs.EnableNetworkProtection -eq 0) {
-                        $diff.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'NetworkProtection'; Feature = 'NetworkProtection'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
-                    }
-                    if ($wd.pua -and $mpPrefs.PUAProtection -eq 0) {
-                        $diff.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'PUAProtection'; Feature = 'PUAProtection'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
-                    }
-                }
-                catch {
-                    Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Defender preference query failed: $_"
-                }
-            }
-
-            # Firewall profiles
-            if ($securityBaseline.firewall.enabled) {
-                try {
-                    $fwProfiles = Get-NetFirewallProfile -ErrorAction Stop
-                    foreach ($profileName in @('Domain', 'Private', 'Public')) {
-                        $key = $profileName.ToLowerInvariant()
-                        if ($securityBaseline.firewall.enabled.$key) {
-                            $prof = $fwProfiles | Where-Object { $_.Name -eq $profileName }
-                            if ($prof -and -not $prof.Enabled) {
-                                $diff.Add(@{ ConfigType = 'security'; Type = 'firewall'; Name = "Firewall.$profileName"; Profile = $profileName; CurrentState = $false; DesiredState = $true })
-                            }
-                        }
-                    }
-                }
-                catch { Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Firewall query failed: $_" }
-            }
-
-            # ── Local security policy: CIS 1.1 password + 1.2 account lockout ────
-            # These are NOT registry values - they live in the Local Security Policy
-            # database and are only reachable via secedit. The baseline has declared a
-            # securityPolicy block for a long time but NOTHING read it, so every one of
-            # these CIS rules stayed non-compliant no matter how often the run completed.
-            if ($securityBaseline.securityPolicy -and -not $skipPasswordPolicy) {
-                Compare-SecurityPolicyBaseline -Baseline $securityBaseline.securityPolicy | ForEach-Object {
-                    $_.ConfigType = 'security'
-                    $diff.Add($_)
-                }
-            }
-            elseif ($skipPasswordPolicy) {
-                Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Password/lockout policy skipped (config: skipPasswordPolicy)'
-            }
-
-            # ── Advanced audit policy: CIS 17.x ──────────────────────────────────
-            # Same story: auditpol-only, declared in the baseline, never consumed.
-            if ($securityBaseline.auditPolicy -and -not $skipAuditPolicy) {
-                Compare-AuditPolicyBaseline -Baseline $securityBaseline.auditPolicy | ForEach-Object {
-                    $_.ConfigType = 'security'
-                    $diff.Add($_)
-                }
-            }
-            elseif ($skipAuditPolicy) {
-                Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Advanced audit policy skipped (config: skipAuditPolicy)'
-            }
-
-            # Sysmon presence check (installed via SystemConfiguration Type2 with sysmonconfig.xml)
-            $sysmonSvc = Get-Service -Name 'Sysmon', 'Sysmon64' -ErrorAction SilentlyContinue | Select-Object -First 1
-            if (-not $sysmonSvc) {
-                $diff.Add(@{ ConfigType = 'security'; Type = 'sysmon'; Name = 'Sysmon'; CurrentState = 'NotInstalled'; DesiredState = 'Installed' })
-                Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Sysmon not installed - queued for install'
-            }
-        }
+        foreach ($item in @(Get-SecurityConfigurationDiff -Baseline $securityBaseline `
+                    -SkipPasswordPolicy $skipPasswordPolicy -SkipAuditPolicy $skipAuditPolicy)) { $diff.Add($item) }
 
         # ═══ A3. TELEMETRY / PRIVACY ═════════════════════════════════════════
         $telemetryBaseline = Get-BaselineList -ModuleFolder 'telemetry' -FileName 'telemetry-list.json'
-        if ($telemetryBaseline) {
-            Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message 'Auditing telemetry/privacy settings...'
-
-            if ($telemetryBaseline.services.disable) {
-                Compare-ServiceBaseline -ServiceNames @($telemetryBaseline.services.disable) -Action 'EnsureDisabled' | ForEach-Object {
-                    $_.ConfigType = 'telemetry'
-                    $diff.Add($_)
-                }
-            }
-
-            if ($telemetryBaseline.registry) {
-                foreach ($grp in @('telemetry', 'advertising', 'cortana', 'privacy')) {
-                    if (-not $telemetryBaseline.registry.$grp) { continue }
-                    Compare-RegistryBaselineWithFallback -Entries @($telemetryBaseline.registry.$grp) | ForEach-Object {
-                        $_.ConfigType = 'telemetry'
-                        $diff.Add($_)
-                    }
-                }
-            }
-
-            if ($telemetryBaseline.scheduledTasks.disable) {
-                foreach ($taskPath in $telemetryBaseline.scheduledTasks.disable) {
-                    try {
-                        $taskName = Split-Path $taskPath -Leaf
-                        $taskFolder = Split-Path $taskPath -Parent
-                        $task = Get-ScheduledTask -TaskName $taskName -TaskPath "$taskFolder\" -ErrorAction SilentlyContinue
-                        if ($task -and $task.State -ne 'Disabled') {
-                            $diff.Add(@{ ConfigType = 'telemetry'; Type = 'scheduledtask'; Name = $taskPath; TaskPath = "$taskFolder\"; TaskName = $taskName; CurrentState = $task.State.ToString(); DesiredState = 'Disabled' })
-                        }
-                    }
-                    catch { Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Task query failed '$taskPath': $_" }
-                }
-            }
-        }
+        foreach ($item in @(Get-TelemetryConfigurationDiff -Baseline $telemetryBaseline)) { $diff.Add($item) }
 
         # ═══ A4. OPTIMIZATION ════════════════════════════════════════════════
         $optBaseline = Get-BaselineList -ModuleFolder 'system-optimization' -FileName 'system-optimization-config.json'
