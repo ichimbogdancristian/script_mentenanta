@@ -162,25 +162,58 @@ Describe 'ConvertFrom-MaintenanceLog' {
         }
     }
 
-    Context 'degenerate input' {
-        It 'returns an empty collection for a missing path' {
+    Context 'degenerate input must yield an EMPTY COLLECTION, never $null' {
+        # These assertions are deliberately stronger than "Count -eq 0". PowerShell reports
+        # $null.Count as 0, so a plain count check passes against a null return - which is
+        # exactly how the original defect survived this test file.
+        #
+        # The bug: ConvertFrom-MaintenanceLog ended `return $entries`, and PowerShell
+        # ENUMERATES a collection on return, so an empty List came back as $null.
+        # Build-LogConsole is Mandatory+AllowEmptyCollection, which rejects null, so
+        # Build-ReportHtml threw and Stage 4 lost the HTML report - the only artifact that
+        # survives cleanup. Fixed with `return , $entries` on every path.
+
+        It 'returns a non-null collection for a missing path' {
             InModuleScope ReportGenerator {
-                (ConvertFrom-MaintenanceLog -Path 'X:\does\not\exist.log').Count | Should -Be 0
+                $r = ConvertFrom-MaintenanceLog -Path 'X:\does\not\exist.log'
+                $null -eq $r | Should -BeFalse -Because 'null here is a hard binding error downstream'
+                $r.Count | Should -Be 0
             }
         }
 
-        It 'returns an empty collection for a null/empty path' {
+        It 'returns a non-null collection for a null/empty path' {
             InModuleScope ReportGenerator {
-                (ConvertFrom-MaintenanceLog -Path '').Count | Should -Be 0
-                (ConvertFrom-MaintenanceLog).Count | Should -Be 0
+                foreach ($r in (ConvertFrom-MaintenanceLog -Path ''), (ConvertFrom-MaintenanceLog)) {
+                    $null -eq $r | Should -BeFalse
+                    $r.Count | Should -Be 0
+                }
             }
         }
 
-        It 'returns an empty collection for an empty file' {
+        It 'returns a non-null collection for an empty file' {
             $p = New-TestLog @()
             InModuleScope ReportGenerator -Parameters @{ P = $p } {
                 param($P)
-                (ConvertFrom-MaintenanceLog -Path $P).Count | Should -Be 0
+                $r = ConvertFrom-MaintenanceLog -Path $P
+                $null -eq $r | Should -BeFalse
+                $r.Count | Should -Be 0
+            }
+        }
+
+        It 'REGRESSION: Build-LogConsole accepts the empty result without a binding error' {
+            # End-to-end shape of the original failure: producer output fed straight into the
+            # consumer's Mandatory parameter.
+            InModuleScope ReportGenerator {
+                $empty = ConvertFrom-MaintenanceLog -Path 'X:\does\not\exist.log'
+                $html = $null
+                { $script:html = Build-LogConsole -Entries $empty } | Should -Not -Throw
+                $script:html | Should -Match 'No log entries available'
+            }
+        }
+
+        It 'REGRESSION: Build-LogConsole survives an outright null (second line of defence)' {
+            InModuleScope ReportGenerator {
+                { Build-LogConsole -Entries $null } | Should -Not -Throw
             }
         }
     }
