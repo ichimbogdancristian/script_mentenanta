@@ -400,6 +400,320 @@ function Get-ConfigItemRank {
     }
 }
 
+<#
+.SYNOPSIS
+    Applies ONE configuration diff item and reports what it did.
+.DESCRIPTION
+    Extracted from Invoke-SystemConfiguration. The dispatch switch used to sit inline in the
+    apply loop and mutate six enclosing variables ($changed, $errors, $failed, $rpCreated,
+    $rpRemoved, $rebootNeeded). It now returns those as a result object the loop merges, so the
+    dispatch is independently testable and the loop is a loop again.
+
+    ORDERING IS NOT DECIDED HERE. The caller sorts the diff through Get-ConfigItemRank first;
+    see that function for why restore point create must precede every mutation and prune must
+    follow all of them.
+
+    Never throws: every failure is captured into Errors/Failed, because a module failing must
+    not fail the run.
+.OUTPUTS
+    [hashtable] @{ Changed = [bool]; Errors = [string[]]; Failed = [int]
+                   RpCreated = [int]; RpRemoved = [int]; RebootRequired = [bool] }
+#>
+function Invoke-ConfigurationItem {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory)] $Item
+    )
+
+    $item = $Item
+    $result = @{
+        Changed        = $false
+        Errors         = @()
+        Failed         = 0
+        RpCreated      = 0
+        RpRemoved      = 0
+        RebootRequired = $false
+    }
+
+    $name = $item.Name ?? "$item"
+    $configType = $item.ConfigType ?? 'unknown'
+    $type = $item.Type ?? 'registry'
+
+    try {
+        $result.Changed = $false
+        $backup = $null
+
+        switch ($configType) {
+            # ─── RESTORE POINT ───────────────────────────────────────────
+            # 'create' is ranked first and 'remove' last (Get-ConfigItemRank), so by the
+            # time a delete runs every other change in this run has already been applied.
+            'restorepoint' {
+                switch ($item.Action) {
+                    'create' {
+                        $desc = $item.Description ?? "Maintenance: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+                        $result.Changed = New-SystemRestorePoint -Description $desc
+                        if ($result.Changed) { $result.RpCreated++ }
+                        else {
+                            # The safety net failing is worth surfacing, but it must not
+                            # stop the maintenance run the user asked for.
+                            $result.Errors += "[RestorePoint] Could not create restore point '$desc'"
+                            $result.Failed++
+                        }
+                    }
+                    'remove' {
+                        $shadowId = $item.ShadowId
+                        if (-not $shadowId) {
+                            Write-Log -Level WARN -Component CONFIG -Message "Restore point item has no ShadowId: $name"
+                            $result.Errors += "[No ShadowId] $name"; $result.Failed++
+                        }
+                        else {
+                            $result.Changed = Remove-SystemRestorePoint -ShadowId $shadowId
+                            if ($result.Changed) { $result.RpRemoved++ }
+                            else { $result.Errors += "[RestorePoint] Could not remove $shadowId"; $result.Failed++ }
+                        }
+                    }
+                    default {
+                        Write-Log -Level WARN -Component CONFIG -Message "Unknown restore point action '$($item.Action)': $name"
+                        $result.Errors += "[Unknown action] $name"; $result.Failed++
+                    }
+                }
+            }
+
+            # ─── SECURITY ────────────────────────────────────────────────
+            'security' {
+                switch ($type) {
+                    'registry' {
+                        $vname = $item.ValueName ?? $item.Name
+                        if ($vname) {
+                            $backup = $null
+                            try {
+                                $backup = Backup-RegistryValue -Path $item.Path -Name $vname
+                            }
+                            catch {
+                                Write-Log -Level WARN -Component CONFIG -Message "Registry backup failed: $_"
+                            }
+                            $result.Changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
+                            if ($result.Changed) {
+                                $verified = Test-RegistryValueApplied -Path $item.Path -Name $vname -ExpectedValue $item.DesiredValue
+                                if (-not $verified) {
+                                    Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$vname"
+                                    if ($backup) {
+                                        $restored = Restore-RegistryValue -Backup $backup
+                                        if ($restored) {
+                                            Write-Log -Level SUCCESS -Component CONFIG -Message "Rollback successful"
+                                        }
+                                        else {
+                                            Write-Log -Level ERROR -Component CONFIG -Message "Rollback FAILED - manual intervention required"
+                                        }
+                                    }
+                                    else {
+                                        Write-Log -Level ERROR -Component CONFIG -Message "No backup available - manual remediation required"
+                                    }
+                                    $result.Errors += "[Verification Failed] $name"; $result.Failed++; $result.Changed = $false
+                                }
+                            }
+                        }
+                    }
+                    'service' { $result.Changed = Invoke-ServiceChangeItem -Item $item -Component 'CONFIG' }
+                    'defender' {
+                        $feature = $item.Feature ?? $item.Name
+                        $enable = $item.ShouldEnable ?? $true
+                        $result.Changed = $true
+                        switch ($feature) {
+                            'RealTimeProtection' { Set-MpPreference -DisableRealtimeMonitoring (-not $enable) -ErrorAction Stop }
+                            'CloudProtection' { Set-MpPreference -MAPSReporting $(if ($enable) { 2 } else { 0 }) -ErrorAction Stop }
+                            'NetworkProtection' { Set-MpPreference -EnableNetworkProtection $(if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
+                            'PUAProtection' { Set-MpPreference -PUAProtection $(if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
+                            'ControlledFolderAccess' { Set-MpPreference -EnableControlledFolderAccess $(if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
+                            'AutomaticSampleSubmission' { Set-MpPreference -SubmitSamplesConsent $(if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
+                            'AntivirusEnabled' {
+                                $null = Set-RegistryValue -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender' -Name 'DisableAntiSpyware' -Value 0 -Type DWord
+                                Set-Service -Name WinDefend -StartupType Automatic -ErrorAction Stop
+                                Start-Service -Name WinDefend -ErrorAction Stop
+                                $result.RebootRequired = $true
+                            }
+                            default { Write-Log -Level WARN -Component CONFIG -Message "Unknown Defender feature: $feature"; $result.Changed = $false }
+                        }
+                        if ($result.Changed) { Write-Log -Level SUCCESS -Component CONFIG -Message "Defender.$feature -> $enable" }
+                    }
+                    'firewall' {
+                        $fwProfile = $item.Profile
+                        if (-not $fwProfile) {
+                            Write-Log -Level WARN -Component CONFIG -Message "Firewall missing Profile: $name"
+                            $result.Errors += "[No Profile] $name"; $result.Failed++; return $result
+                        }
+                        $enabled = if ($item.DesiredState -eq $false) { 'False' } else { 'True' }
+                        Set-NetFirewallProfile -Profile $fwProfile.Split(',') -Enabled $enabled -ErrorAction Stop
+                        Write-Log -Level SUCCESS -Component CONFIG -Message "Firewall.$fwProfile -> Enabled=$enabled"
+                        $result.Changed = $true
+                    }
+                    'sysmon' { $result.Changed = Install-SysmonWithConfig }
+                    # CIS 1.1/1.2 - local password & account-lockout policy via secedit.
+                    'secpolicy' {
+                        $result.Changed = Invoke-SecurityPolicyChangeItem -Item $item -Component 'CONFIG'
+                        if (-not $result.Changed) { $result.Errors += "[SecPolicy] $name"; $result.Failed++ }
+                    }
+                    # CIS 17.x - advanced audit policy subcategories via auditpol.
+                    'auditpolicy' {
+                        $result.Changed = Invoke-AuditPolicyChangeItem -Item $item -Component 'CONFIG'
+                        if (-not $result.Changed) { $result.Errors += "[AuditPolicy] $name"; $result.Failed++ }
+                    }
+                    default {
+                        Write-Log -Level WARN -Component CONFIG -Message "Unknown security type '$type': $name"
+                        $result.Errors += "[Unknown type] $name"; $result.Failed++
+                    }
+                }
+            }
+
+            # ─── TELEMETRY ───────────────────────────────────────────────
+            'telemetry' {
+                switch ($type) {
+                    'service' { $result.Changed = Invoke-ServiceChangeItem -Item $item -Component 'CONFIG' }
+                    'registry' {
+                        $vname = $item.ValueName ?? $item.Name
+                        if ($vname) {
+                            $backup = $null
+                            try {
+                                $backup = Backup-RegistryValue -Path $item.Path -Name $vname
+                            }
+                            catch {
+                                Write-Log -Level WARN -Component CONFIG -Message "Registry backup failed: $_"
+                            }
+                            $result.Changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
+                            if ($result.Changed) {
+                                $verified = Test-RegistryValueApplied -Path $item.Path -Name $vname -ExpectedValue $item.DesiredValue
+                                if (-not $verified) {
+                                    Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$vname"
+                                    if ($backup) {
+                                        $restored = Restore-RegistryValue -Backup $backup
+                                        if ($restored) {
+                                            Write-Log -Level SUCCESS -Component CONFIG -Message "Rollback successful"
+                                        }
+                                        else {
+                                            Write-Log -Level ERROR -Component CONFIG -Message "Rollback FAILED - manual intervention required"
+                                        }
+                                    }
+                                    else {
+                                        Write-Log -Level ERROR -Component CONFIG -Message "No backup available - manual remediation required"
+                                    }
+                                    $result.Errors += "[Verification Failed] $name"; $result.Failed++; $result.Changed = $false
+                                }
+                            }
+                        }
+                    }
+                    'scheduledtask' {
+                        $taskPath = $item.TaskPath ?? '\Microsoft\Windows\'
+                        $taskName = $item.TaskName ?? $item.Name
+                        $null = Disable-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction Stop
+                        Write-Log -Level SUCCESS -Component CONFIG -Message "Disabled task: $taskPath$taskName"
+                        $result.Changed = $true
+                    }
+                    default {
+                        Write-Log -Level WARN -Component CONFIG -Message "Unknown telemetry type '$type': $name"
+                        $result.Errors += "[Unknown type] $name"; $result.Failed++
+                    }
+                }
+            }
+
+            # ─── OPTIMIZATION ────────────────────────────────────────────
+            'optimization' {
+                switch ($type) {
+                    'service' { $result.Changed = Invoke-ServiceChangeItem -Item $item -Component 'CONFIG' }
+                    'registry' {
+                        $vname = $item.ValueName ?? $item.Name
+                        if ($vname) {
+                            $backup = $null
+                            try {
+                                $backup = Backup-RegistryValue -Path $item.Path -Name $vname
+                            }
+                            catch {
+                                Write-Log -Level WARN -Component CONFIG -Message "Registry backup failed: $_"
+                            }
+                            $result.Changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
+                            if ($result.Changed) {
+                                $verified = Test-RegistryValueApplied -Path $item.Path -Name $vname -ExpectedValue $item.DesiredValue
+                                if (-not $verified) {
+                                    Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$vname"
+                                    if ($backup) {
+                                        $restored = Restore-RegistryValue -Backup $backup
+                                        if ($restored) {
+                                            Write-Log -Level SUCCESS -Component CONFIG -Message "Rollback successful"
+                                        }
+                                        else {
+                                            Write-Log -Level ERROR -Component CONFIG -Message "Rollback FAILED - manual intervention required"
+                                        }
+                                    }
+                                    else {
+                                        Write-Log -Level ERROR -Component CONFIG -Message "No backup available - manual remediation required"
+                                    }
+                                    $result.Errors += "[Verification Failed] $name"; $result.Failed++; $result.Changed = $false
+                                }
+                            }
+                        }
+                    }
+                    'powerplan' {
+                        $planGuid = $item.GUID ?? '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
+                        $powercfg = Join-Path $env:SystemRoot 'System32\powercfg.exe'
+                        $null = & $powercfg /setactive $planGuid 2>&1
+                        Write-Log -Level SUCCESS -Component CONFIG -Message "Power plan set to GUID $planGuid"
+                        $result.Changed = $true
+                    }
+                    'visualfx' {
+                        $null = Set-RegistryValue -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -Name 'VisualFXSetting' -Value 3 -Type DWord
+                        $desktop = 'HKCU:\Control Panel\Desktop'
+                        $null = Set-RegistryValue -Path $desktop -Name 'MinAnimate' -Value '0' -Type String
+                        $null = Set-RegistryValue -Path $desktop -Name 'FontSmoothing' -Value '2' -Type String
+                        $null = Set-RegistryValue -Path $desktop -Name 'DragFullWindows' -Value '1' -Type String
+                        $adv = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+                        $null = Set-RegistryValue -Path $adv -Name 'TaskbarAnimations' -Value 0 -Type DWord
+                        $null = Set-RegistryValue -Path $adv -Name 'ListviewShadow' -Value 0 -Type DWord
+                        $null = Set-RegistryValue -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'EnableTransparency' -Value 0 -Type DWord
+                        Write-Log -Level SUCCESS -Component CONFIG -Message 'Visual effects set to balanced (custom)'
+                        $result.Changed = $true
+                    }
+                    'background' {
+                        $cdm = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+                        $null = Set-RegistryValue -Path $cdm -Name 'RotatingLockScreenEnabled' -Value 0 -Type DWord
+                        $null = Set-RegistryValue -Path $cdm -Name 'RotatingLockScreenOverlayEnabled' -Value 0 -Type DWord
+                        $null = Set-RegistryValue -Path $cdm -Name 'SubscribedContent-338387Enabled' -Value 0 -Type DWord
+                        $wp = 'HKCU:\Control Panel\Desktop'
+                        $null = Set-RegistryValue -Path $wp -Name 'WallpaperStyle' -Value '10' -Type String
+                        $null = Set-RegistryValue -Path $wp -Name 'TileWallpaper' -Value '0' -Type String
+                        Write-Log -Level SUCCESS -Component CONFIG -Message 'Desktop background changed from Spotlight to Picture'
+                        $result.Changed = $true
+                    }
+                    'startup' {
+                        $regPath = $item.RegistryPath
+                        $entryName = $item.Name
+                        if ($regPath -and $entryName) {
+                            Remove-ItemProperty -Path $regPath -Name $entryName -Force -ErrorAction Stop
+                            Write-Log -Level SUCCESS -Component CONFIG -Message "Startup program disabled: $entryName"
+                            $result.Changed = $true
+                        }
+                    }
+                    default {
+                        Write-Log -Level WARN -Component CONFIG -Message "Unknown optimization type '$type': $name"
+                        $result.Errors += "[Unknown type] $name"; $result.Failed++
+                    }
+                }
+            }
+
+            default {
+                Write-Log -Level WARN -Component CONFIG -Message "Unknown ConfigType '$configType': $name"
+                $result.Errors += "[Unknown ConfigType] $name"; $result.Failed++
+            }
+        }
+
+    }
+    catch {
+        Write-Log -Level ERROR -Component CONFIG -Message "Failed [$configType/$type $name]: $_"
+        $result.Errors += "[$name] $_"; $result.Failed++
+    }
+
+    return $result
+}
+
 function Invoke-SystemConfiguration {
     [CmdletBinding()]
     [OutputType([hashtable])]
@@ -449,281 +763,13 @@ function Invoke-SystemConfiguration {
     }
 
     foreach ($item in $orderedDiff) {
-        $name = $item.Name ?? "$item"
-        $configType = $item.ConfigType ?? 'unknown'
-        $type = $item.Type ?? 'registry'
-
-        try {
-            $changed = $false
-            $backup = $null
-
-            switch ($configType) {
-                # ─── RESTORE POINT ───────────────────────────────────────────
-                # 'create' is ranked first and 'remove' last (Get-ConfigItemRank), so by the
-                # time a delete runs every other change in this run has already been applied.
-                'restorepoint' {
-                    switch ($item.Action) {
-                        'create' {
-                            $desc = $item.Description ?? "Maintenance: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-                            $changed = New-SystemRestorePoint -Description $desc
-                            if ($changed) { $rpCreated++ }
-                            else {
-                                # The safety net failing is worth surfacing, but it must not
-                                # stop the maintenance run the user asked for.
-                                $errors += "[RestorePoint] Could not create restore point '$desc'"
-                                $failed++
-                            }
-                        }
-                        'remove' {
-                            $shadowId = $item.ShadowId
-                            if (-not $shadowId) {
-                                Write-Log -Level WARN -Component CONFIG -Message "Restore point item has no ShadowId: $name"
-                                $errors += "[No ShadowId] $name"; $failed++
-                            }
-                            else {
-                                $changed = Remove-SystemRestorePoint -ShadowId $shadowId
-                                if ($changed) { $rpRemoved++ }
-                                else { $errors += "[RestorePoint] Could not remove $shadowId"; $failed++ }
-                            }
-                        }
-                        default {
-                            Write-Log -Level WARN -Component CONFIG -Message "Unknown restore point action '$($item.Action)': $name"
-                            $errors += "[Unknown action] $name"; $failed++
-                        }
-                    }
-                }
-
-                # ─── SECURITY ────────────────────────────────────────────────
-                'security' {
-                    switch ($type) {
-                        'registry' {
-                            $vname = $item.ValueName ?? $item.Name
-                            if ($vname) {
-                                $backup = $null
-                                try {
-                                    $backup = Backup-RegistryValue -Path $item.Path -Name $vname
-                                }
-                                catch {
-                                    Write-Log -Level WARN -Component CONFIG -Message "Registry backup failed: $_"
-                                }
-                                $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
-                                if ($changed) {
-                                    $verified = Test-RegistryValueApplied -Path $item.Path -Name $vname -ExpectedValue $item.DesiredValue
-                                    if (-not $verified) {
-                                        Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$vname"
-                                        if ($backup) {
-                                            $restored = Restore-RegistryValue -Backup $backup
-                                            if ($restored) {
-                                                Write-Log -Level SUCCESS -Component CONFIG -Message "Rollback successful"
-                                            }
-                                            else {
-                                                Write-Log -Level ERROR -Component CONFIG -Message "Rollback FAILED - manual intervention required"
-                                            }
-                                        }
-                                        else {
-                                            Write-Log -Level ERROR -Component CONFIG -Message "No backup available - manual remediation required"
-                                        }
-                                        $errors += "[Verification Failed] $name"; $failed++; $changed = $false
-                                    }
-                                }
-                            }
-                        }
-                        'service' { $changed = Invoke-ServiceChangeItem -Item $item -Component 'CONFIG' }
-                        'defender' {
-                            $feature = $item.Feature ?? $item.Name
-                            $enable = $item.ShouldEnable ?? $true
-                            $changed = $true
-                            switch ($feature) {
-                                'RealTimeProtection' { Set-MpPreference -DisableRealtimeMonitoring (-not $enable) -ErrorAction Stop }
-                                'CloudProtection' { Set-MpPreference -MAPSReporting $(if ($enable) { 2 } else { 0 }) -ErrorAction Stop }
-                                'NetworkProtection' { Set-MpPreference -EnableNetworkProtection $(if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
-                                'PUAProtection' { Set-MpPreference -PUAProtection $(if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
-                                'ControlledFolderAccess' { Set-MpPreference -EnableControlledFolderAccess $(if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
-                                'AutomaticSampleSubmission' { Set-MpPreference -SubmitSamplesConsent $(if ($enable) { 1 } else { 0 }) -ErrorAction Stop }
-                                'AntivirusEnabled' {
-                                    $null = Set-RegistryValue -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender' -Name 'DisableAntiSpyware' -Value 0 -Type DWord
-                                    Set-Service -Name WinDefend -StartupType Automatic -ErrorAction Stop
-                                    Start-Service -Name WinDefend -ErrorAction Stop
-                                    $rebootNeeded = $true
-                                }
-                                default { Write-Log -Level WARN -Component CONFIG -Message "Unknown Defender feature: $feature"; $changed = $false }
-                            }
-                            if ($changed) { Write-Log -Level SUCCESS -Component CONFIG -Message "Defender.$feature -> $enable" }
-                        }
-                        'firewall' {
-                            $fwProfile = $item.Profile
-                            if (-not $fwProfile) {
-                                Write-Log -Level WARN -Component CONFIG -Message "Firewall missing Profile: $name"
-                                $errors += "[No Profile] $name"; $failed++; continue
-                            }
-                            $enabled = if ($item.DesiredState -eq $false) { 'False' } else { 'True' }
-                            Set-NetFirewallProfile -Profile $fwProfile.Split(',') -Enabled $enabled -ErrorAction Stop
-                            Write-Log -Level SUCCESS -Component CONFIG -Message "Firewall.$fwProfile -> Enabled=$enabled"
-                            $changed = $true
-                        }
-                        'sysmon' { $changed = Install-SysmonWithConfig }
-                        # CIS 1.1/1.2 - local password & account-lockout policy via secedit.
-                        'secpolicy' {
-                            $changed = Invoke-SecurityPolicyChangeItem -Item $item -Component 'CONFIG'
-                            if (-not $changed) { $errors += "[SecPolicy] $name"; $failed++ }
-                        }
-                        # CIS 17.x - advanced audit policy subcategories via auditpol.
-                        'auditpolicy' {
-                            $changed = Invoke-AuditPolicyChangeItem -Item $item -Component 'CONFIG'
-                            if (-not $changed) { $errors += "[AuditPolicy] $name"; $failed++ }
-                        }
-                        default {
-                            Write-Log -Level WARN -Component CONFIG -Message "Unknown security type '$type': $name"
-                            $errors += "[Unknown type] $name"; $failed++
-                        }
-                    }
-                }
-
-                # ─── TELEMETRY ───────────────────────────────────────────────
-                'telemetry' {
-                    switch ($type) {
-                        'service' { $changed = Invoke-ServiceChangeItem -Item $item -Component 'CONFIG' }
-                        'registry' {
-                            $vname = $item.ValueName ?? $item.Name
-                            if ($vname) {
-                                $backup = $null
-                                try {
-                                    $backup = Backup-RegistryValue -Path $item.Path -Name $vname
-                                }
-                                catch {
-                                    Write-Log -Level WARN -Component CONFIG -Message "Registry backup failed: $_"
-                                }
-                                $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
-                                if ($changed) {
-                                    $verified = Test-RegistryValueApplied -Path $item.Path -Name $vname -ExpectedValue $item.DesiredValue
-                                    if (-not $verified) {
-                                        Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$vname"
-                                        if ($backup) {
-                                            $restored = Restore-RegistryValue -Backup $backup
-                                            if ($restored) {
-                                                Write-Log -Level SUCCESS -Component CONFIG -Message "Rollback successful"
-                                            }
-                                            else {
-                                                Write-Log -Level ERROR -Component CONFIG -Message "Rollback FAILED - manual intervention required"
-                                            }
-                                        }
-                                        else {
-                                            Write-Log -Level ERROR -Component CONFIG -Message "No backup available - manual remediation required"
-                                        }
-                                        $errors += "[Verification Failed] $name"; $failed++; $changed = $false
-                                    }
-                                }
-                            }
-                        }
-                        'scheduledtask' {
-                            $taskPath = $item.TaskPath ?? '\Microsoft\Windows\'
-                            $taskName = $item.TaskName ?? $item.Name
-                            $null = Disable-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction Stop
-                            Write-Log -Level SUCCESS -Component CONFIG -Message "Disabled task: $taskPath$taskName"
-                            $changed = $true
-                        }
-                        default {
-                            Write-Log -Level WARN -Component CONFIG -Message "Unknown telemetry type '$type': $name"
-                            $errors += "[Unknown type] $name"; $failed++
-                        }
-                    }
-                }
-
-                # ─── OPTIMIZATION ────────────────────────────────────────────
-                'optimization' {
-                    switch ($type) {
-                        'service' { $changed = Invoke-ServiceChangeItem -Item $item -Component 'CONFIG' }
-                        'registry' {
-                            $vname = $item.ValueName ?? $item.Name
-                            if ($vname) {
-                                $backup = $null
-                                try {
-                                    $backup = Backup-RegistryValue -Path $item.Path -Name $vname
-                                }
-                                catch {
-                                    Write-Log -Level WARN -Component CONFIG -Message "Registry backup failed: $_"
-                                }
-                                $changed = Invoke-RegistryChangeItem -Item $item -Component 'CONFIG'
-                                if ($changed) {
-                                    $verified = Test-RegistryValueApplied -Path $item.Path -Name $vname -ExpectedValue $item.DesiredValue
-                                    if (-not $verified) {
-                                        Write-Log -Level WARN -Component CONFIG -Message "Registry verification FAILED: $($item.Path)\$vname"
-                                        if ($backup) {
-                                            $restored = Restore-RegistryValue -Backup $backup
-                                            if ($restored) {
-                                                Write-Log -Level SUCCESS -Component CONFIG -Message "Rollback successful"
-                                            }
-                                            else {
-                                                Write-Log -Level ERROR -Component CONFIG -Message "Rollback FAILED - manual intervention required"
-                                            }
-                                        }
-                                        else {
-                                            Write-Log -Level ERROR -Component CONFIG -Message "No backup available - manual remediation required"
-                                        }
-                                        $errors += "[Verification Failed] $name"; $failed++; $changed = $false
-                                    }
-                                }
-                            }
-                        }
-                        'powerplan' {
-                            $planGuid = $item.GUID ?? '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
-                            $powercfg = Join-Path $env:SystemRoot 'System32\powercfg.exe'
-                            $null = & $powercfg /setactive $planGuid 2>&1
-                            Write-Log -Level SUCCESS -Component CONFIG -Message "Power plan set to GUID $planGuid"
-                            $changed = $true
-                        }
-                        'visualfx' {
-                            $null = Set-RegistryValue -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -Name 'VisualFXSetting' -Value 3 -Type DWord
-                            $desktop = 'HKCU:\Control Panel\Desktop'
-                            $null = Set-RegistryValue -Path $desktop -Name 'MinAnimate' -Value '0' -Type String
-                            $null = Set-RegistryValue -Path $desktop -Name 'FontSmoothing' -Value '2' -Type String
-                            $null = Set-RegistryValue -Path $desktop -Name 'DragFullWindows' -Value '1' -Type String
-                            $adv = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
-                            $null = Set-RegistryValue -Path $adv -Name 'TaskbarAnimations' -Value 0 -Type DWord
-                            $null = Set-RegistryValue -Path $adv -Name 'ListviewShadow' -Value 0 -Type DWord
-                            $null = Set-RegistryValue -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name 'EnableTransparency' -Value 0 -Type DWord
-                            Write-Log -Level SUCCESS -Component CONFIG -Message 'Visual effects set to balanced (custom)'
-                            $changed = $true
-                        }
-                        'background' {
-                            $cdm = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
-                            $null = Set-RegistryValue -Path $cdm -Name 'RotatingLockScreenEnabled' -Value 0 -Type DWord
-                            $null = Set-RegistryValue -Path $cdm -Name 'RotatingLockScreenOverlayEnabled' -Value 0 -Type DWord
-                            $null = Set-RegistryValue -Path $cdm -Name 'SubscribedContent-338387Enabled' -Value 0 -Type DWord
-                            $wp = 'HKCU:\Control Panel\Desktop'
-                            $null = Set-RegistryValue -Path $wp -Name 'WallpaperStyle' -Value '10' -Type String
-                            $null = Set-RegistryValue -Path $wp -Name 'TileWallpaper' -Value '0' -Type String
-                            Write-Log -Level SUCCESS -Component CONFIG -Message 'Desktop background changed from Spotlight to Picture'
-                            $changed = $true
-                        }
-                        'startup' {
-                            $regPath = $item.RegistryPath
-                            $entryName = $item.Name
-                            if ($regPath -and $entryName) {
-                                Remove-ItemProperty -Path $regPath -Name $entryName -Force -ErrorAction Stop
-                                Write-Log -Level SUCCESS -Component CONFIG -Message "Startup program disabled: $entryName"
-                                $changed = $true
-                            }
-                        }
-                        default {
-                            Write-Log -Level WARN -Component CONFIG -Message "Unknown optimization type '$type': $name"
-                            $errors += "[Unknown type] $name"; $failed++
-                        }
-                    }
-                }
-
-                default {
-                    Write-Log -Level WARN -Component CONFIG -Message "Unknown ConfigType '$configType': $name"
-                    $errors += "[Unknown ConfigType] $name"; $failed++
-                }
-            }
-
-            if ($changed) { $processed++ }
-        }
-        catch {
-            Write-Log -Level ERROR -Component CONFIG -Message "Failed [$configType/$type $name]: $_"
-            $errors += "[$name] $_"; $failed++
-        }
+        $r = Invoke-ConfigurationItem -Item $item
+        if ($r.Changed) { $processed++ }
+        $failed += $r.Failed
+        $errors += $r.Errors
+        $rpCreated += $r.RpCreated
+        $rpRemoved += $r.RpRemoved
+        if ($r.RebootRequired) { $rebootNeeded = $true }
     }
 
     $status = if ($failed -eq 0) { 'Success' } elseif ($processed -gt 0) { 'Warning' } else { 'Failed' }
