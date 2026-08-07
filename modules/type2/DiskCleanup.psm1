@@ -11,6 +11,111 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
 }
 
+# Resolved once per run and cached. $null means "not available" - every caller degrades.
+$script:MoveFileExe = $null
+$script:MoveFileResolved = $false
+
+<#
+.SYNOPSIS
+    Lazily acquires Sysinternals MoveFile, or returns $null.
+.DESCRIPTION
+    Only downloaded when a locked file is actually encountered, so a run that cleans up
+    perfectly costs no network at all. Gated by main-config.json -> tools.
+.OUTPUTS
+    [string] path to movefile.exe, or $null when unavailable/disabled.
+#>
+function Get-MoveFileTool {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
+
+    if ($script:MoveFileResolved) { return $script:MoveFileExe }
+    $script:MoveFileResolved = $true
+
+    try {
+        $cfg = Get-MainConfig
+        if (-not $cfg.tools -or -not $cfg.tools.enabled) { return $null }
+        $mf = $cfg.tools.sysinternals.movefile
+        if (-not $mf -or -not $mf.enabled -or -not $mf.url) { return $null }
+
+        $null = Initialize-SysinternalsEula
+        $script:MoveFileExe = Get-ExternalTool -Name 'movefile' -Url $mf.url
+    }
+    catch {
+        Write-Log -Level WARN -Component DISKCLEAN -Message "MoveFile unavailable (continuing without boot-time deletes): $_"
+        $script:MoveFileExe = $null
+    }
+    return $script:MoveFileExe
+}
+
+<#
+.SYNOPSIS
+    Queues files that could not be deleted for removal at the next boot.
+.DESCRIPTION
+    Windows exposes MoveFileEx(..., MOVEFILE_DELAY_UNTIL_REBOOT) so an in-use file can be
+    replaced or deleted before anything references it. Session Manager executes the queue from
+    HKLM\System\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations at next
+    boot. Sysinternals MoveFile is the supported CLI for that; an empty destination means
+    delete. PowerShell has no equivalent without P/Invoking MoveFileEx.
+
+    This pairs exactly with the Stage 5 reboot: a file queued in Stage 3 is gone minutes later
+    in the SAME run, instead of failing again every month forever.
+
+    SAFETY - PendingFileRenameOperations executes as Session Manager with nothing watching and
+    no undo, so this refuses anything outside the caller's already-validated cleanup root:
+      - the file must currently exist,
+      - it must resolve to a path INSIDE $UnderRoot,
+      - and that root must not be a system-critical directory.
+.OUTPUTS
+    [int] number of files successfully queued.
+#>
+function Add-BootTimeDelete {
+    [CmdletBinding()]
+    [OutputType([int])]
+    param(
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [string[]]$Path,
+        [Parameter(Mandatory)] [string]$UnderRoot,
+        [Parameter(Mandatory)] [string]$MoveFileExe
+    )
+
+    $queued = 0
+    try { $rootFull = [System.IO.Path]::GetFullPath($UnderRoot).TrimEnd('\') } catch { return 0 }
+
+    # Never queue deletes under a system-critical root, whatever the diff claims.
+    $forbidden = @(
+        [System.IO.Path]::GetFullPath($env:SystemRoot).TrimEnd('\')
+        [System.IO.Path]::GetFullPath((Join-Path $env:SystemRoot 'System32')).TrimEnd('\')
+        [System.IO.Path]::GetFullPath($env:ProgramFiles).TrimEnd('\')
+    )
+    foreach ($bad in $forbidden) {
+        if ($rootFull -eq $bad) {
+            Write-Log -Level WARN -Component DISKCLEAN -Message "Refusing boot-time deletes under a system root: $rootFull"
+            return 0
+        }
+    }
+
+    foreach ($p in $Path) {
+        if (-not $p) { continue }
+        try {
+            if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { continue }
+            $full = [System.IO.Path]::GetFullPath($p)
+            if (-not $full.StartsWith($rootFull + '\', [StringComparison]::OrdinalIgnoreCase)) {
+                Write-Log -Level DEBUG -Component DISKCLEAN -Message "Skipped (outside cleanup root): $full"
+                continue
+            }
+            # Empty destination = delete at boot. Both arguments are quoted for spaces.
+            $exit = Invoke-ExternalPackageCommand -FilePath $MoveFileExe `
+                -ArgumentList @('-accepteula', "`"$full`"", '""') -TimeoutSeconds 30
+            if ($exit -eq 0) { $queued++ }
+            else { Write-Log -Level DEBUG -Component DISKCLEAN -Message "MoveFile exit $exit for $full" }
+        }
+        catch {
+            Write-Log -Level DEBUG -Component DISKCLEAN -Message "Could not queue '$p': $_"
+        }
+    }
+    return $queued
+}
+
 function Invoke-DiskCleanup {
     [CmdletBinding()]
     [OutputType([hashtable])]
@@ -28,6 +133,7 @@ function Invoke-DiskCleanup {
     }
 
     $processed = 0; $failed = 0; $errors = @(); $reclaimedMB = 0.0; $rebootRequired = $false
+    $bootQueued = 0   # files handed to MoveFile for deletion at next boot
     $reclaimedByCategory = @{
         'temp' = 0
         'browser-cache' = 0
@@ -68,6 +174,28 @@ function Invoke-DiskCleanup {
                         else { $reclaimedByCategory['browser-cache'] += $freedMB }
                         if ($remainingMB -gt 0) {
                             Write-Log -Level WARN -Component DISKCLEAN -Message "$name`: partially cleared ($freedMB MB freed, $remainingMB MB still locked/in-use)"
+
+                            # Whatever survived the delete pass is locked by a running process.
+                            # Queue it for boot-time deletion so it actually goes away in THIS
+                            # run (Stage 5 reboots), instead of failing identically every month.
+                            $mfExe = Get-MoveFileTool
+                            if ($mfExe) {
+                                $stuck = @(Get-ChildItem -Path $path -Recurse -Force -File -ErrorAction SilentlyContinue |
+                                        Select-Object -ExpandProperty FullName)
+                                if ($stuck.Count -gt 0) {
+                                    $queued = Add-BootTimeDelete -Path $stuck -UnderRoot $path -MoveFileExe $mfExe
+                                    if ($queued -gt 0) {
+                                        # MUST set RebootRequired: the queued deletes only happen
+                                        # on reboot, and with rebootOnlyWhenRequired set Stage 5
+                                        # would otherwise skip the reboot and leave them pending
+                                        # for a month. Same class as the 3010 exit-code fix.
+                                        $rebootRequired = $true
+                                        $bootQueued += $queued
+                                        Write-Log -Level INFO -Component DISKCLEAN `
+                                            -Message "$name`: queued $queued locked file(s) for deletion at next boot"
+                                    }
+                                }
+                            }
                         }
                         else {
                             Write-Log -Level SUCCESS -Component DISKCLEAN -Message "$name`: cleared ($freedMB MB freed)"
@@ -160,6 +288,7 @@ function Invoke-DiskCleanup {
         -ExtraData @{
             ReclaimedMB = $reclaimedMB
             BreakdownByCategory = $reclaimedByCategory
+            BootTimeDeletesQueued = $bootQueued
         }
 }
 

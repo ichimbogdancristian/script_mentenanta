@@ -102,7 +102,8 @@ function ConvertFrom-MaintenanceLog {
     param([Parameter()] [string]$Path)
 
     $entries = [System.Collections.Generic.List[object]]::new()
-    if (-not $Path -or -not (Test-Path $Path)) { return $entries }
+    # `,` is REQUIRED on every return path - see the note at the end of this function.
+    if (-not $Path -or -not (Test-Path $Path)) { return , $entries }
 
     $rx = [regex]'^\[(?<ts>[^\]]+)\]\s\[(?<cmp>[^\]]+)\]\s\[(?<lvl>[^\]]+)\]\s?(?<msg>.*)$'
     $fs = $null; $sr = $null
@@ -136,7 +137,25 @@ function ConvertFrom-MaintenanceLog {
         if ($sr) { $sr.Dispose() }
         if ($fs) { $fs.Dispose() }
     }
-    return $entries
+
+    # `,` (array-wrap) is REQUIRED. PowerShell ENUMERATES a collection on return, and an EMPTY
+    # List enumerates to nothing - so a log with no parseable entries handed the caller $null
+    # instead of an empty list. Build-LogConsole declares
+    # [Parameter(Mandatory)][AllowEmptyCollection()], which permits an empty collection but NOT
+    # null, so binding failed and Stage 4 threw:
+    #     Build-ReportHtml: Cannot bind argument to parameter 'Entries' because it is null.
+    # That killed the HTML report - the ONE artifact that survives Stage 5 cleanup - for any
+    # run whose log could not be read or parsed. Build-LogConsole already handles Count -eq 0
+    # gracefully; the producer simply never delivered an empty collection for it to handle.
+    #
+    # Note this bug survived the unit tests: $null.Count is 0 in PowerShell, so every
+    # `.Count | Should -Be 0` assertion passed against the broken behaviour. The tests now
+    # assert the return is non-null and enumerable, not merely that it counts zero.
+    #
+    # NOT the same as the ConvertFrom-WingetListTable case, where the comma was WRONG: callers
+    # there use @(...), which would see the wrapper. This function's caller binds it straight
+    # to a typed parameter, so the collection must arrive whole.
+    return , $entries
 }
 
 <#
@@ -146,9 +165,18 @@ function ConvertFrom-MaintenanceLog {
 function Build-LogConsole {
     [CmdletBinding()]
     [OutputType([string])]
-    param([Parameter(Mandatory)] [AllowEmptyCollection()] [System.Collections.Generic.List[object]]$Entries)
+    # AllowNull as well as AllowEmptyCollection, deliberately. AllowEmptyCollection permits an
+    # empty list but still REJECTS null, and a Mandatory null is a hard binding error that
+    # propagates out of Build-ReportHtml and kills Stage 4 - losing the HTML report, the one
+    # artifact that survives Stage 5 cleanup. The producer is fixed to always return a real
+    # collection; this is the second line of defence, because an unstyled or log-less report
+    # beats no report at all. $null.Count is 0 in PowerShell, so the guard below covers it.
+    param(
+        [Parameter(Mandatory)] [AllowNull()] [AllowEmptyCollection()]
+        [System.Collections.Generic.List[object]]$Entries
+    )
 
-    if ($Entries.Count -eq 0) {
+    if ($null -eq $Entries -or $Entries.Count -eq 0) {
         return '<section class="card logs"><div class="card-hd"><span class="card-ttl">&#128220; Maintenance Log</span></div><div class="card-bd"><p class="muted">No log entries available.</p></div></section>'
     }
 
@@ -890,293 +918,42 @@ $exHtml
 
 #region ─── CSS / JS ───────────────────────────────────────────────────────────
 
-function Get-ReportCss {
-    return @'
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#0b0e14;--bg2:#12151f;--card:#161a26;--card2:#1c2130;--border:#262c3d;
-  --text:#e6e9f2;--muted:#8b93a7;--faint:#5a6273;
-  --accent:#7c5cff;--accent2:#22d3ee;
-  --success:#34d399;--warn:#fbbf24;--danger:#f87171;--info:#60a5fa;--debug:#7a8291;--fatal:#fb7185;
-  --shadow:0 10px 30px rgba(0,0,0,.35);--radius:16px;
-}
-body[data-theme="light"]{
-  --bg:#eef1f7;--bg2:#ffffff;--card:#ffffff;--card2:#f3f6fb;--border:#e1e7f0;
-  --text:#141a26;--muted:#5b6472;--faint:#98a2b3;
-  --accent:#6d28d9;--accent2:#0891b2;
-  --success:#059669;--warn:#d97706;--danger:#dc2626;--info:#2563eb;--debug:#6b7280;--fatal:#e11d48;
-  --shadow:0 8px 24px rgba(30,40,80,.10);
-}
-body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.55;transition:background .25s,color .25s}
-.wrap{width:100%;max-width:100%;padding:clamp(16px,2.6vw,40px);margin:0 auto}
-.mono{font-family:'Cascadia Code',Consolas,ui-monospace,monospace}
-.muted{color:var(--muted)}
-.unit{font-size:.5em;color:var(--muted);font-weight:600;margin-left:2px}
+# CSS and JS live in modules/core/assets/ as real .css/.js files rather than here-strings, so
+# they get syntax highlighting, formatting and linting instead of being 280 lines of opaque
+# string literal. They are READ AND INLINED at render time, not linked: the report is a single
+# self-contained HTML file copied to $env:ORIGINAL_SCRIPT_DIR, and it has to survive there with
+# no sibling files after Stage 5 deletes the extracted tree.
+#
+# A missing asset degrades to an unstyled (or non-interactive) report - never a failed run.
 
-/* HERO */
-.hero{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;
-  background:radial-gradient(1200px 300px at 0% 0%,rgba(124,92,255,.18),transparent 60%),
-             radial-gradient(1000px 300px at 100% 0%,rgba(34,211,238,.14),transparent 55%),var(--bg2);
-  border:1px solid var(--border);border-radius:var(--radius);padding:28px 30px;margin-bottom:22px;box-shadow:var(--shadow)}
-.hero-eyebrow{color:var(--accent2);font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase}
-.hero-title{font-size:clamp(22px,2.4vw,32px);font-weight:800;margin-top:4px;letter-spacing:-.4px}
-.hero-meta{display:flex;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:13px;margin-top:10px;align-items:center}
-.hero-meta .sep{color:var(--faint)}
-.hero-r{display:flex;flex-direction:column;align-items:flex-end;gap:12px}
-.status-pill{padding:9px 18px;border-radius:999px;font-weight:700;font-size:13px;white-space:nowrap}
-.status-pill.success{background:rgba(52,211,153,.14);color:var(--success);border:1px solid rgba(52,211,153,.35)}
-.status-pill.warning{background:rgba(251,191,36,.14);color:var(--warn);border:1px solid rgba(251,191,36,.35)}
-.status-pill.danger{background:rgba(248,113,113,.14);color:var(--danger);border:1px solid rgba(248,113,113,.35)}
-.theme-btn{background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:999px;padding:7px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:.15s}
-.theme-btn:hover{border-color:var(--accent)}
+<#
+.SYNOPSIS
+    Reads an inline asset from modules/core/assets.
+.OUTPUTS
+    [string] file contents, or empty string when the asset is missing/unreadable.
+#>
+function Get-ReportAsset {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter(Mandatory)] [string]$FileName)
 
-/* BANNER */
-.banner{border-radius:12px;padding:13px 18px;margin-bottom:20px;font-weight:600}
-.banner.danger{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.4);color:var(--danger)}
-
-/* OVERVIEW */
-.overview{margin-bottom:22px}
-.ov-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
-.ov-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;position:relative;overflow:hidden}
-.ov-card.wide{grid-column:1/-1}
-.ov-card.identity{background:linear-gradient(135deg,rgba(124,92,255,.16),rgba(34,211,238,.08)),var(--card);border-color:rgba(124,92,255,.35)}
-.ov-card-ttl{font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
-.ov-host{font-size:26px;font-weight:800;letter-spacing:-.4px}
-.ov-big{font-size:22px;font-weight:700;line-height:1.15}
-.ov-big.small{font-size:15px;font-weight:600}
-.ov-sub{color:var(--muted);font-size:13px;margin-top:4px}
-.ov-pills{margin-top:12px}
-.ov-mini{display:flex;gap:22px;margin-top:12px;flex-wrap:wrap}
-.ov-mini>span{display:flex;flex-direction:column;font-size:13px;font-weight:600}
-.ov-mini .mk{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--faint);font-weight:700;margin-bottom:1px}
-.pill{display:inline-block;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700}
-.pill.ok{background:rgba(52,211,153,.15);color:var(--success);border:1px solid rgba(52,211,153,.35)}
-.pill.warn{background:rgba(251,191,36,.15);color:var(--warn);border:1px solid rgba(251,191,36,.35)}
-
-/* disks */
-.disks{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
-.disk-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:13px}
-.disk-drive{font-weight:700}
-.disk-pct{font-weight:800}
-.disk-pct.ok{color:var(--success)}.disk-pct.warn{color:var(--warn)}.disk-pct.crit{color:var(--danger)}
-.meter{height:9px;border-radius:999px;background:var(--card2);overflow:hidden;border:1px solid var(--border)}
-.meter-fill{display:block;height:100%;border-radius:999px}
-.meter-fill.ok{background:linear-gradient(90deg,var(--success),#10b981)}
-.meter-fill.warn{background:linear-gradient(90deg,var(--warn),#f59e0b)}
-.meter-fill.crit{background:linear-gradient(90deg,var(--danger),#ef4444)}
-.disk-ft{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-top:5px}
-
-/* nics */
-.nics{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
-.nic{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
-.nic-desc{font-weight:700;font-size:13px;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.nic-kv{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.03)}
-.nic-kv:last-child{border-bottom:none}
-.nic-kv>span:first-child{color:var(--faint);text-transform:uppercase;font-size:10px;letter-spacing:.5px;font-weight:700;padding-top:2px}
-.nic-kv>span:last-child{text-align:right;word-break:break-all}
-
-/* facts strip */
-.facts{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
-.fact{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 14px}
-.fact .fk{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);font-weight:700}
-.fact .fv{font-weight:700;font-size:13px;margin-top:1px}
-
-/* STATS */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:22px}
-.stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;text-align:center;position:relative;overflow:hidden}
-.stat::before{content:'';position:absolute;inset:0 0 auto 0;height:3px;background:var(--faint);opacity:.6}
-.stat.s::before{background:var(--success)}.stat.w::before{background:var(--warn)}.stat.m::before{background:var(--debug)}
-.stat.d::before{background:var(--danger)}.stat.i::before{background:var(--info)}.stat.a::before{background:var(--accent2)}
-.stat-v{font-size:32px;font-weight:800;line-height:1}
-.stat.s .stat-v{color:var(--success)}.stat.w .stat-v{color:var(--warn)}.stat.d .stat-v{color:var(--danger)}
-.stat.i .stat-v{color:var(--info)}.stat.a .stat-v{color:var(--accent2)}.stat.m .stat-v{color:var(--muted)}
-.stat-l{color:var(--muted);font-size:11px;margin-top:6px;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
-
-/* SECTION TITLE */
-.sec{font-size:17px;font-weight:800;margin:28px 0 14px;letter-spacing:-.2px;display:flex;align-items:center;gap:8px}
-
-/* CARDS */
-.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:16px}
-.card-hd{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--border)}
-.card-ttl{font-weight:700;font-size:14px}
-.card-sub{color:var(--muted);font-size:12px;font-weight:600}
-.card-bd{padding:14px 18px}
-.half-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
-
-/* MODULE CARDS */
-.mod-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-bottom:6px}
-.mod{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:transform .12s,border-color .12s}
-.mod:hover{border-color:var(--accent);transform:translateY(-2px)}
-.mod-hd{padding:14px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);gap:8px}
-.mod-hd .nm{font-weight:700;font-size:14px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-.mod-type{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700;background:var(--card2);padding:2px 6px;border-radius:5px}
-.reboot-tag{font-size:9px;font-weight:700;background:rgba(248,113,113,.15);color:var(--danger);border:1px solid rgba(248,113,113,.35);padding:2px 7px;border-radius:6px;text-transform:uppercase}
-.mod-bd{padding:14px 18px}
-.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:8px}
-.metric{background:var(--card2);border-radius:10px;padding:9px 4px;text-align:center}
-.metric .mv{display:block;font-size:18px;font-weight:800}
-.metric .ml{display:block;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:2px;font-weight:600}
-.mod-bd .r{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--border);font-size:12px}
-.mod-bd .r .k{color:var(--muted)}
-.mod-bd .r .v{text-align:right}
-.badge{padding:4px 11px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
-.bs{background:rgba(52,211,153,.15);color:var(--success);border:1px solid rgba(52,211,153,.3)}
-.bw{background:rgba(251,191,36,.15);color:var(--warn);border:1px solid rgba(251,191,36,.3)}
-.bd{background:rgba(248,113,113,.15);color:var(--danger);border:1px solid rgba(248,113,113,.3)}
-.bm{background:rgba(139,147,167,.15);color:var(--muted);border:1px solid rgba(139,147,167,.3)}
-.errs{margin-top:8px;list-style:none}
-.errs li{font-size:11px;color:var(--danger);padding:3px 0 3px 14px;position:relative}
-.errs li::before{content:'\2715';position:absolute;left:0}
-.extra{margin-top:8px}
-.ex-row{display:flex;justify-content:space-between;gap:10px;padding:4px 0;font-size:11px;border-top:1px dashed var(--border)}
-.ex-row .k{color:var(--muted)}.ex-row .v{color:var(--info);font-weight:600;text-align:right}
-.mod-details{margin-top:10px}
-.mod-details summary{font-size:12px;font-weight:600;padding:7px 11px;background:var(--card2);border:1px solid var(--border);border-radius:8px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px}
-.mod-details summary::-webkit-details-marker{display:none}
-.mod-details summary::before{content:'\25B6';font-size:8px;transition:transform .2s;color:var(--accent)}
-.mod-details[open] summary::before{transform:rotate(90deg)}
-.mod-details .more{color:var(--muted);font-size:10px}
-.item-list{margin-top:8px;display:flex;flex-direction:column;gap:4px;max-height:340px;overflow-y:auto}
-.item{display:flex;justify-content:space-between;gap:12px;padding:6px 10px;border-left:2px solid var(--accent);background:var(--card2);border-radius:0 8px 8px 0;font-size:11px}
-.item-name{font-weight:600}
-.item-detail{color:var(--muted);text-align:right;word-break:break-word}
-
-/* ERROR SUMMARY */
-.err-summary .card-bd{display:flex;flex-direction:column;gap:6px}
-.err-mod{font-size:12px;color:var(--muted);font-family:'Cascadia Code',Consolas,monospace;padding:5px 10px;background:var(--card2);border-radius:8px;border-left:2px solid var(--danger)}
-
-/* TABLES (rows) */
-.thead,.trow{display:grid;gap:12px;padding:9px 16px;align-items:center}
-.thead{background:var(--card2);font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;border-bottom:1px solid var(--border)}
-.trow{border-bottom:1px solid rgba(255,255,255,.03);font-size:12px}
-.trow:last-child{border-bottom:none}
-.u3,.thead.u3{grid-template-columns:1.2fr 1.6fr 1fr}
-.u4,.thead.u4{grid-template-columns:.5fr 1.6fr .7fr 1fr}
-.tbody{max-height:380px;overflow-y:auto}
-.tmore{padding:8px 16px;text-align:center;color:var(--muted);font-size:11px;background:var(--card2)}
-.user-name{font-weight:700}
-.tag{background:rgba(96,165,250,.14);color:var(--info);padding:2px 8px;border-radius:6px;font-size:10px;text-align:center;font-weight:600}
-.evt-level{font-weight:700;padding:2px 8px;border-radius:6px;text-align:center;font-size:10px}
-.evt-error{background:rgba(248,113,113,.15);color:var(--danger)}
-.evt-critical{background:rgba(248,113,113,.28);color:#ff8f8f}
-.sev{font-weight:700;padding:2px 8px;border-radius:6px;text-align:center;font-size:10px}
-.sev-high{background:rgba(248,113,113,.15);color:var(--danger)}
-.sev-med{background:rgba(251,191,36,.15);color:var(--warn)}
-.sev-low{background:rgba(52,211,153,.15);color:var(--success)}
-
-/* EXCLUSIONS */
-.excl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
-.excl-item{padding:5px 8px;font-size:11px;color:var(--muted);border-left:2px solid var(--accent);background:var(--card2);border-radius:0 6px 6px 0;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.excl-more{font-size:10px;color:var(--info);text-align:center;padding:4px}
-
-/* MINI STATS */
-.mini-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:14px}
-.mini{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center}
-.mini-v{font-size:24px;font-weight:800;color:var(--accent)}
-.mini-l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:4px;font-weight:600}
-
-/* LOG CONSOLE */
-.logs .log-dist{display:flex;height:6px;margin:0}
-.log-dist .seg{height:100%}
-.lvl-bg-FATAL{background:var(--fatal)}.lvl-bg-ERROR{background:var(--danger)}.lvl-bg-WARN{background:var(--warn)}
-.lvl-bg-SUCCESS{background:var(--success)}.lvl-bg-INFO{background:var(--info)}.lvl-bg-DEBUG{background:var(--debug)}.lvl-bg-RAW{background:var(--faint)}
-.log-toolbar{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid var(--border);align-items:center}
-.lvl-chips{display:flex;gap:7px;flex-wrap:wrap}
-.lvl-chip{display:inline-flex;align-items:center;gap:6px;background:var(--card2);border:1px solid var(--border);color:var(--muted);border-radius:999px;padding:5px 11px;font-size:11px;font-weight:700;cursor:pointer;opacity:.5;transition:.15s}
-.lvl-chip.active{opacity:1}
-.lvl-chip .dot{width:8px;height:8px;border-radius:50%;background:currentColor}
-.lvl-chip .cnt{background:rgba(0,0,0,.25);border-radius:999px;padding:0 6px;font-size:10px}
-body[data-theme="light"] .lvl-chip .cnt{background:rgba(0,0,0,.08)}
-.lvl-chip.lvl-FATAL{color:var(--fatal)}.lvl-chip.lvl-ERROR{color:var(--danger)}.lvl-chip.lvl-WARN{color:var(--warn)}
-.lvl-chip.lvl-SUCCESS{color:var(--success)}.lvl-chip.lvl-INFO{color:var(--info)}.lvl-chip.lvl-DEBUG{color:var(--debug)}.lvl-chip.lvl-RAW{color:var(--faint)}
-.lvl-chip.active.lvl-FATAL{background:rgba(251,113,133,.14);border-color:rgba(251,113,133,.4)}
-.lvl-chip.active.lvl-ERROR{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.4)}
-.lvl-chip.active.lvl-WARN{background:rgba(251,191,36,.14);border-color:rgba(251,191,36,.4)}
-.lvl-chip.active.lvl-SUCCESS{background:rgba(52,211,153,.14);border-color:rgba(52,211,153,.4)}
-.lvl-chip.active.lvl-INFO{background:rgba(96,165,250,.14);border-color:rgba(96,165,250,.4)}
-.lvl-chip.active.lvl-DEBUG{background:rgba(122,130,145,.14);border-color:rgba(122,130,145,.4)}
-.log-controls{display:flex;gap:8px;flex-wrap:wrap}
-.log-select,.log-search{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:7px 11px;font-size:12px;font-family:inherit}
-.log-search{min-width:220px}
-.log-select:focus,.log-search:focus{outline:none;border-color:var(--accent)}
-.log-body{max-height:560px;overflow:auto;padding:6px 0;font-family:'Cascadia Code',Consolas,ui-monospace,monospace}
-.log-row{display:grid;grid-template-columns:74px 66px 118px 1fr;gap:12px;padding:2px 18px;font-size:11.5px;align-items:baseline}
-.log-row:hover{background:var(--card2)}
-.lr-ts{color:var(--faint)}
-.lr-lvl{font-weight:700;font-size:10px;text-align:center;border-radius:5px;padding:1px 0}
-.lr-cmp{color:var(--accent2);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.lr-msg{color:var(--text);word-break:break-word;white-space:pre-wrap}
-.lvl-FATAL{background:rgba(251,113,133,.18);color:var(--fatal)}
-.lvl-ERROR{background:rgba(248,113,113,.16);color:var(--danger)}
-.lvl-WARN{background:rgba(251,191,36,.16);color:var(--warn)}
-.lvl-SUCCESS{background:rgba(52,211,153,.16);color:var(--success)}
-.lvl-INFO{background:rgba(96,165,250,.14);color:var(--info)}
-.lvl-DEBUG{background:rgba(122,130,145,.14);color:var(--debug)}
-.log-row.raw{grid-template-columns:1fr;padding:2px 18px}
-.log-row.raw .lr-msg{color:var(--faint)}
-.log-row.raw.sep .lr-msg{color:var(--accent);opacity:.5}
-
-/* FOOTER */
-.footer{text-align:center;color:var(--muted);font-size:12px;padding:24px 0 8px;border-top:1px solid var(--border);margin-top:26px}
-
-::-webkit-scrollbar{width:10px;height:10px}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:999px}
-::-webkit-scrollbar-thumb:hover{background:var(--faint)}
-'@
-}
-
-function Get-ReportJs {
-    return @'
-(function(){
-  var rows = Array.prototype.slice.call(document.querySelectorAll('.log-row'));
-  var chips = Array.prototype.slice.call(document.querySelectorAll('.lvl-chip'));
-  var search = document.getElementById('logSearch');
-  var comp = document.getElementById('logComp');
-  var shownEl = document.getElementById('logShown');
-
-  function activeLevels(){
-    var s = {};
-    chips.forEach(function(c){ if(c.classList.contains('active')){ s[c.getAttribute('data-level')] = true; } });
-    return s;
-  }
-  function apply(){
-    if(!rows.length) return;
-    var lv = activeLevels();
-    var q = (search && search.value ? search.value : '').toLowerCase();
-    var cp = comp ? comp.value : 'ALL';
-    var shown = 0, i, r, vis;
-    for(i=0;i<rows.length;i++){
-      r = rows[i];
-      vis = !!lv[r.getAttribute('data-level')]
-        && (cp === 'ALL' || r.getAttribute('data-comp') === cp)
-        && (q === '' || (r.getAttribute('data-text') || '').indexOf(q) >= 0);
-      r.style.display = vis ? '' : 'none';
-      if(vis) shown++;
+    $path = Join-Path $PSScriptRoot "assets\$FileName"
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        Write-Log -Level WARN -Component REPORT -Message "Report asset missing: $FileName (report will render without it)"
+        return ''
     }
-    if(shownEl) shownEl.textContent = shown;
-  }
-  chips.forEach(function(c){ c.addEventListener('click', function(){ c.classList.toggle('active'); apply(); }); });
-  if(search) search.addEventListener('input', apply);
-  if(comp) comp.addEventListener('change', apply);
-  apply();
-
-  var tt = document.getElementById('themeToggle');
-  function setToggleLabel(theme){ if(tt) tt.innerHTML = (theme === 'light') ? '☾ Dark' : '☀ Light'; }
-  if(tt){
-    tt.addEventListener('click', function(){
-      var cur = (document.body.getAttribute('data-theme') === 'light') ? 'dark' : 'light';
-      document.body.setAttribute('data-theme', cur);
-      setToggleLabel(cur);
-      try{ localStorage.setItem('wmreport-theme', cur); }catch(e){}
-    });
-    try{
-      var saved = localStorage.getItem('wmreport-theme');
-      if(saved){ document.body.setAttribute('data-theme', saved); setToggleLabel(saved); }
-    }catch(e){}
-  }
-})();
-'@
+    try {
+        return (Get-Content -LiteralPath $path -Raw -Encoding UTF8)
+    }
+    catch {
+        Write-Log -Level WARN -Component REPORT -Message "Could not read report asset ${FileName}: $_"
+        return ''
+    }
 }
+
+function Get-ReportCss { return Get-ReportAsset -FileName 'report.css' }
+
+function Get-ReportJs { return Get-ReportAsset -FileName 'report.js' }
 
 #endregion
 

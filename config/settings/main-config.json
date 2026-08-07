@@ -30,6 +30,18 @@
       "attemptConsumerEsuEnrollment": false
     }
   },
+  "tools": {
+    "_comment": "Externally downloaded helper binaries, fetched at runtime into temp_files/tools by Get-ExternalTool and deleted with the extracted tree by Stage 5. They are NOT committed to this repo: the Sysinternals licence forbids publishing the software for others to copy, and this project ships as a public master.zip. Do NOT switch these to winget - Microsoft.Sysinternals.* resolves to the Store MSIX, which installs per-user behind app-execution-alias reparse points that SYSTEM cannot see and that fail-fast crash (0xC0000409) under redirected stdio. Every tool is best-effort: a failed download logs a WARN and the caller degrades to Warning, exactly like winget. Set enabled=false to turn the whole layer off.",
+    "_signature_note": "There is deliberately NO verifySignature flag. Authenticode verification against a Microsoft signer is unconditional in Get-ExternalTool - a downloaded binary that fails it is deleted, not executed. A flag was declared here briefly and read by nothing; rather than wire it up, it was removed: making a security gate on runtime-downloaded executables switchable has no defensible use case in an unattended task, and a key that can only weaken it is a liability.",
+    "enabled": true,
+    "sysinternals": {
+      "_comment": "Only tools with a real consumer belong here. movefile: queues a boot-time delete for temp files DiskCleanup cannot remove because they are locked - pairs with the Stage 5 reboot, so a file queued in Stage 3 is gone minutes later in the same run. A 'handle' entry was declared before its diagnostic existed; config must not advertise features the code does not implement, so it was removed and should only come back alongside the code that reads it (see Sysinternals_Suite_Reference.md section 5.2).",
+      "movefile": {
+        "enabled": true,
+        "url": "https://download.sysinternals.com/files/pendmoves.zip"
+      }
+    }
+  },
   "reporting": {
     "enableHtmlReport": true
   },

@@ -2,6 +2,101 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## MANDATORY WORKING RULES — these are not negotiable
+
+These govern *how* you work in this repo. They override convenience, momentum, and any
+plan you are part-way through. Read them before touching anything.
+
+### 1. NEVER COMMIT. The user commits.
+
+**Do not run `git commit`.** Do not stage with `git add`. Do not push, amend, rebase, reset,
+or create tags or branches. The user reviews every change and commits it themselves.
+
+When work is finished: say what changed, say it is ready, and stop. Leave the working tree
+dirty — that is the handoff, not a failure state.
+
+This applies mid-session, after a "looks good", and after any number of previous commits in
+the same conversation. A commit earlier in the session is **not** standing permission for the
+next one.
+
+### 2. VERIFY 3× BEFORE, 3× AFTER — EVERY change, EVERYWHERE in this project
+
+This applies to the **whole project**: `script.bat`, every `.ps1`/`.psm1`, every JSON under
+`config/`, the Sysmon XML, the tests, the workflow, and the docs. Not just the launcher, and
+not just "risky-looking" edits. A one-line change gets the same six checks as a 200-line one —
+the small edits are the ones that slip through.
+
+Three **independent** checks each side — three different questions, not the same command run
+three times. Report all six results. If a check cannot be completed, **stop and say so** rather
+than proceeding on assumption.
+
+**BEFORE making any change:**
+
+| # | Check | Why |
+|---|---|---|
+| 1 | **Read the target region in full**, plus what precedes and follows it | Line numbers shift between edits; slicing or matching the wrong range is the easy mistake |
+| 2 | **Trace everything that crosses the boundary** — callers, callees, variables consumed later, labels/`GOTO`s, exported names, `DiffKey`s, config keys, `$ModulePairs` entries | The damage is almost never local. A variable read 400 lines later, or a key some other file matches on, breaks silently |
+| 3 | **Establish the baseline**: back the file up, print the exact boundary lines, and confirm the gate is *already green* | If you do not know it was green before, a failure afterwards tells you nothing |
+
+**AFTER making any change:**
+
+| # | Check | Why |
+|---|---|---|
+| 1 | **Structural integrity** for the file type — see the table below | Catches the class of break the language can detect for you |
+| 2 | **Line-survival diff**: every moved line accounted for, nothing lost, renames intentional | Verbatim moves must be *provably* verbatim, not assumed |
+| 3 | **Full gate green + `git diff` hunks touch ONLY the intended region**, with line endings and BOM unchanged | A stray whole-file rewrite is invisible in review. This is how the `ENDLOCAL` trailing-newline change slipped through unnoticed |
+
+**Structural integrity, per file type:**
+
+| File type | Check 1 means |
+|---|---|
+| `.ps1` / `.psm1` / `.psd1` | `[Parser]::ParseFile` clean, module still imports, `Export-ModuleMember` surface unchanged |
+| `script.bat` | Every `GOTO` target resolves, no orphaned label, CRLF preserved, no BOM |
+| `config/**/*.json` | Parses via `ConvertFrom-Json`, and the contract tests still pass |
+| tests / workflow | The suite still runs and the counts moved the way you expected |
+
+**`script.bat` gets the same six checks, but they matter most there** — it is the entire
+installed footprint, the only thing surviving a run, and batch has no parser to lean on, so
+`Parser::ParseFile` cannot help. Nothing in the test suite or CI covers it. A mistake there
+silently ends unattended operation on every machine.
+
+**The full gate**, for reference:
+
+```powershell
+Invoke-Pester -Path .\tests -Output None
+Invoke-ScriptAnalyzer -Path . -Recurse -Settings .\PSScriptAnalyzerSettings.psd1   # Errors must be 0
+# plus Parser::ParseFile over every .ps1/.psm1/.psd1
+```
+
+### 3. THE DEV PC IS NOT THE TEST MACHINE
+
+**This project is developed on the user's PC but tested on a separate VM.** The two machines
+have different installed software, different Windows state, different Defender configuration
+and a different user profile. Every real run log the user shares comes from the **VM**.
+
+**Never diagnose a reported failure from this PC's state.** Querying `winget list`,
+`Get-AppxPackage`, the registry, installed programs, services, or scheduled tasks here answers
+a question about the *wrong machine*. It looks authoritative and is worthless — worse than
+worthless, because a confident wrong answer sends the user chasing a bug that does not exist
+on the machine that failed.
+
+What is and is not valid to do locally:
+
+| Valid on the dev PC | NOT valid — VM only |
+|---|---|
+| Read and edit code | "Is X installed?" |
+| `Invoke-Pester`, `Invoke-ScriptAnalyzer`, `Parser::ParseFile` | "What does `winget list` return?" |
+| Reason about logic, control flow, contracts | "Does this service exist / this key hold that value?" |
+| Parse a log the user pasted | "Did the removal actually work?" |
+| Ask the user to run a specific probe on the VM | Any conclusion drawn from local system state |
+
+When machine state is needed to diagnose something, **write the exact probe command and ask
+the user to run it on the VM.** Do not substitute a local run and hope it generalises.
+
+The tests exist precisely so that correctness can be established without a live machine —
+they are all mocked, unelevated and system-independent for this reason. Lean on them, not on
+whatever this PC happens to have installed.
+
 ## What this is
 
 A Windows 10/11 maintenance automation system. A `.bat` launcher bootstraps the
@@ -118,19 +213,37 @@ install/verify → launch `MaintenanceOrchestrator.ps1` under `pwsh`.
   running `.bat` from disk, the launcher cannot overwrite itself mid-run; it hands the fresh
   copy to the orchestrator via `PENDING_SCRIPT_UPDATE`, which applies it after the launcher exits.
 - **Branch selection (interactive only):** immediately before downloading, an interactive
-  session gets a 30s `TIMEOUT` ("press any key to download the Testing branch instead") so
-  in-progress work on `Testing` can be verified without editing the script. The branch
-  decision is made from the **same early `%1` check** used later for `ORCH_EXTRA_ARGS`
-  (`-TaskNumbers`/`-NonInteractive`), never from `TIMEOUT`'s own `ERRORLEVEL`: under
-  redirected stdin (every unattended invocation, including the monthly SYSTEM task) `TIMEOUT`
-  returns instantly with `ERRORLEVEL 1` ("Input redirection is not supported"), identical to a
-  real keypress — trusting it there would make unattended runs randomly select `Testing`.
-  Gating on `%1` first means unattended runs skip the wait entirely (there is no human who
-  could press a key, so there is nothing to wait for) and always get `master`; only a genuine
-  interactive session with a real keypress can select `Testing`. Both possible extracted
-  folders (`script_mentenanta-master` and `script_mentenanta-Testing`) are removed at the top
-  of `:DOWNLOAD_REPOSITORY` regardless of which branch this run selected, so a folder left
-  behind by a crashed run on the other branch doesn't linger forever.
+  session gets a 30s "press any key to download the Testing branch instead" countdown so
+  in-progress work on `Testing` can be verified without editing the script. Two independent
+  guards keep unattended runs on `master`:
+  1. the **early `%1` check** (the same one used later for `ORCH_EXTRA_ARGS`,
+     `-TaskNumbers`/`-NonInteractive`) skips the prompt outright for the two unattended entry
+     points — both scheduled tasks pass `-NonInteractive` in their `/TR`, so neither ever waits;
+  2. `:PROMPT_BRANCH_CHOICE` itself fails safe to `master` when it has no usable console.
+
+  **`TIMEOUT` must never be used for this** — it was, and the feature never worked.
+  `timeout.exe` exits **0 for both "key pressed" and "wait expired"**: it does abort the wait
+  on a keypress but reports the same code either way (measured: a keypress ended a `/T 10` wait
+  after 3.16s with `ERRORLEVEL 0`; natural expiry also 0). The *only* thing that yields
+  `ERRORLEVEL 1` is redirected stdin ("Input redirection is not supported", ~0.15s). So the old
+  `TIMEOUT /T 30` + `IF ERRORLEVEL EQU 1` was inverted: a real keypress could **never** select
+  `Testing`, while any redirected-stdin run that slipped past guard 1 selected `Testing` every
+  time. `CHOICE` reports the cases correctly but only for a fixed key list, so the prompt polls
+  `[Console]::KeyAvailable` instead — true any-key semantics, a real countdown, and an
+  unambiguous exit code (1 = key pressed, 0 = expired); `KeyAvailable` throws with no console,
+  which is caught and returns `master`. Buffered keys are drained first so a stray earlier
+  keystroke can't phantom-select `Testing`.
+
+  Caveat: this is genuinely *any* key, so anything that injects synthetic input into the
+  focused console (keep-awake/jiggler utilities — a `Spacebar` injector was observed on the
+  dev machine while PowerToys Awake was running) can select `Testing` on its own. Unattended
+  runs are unaffected (guard 1 skips the prompt); if it becomes a nuisance interactively,
+  narrow the accepted key rather than going back to `TIMEOUT`.
+
+  Both possible extracted folders (`script_mentenanta-master` and `script_mentenanta-Testing`)
+  are removed at the top of `:DOWNLOAD_REPOSITORY` regardless of which branch this run selected,
+  so a folder left behind by a crashed run on the other branch doesn't linger forever.
+
   **`Testing` is a manual push target, not an auto-synced mirror.** Nothing in the pipeline
   syncs `master` → `Testing` or merges `Testing` → `master`; both can be committed to
   independently and *will* diverge. This has already bitten once: the branch-selection
@@ -180,6 +293,16 @@ reading the file mid-run). The orchestrator wraps the whole body in a fatal-capt
 `try/catch/finally` (any uncaught error is written to `maintenance.log` with a stack trace; the
 log is always closed via `Close-LogFile` in `finally`), then:
 
+0. **Stage 0 – Preflight:** work that needs PS7 but must happen before any module runs.
+   Currently just `Install-PSWindowsUpdateModule` (`-Scope AllUsers`, because the monthly task
+   runs as SYSTEM and cannot see a per-user module). Best-effort: `WindowsUpdates`'s primary path
+   is the Windows Update COM API, so a failure here degrades a fallback, never the run. This moved
+   out of `script.bat`, where it was a 616-character `pwsh -Command` string — everything past
+   `:PS7_COMPLETE` in the launcher runs with pwsh already proven present, so it does not have to
+   be batch. **Defender exclusions deliberately did NOT move**: they must be in place before
+   `pwsh.exe` starts and before the orchestrator imports its modules out of the extracted tree,
+   both of which precede Stage 0, so moving the add would leave the process launch and module load
+   unprotected. Stage 5 still removes them.
 1. **Stage 1 – Audit (Type1):** interactive menu with a 10s auto-run countdown; runs
    audit modules. A circuit breaker aborts the stage after 3 consecutive module failures.
    Buffered keystrokes are drained (`Clear-PendingConsoleInput`) before each timed prompt so a
@@ -299,11 +422,23 @@ turn the two non-registry areas off. Both default to enforcing.
 **Notable implementations:**
 - `SystemConfiguration` creates/deletes restore points through the **`root/default:SystemRestore`
   WMI class via `Invoke-CimMethod`**, never `Checkpoint-Computer` / `Get-ComputerRestorePoint` /
-  `Get-WmiObject`: those are Windows PowerShell 5.1-only and simply do not exist in PS7, which is
-  the only shell modules run under (the pre-consolidation `RestorePointManagement.psm1` used all
-  three and failed at runtime). It also clears
-  `SystemRestorePointCreationFrequency`, or Windows' default one-per-24h throttle would silently
-  turn "a restore point every run" into "one per day".
+  `Get-WmiObject`. Those are **not native to PowerShell 7** — they resolve only through the Windows
+  PowerShell compatibility layer, as implicit-remoting *proxy functions* backed by a background
+  WinPS 5.1 session (verified: `Get-Command Checkpoint-Computer` in pwsh 7.6 returns
+  `CommandType: Function` from a `remoteIpMoProxy_…` path, not a cmdlet). They therefore appear to
+  exist while carrying a hidden session dependency that is slow and not something to rely on under
+  SYSTEM in session 0; `Get-WmiObject` genuinely does not exist. The pre-consolidation
+  `RestorePointManagement.psm1` used all three and failed at runtime.
+  `New-SystemRestorePoint` also (a) clears `SystemRestorePointCreationFrequency`, or Windows'
+  default one-per-24h throttle would silently turn "a restore point every run" into "one per day",
+  and (b) sizes **shadow storage** to 10 GB via `vssadmin resize shadowstorage` when it is
+  unconfigured or below that — enabling System Restore does not by itself guarantee usable space,
+  and a point created with none can be discarded immediately.
+  **This is the only restore point the system takes.** `script.bat` used to create a second one
+  before launching the orchestrator, in ~119 lines and 7 embedded PowerShell one-liners built on
+  the compat-proxied cmdlets above — and without clearing the 24h throttle, so it was silently a
+  no-op whenever a point already existed from the past day. That block was removed; only its
+  shadow-storage sizing was worth keeping and moved into `New-SystemRestorePoint`.
 - `SystemConfiguration` installs **Sysinternals Sysmon** via winget (`Microsoft.Sysinternals.Sysmon`)
   and applies `config/sysmon/sysmonconfig.xml` (with `-accepteula`) when the Sysmon service is
   absent. It resolves the **real** `Sysmon64.exe` (from `%windir%` or the winget `Packages`
@@ -314,6 +449,45 @@ turn the two non-registry areas off. Both default to enforcing.
   against the raw formatted line; the winget table has no JSON/CSV output option, so parsing
   validates each row's column count against the header row rather than trusting a blanket
   minimum).
+  **The winget source matches on the Id's normalised *stem*, not just Name/Id.** This is
+  load-bearing, not a refinement. `winget list` reports a *display* Name and a source-prefixed,
+  version-suffixed Id:
+
+  | display Name | Id |
+  |---|---|
+  | `AV1 Video Extension` | `MSIX\Microsoft.AV1VideoExtension_2.0.24.0_x64__8wekyb3d8bbwe` |
+  | `BabyWare` | `ARP\Machine\X64\BabyWare` |
+  | `Angry IP Scanner` | `angryziber.AngryIPScanner` |
+
+  `bloatware-detection.json` writes patterns as AppX short names (`Microsoft.AV1VideoExtension`),
+  which `-like`-matches **neither** column — so before stem matching the winget source was blind
+  to every one of the ~100 exact-identifier entries and only wildcards like `*Netflix*` ever hit
+  it. `ConvertFrom-WingetPackageId` strips the `MSIX\` / `ARP\Machine\X64\` prefix and the
+  `_<version>_<arch>__<hash>` tail (splitting at the first `_` before a digit is unambiguous —
+  MSIX package names cannot contain `_`), recovering exactly the string the patterns target.
+  `ConvertFrom-WingetListTable` carries `Stem` on every row so no caller re-derives it, and the
+  stem is also used as the dedup **key**, so a winget hit merges into the Source 1/2/3 entry
+  instead of creating a second candidate under the display Name.
+
+  **Every surviving candidate gets an exact winget Id resolved, in two passes, cheapest first.**
+  Type2's Layer 4 needs an Id that `winget uninstall <Id>` can act on:
+  - *Pass A (free)* — correlate against `$wingetApps`, the **single** bulk `winget list` already
+    run by Source 4. Matches the candidate name against a row's stem / raw Id / display Name, and
+    for AppX detections against `MSIX\<PackageFullName>` (verified an **exact** string match on
+    3/3 live samples, which is also why Source 1 can derive the Id straight from
+    `Get-AppxPackageCompat`'s `PackageFullName` without asking winget at all).
+  - *Pass B (one process each)* — only for what Pass A could not place: a targeted
+    `winget list <name>`, capped at 40 (`$maxTargetedLookups`). It accepts an Id **only** when the
+    query returns exactly one row, so an ambiguous short name is left unresolved rather than
+    risking the wrong uninstall.
+
+  Do **not** "simplify" this into querying `winget list` once per baseline entry, and do not make
+  winget the primary removal path: 166 entries × ~1–2 s of process launch would add minutes to
+  every unattended run for nothing the bulk table doesn't already contain, and winget is
+  officially **unsupported under `NT AUTHORITY\SYSTEM`** (MSIX registers per-user; SYSTEM has no
+  such registration) — which is precisely the context of the monthly scheduled task. AppX-via-PS5.1
+  must stay Layers 1–3; the resolved Id feeds Layer 4 as a *precise fallback*.
+
   **Each source only sees the patterns that declare it.** `bloatware-detection.json`'s
   per-entry `detection` array is honoured: the pattern list built in the audit carries
   `@{ Pattern; Sources }`, and each source filters on it. Ignoring `detection` (the old
@@ -357,7 +531,7 @@ turn the two non-registry areas off. Both default to enforcing.
   installed — `*ASUS*` also matches `Pegasus Mail`) are excluded unless
   `modules.softwareManagement.aggressiveOemRemoval` is `true` in
   `main-config.json`. Type2 removes each item with a layered strategy (AppX → Provisioned →
-  registry **silent-uninstall only** → winget-by-id → winget-by-name), then installs essentials
+  registry **silent-uninstall only** → winget-by-exact-Id → winget-by-name), then installs essentials
   and applies upgrades, all through `Invoke-ExternalPackageCommand` (timeout-guarded — no package
   manager call can hang an unattended run); `essential-apps.json`'s per-app `timeout` is threaded
   through the diff as `TimeoutSeconds` and passed to that helper, because otherwise every install
@@ -365,11 +539,33 @@ turn the two non-registry areas off. Both default to enforcing.
   reported as a failure. A registry uninstaller exiting **3010** (`ERROR_SUCCESS_REBOOT_REQUIRED`)
   now sets `RebootRequired` on the module result — without it, Stage 5 skips the reboot entirely
   when `rebootOnlyWhenRequired` is set, leaving the uninstall half-applied.
-  Post-removal validation only claims "verified" when an **AppX/Provisioned** layer was involved:
-  `Get-AppxPackageCompat` returns nothing for a Win32 or winget-Name-keyed package whether or not
-  the removal worked, so treating "no AppX package found" as proof printed *Removal verified* for
-  every such package unconditionally. Those now report the uninstaller's own exit code and say
-  plainly that it is not AppX-verifiable.
+  **Only a layer that verifiably *uninstalls* may suppress the later layers.** This is the single
+  most important rule in `Remove-BloatwareLayered`, and getting it wrong made the whole phase
+  ineffective for exactly the packages it targets most:
+  - `Remove-AppxPackageCompat` **returns a verified `[bool]`** (re-queries the live AppX list
+    inside the same PS5.1 child process). It previously returned nothing at all, and it cannot
+    signal failure any other way: `Invoke-AppxInWinPS` shells out to `powershell.exe` with
+    `2>$null`, so a failing **child process** raises no exception in the caller, and the
+    `-ErrorAction SilentlyContinue` inside the child discards the error there too. This is the
+    same false-positive shape already fixed once in `Remove-AppxProvisionedPackageCompat`.
+  - Layer 1 therefore sets its "stop trying" flag only when removal is **confirmed**, and records
+    `AppX(failed)` in `Attempts` otherwise, falling through to the later layers.
+  - **Layer 2 (deprovision) must never set that flag.** Deprovisioning only stops the app
+    returning for *new* profiles; it does not uninstall it for existing users. An in-box app is
+    normally installed *and* provisioned, so when Layer 1's removal silently failed and Layer 2
+    succeeded, the old single `$removed` flag went `$true` and Layers 3/4/5 were **all skipped** —
+    the winget-by-exact-Id removal that does work on these packages never ran. The post-removal
+    check then correctly reported failure for a package the module had never really tried to
+    uninstall. `Deprovisioned` is returned separately so that partial progress is still visible
+    without counting as removal.
+
+  Post-removal validation keys on **whether Layer 1 saw an installed AppX package**, not on which
+  layer claimed the removal. A winget uninstall of an MSIX package *is* checkable against the live
+  AppX list, and the old "`Attempts` contains AppX/Provisioned" condition skipped exactly that
+  case — leaving the path most likely to be doing the real work unverified. For a genuine
+  Win32/registry program `Get-AppxPackageCompat` returns nothing whether or not the uninstall
+  worked, so those still report the uninstaller's own exit code and say plainly that it is not
+  AppX-verifiable rather than claiming proof.
   Essential-app "already installed" detection tries the
   precise `winget list --id --exact` check before falling back to a name-substring match (not the
   other way around — registry `DisplayName` often doesn't literally contain the baseline's `name`

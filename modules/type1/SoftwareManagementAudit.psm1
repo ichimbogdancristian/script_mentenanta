@@ -109,10 +109,118 @@ function ConvertFrom-WingetListTable {
         if ($line -match '^\s*$') { continue }
         $cols = @($line -split '\s{2,}')
         if ($cols.Count -ge 2 -and ($headerCols -eq 0 -or $cols.Count -le $headerCols) -and $cols[0].Trim()) {
-            $rows.Add(@{ Name = $cols[0].Trim(); Id = $cols[1].Trim() })
+            $id = $cols[1].Trim()
+            # Stem is carried on every row so callers never have to re-derive it. See
+            # ConvertFrom-WingetPackageId for why matching needs it as well as Name/Id.
+            $rows.Add(@{ Name = $cols[0].Trim(); Id = $id; Stem = (ConvertFrom-WingetPackageId -PackageId $id) })
         }
     }
-    return $rows.ToArray()
+    # `,` (array-wrap) is REQUIRED - same reason as Get-DiffList in Maintenance.psm1.
+    # PowerShell unrolls a single-element array on return, so a one-row table handed the
+    # caller a BARE HASHTABLE. `$rows.Count` then reported the hashtable's KEY count (3:
+    # Name/Id/Stem) instead of 1. That silently broke Resolve-WingetIdForCandidate, whose
+    # success condition is EXACTLY "the query returned one row": the -eq 1 test could never
+    # be true, the -gt 1 branch always fired, and every targeted lookup logged a bogus
+    # "3 ambiguous match(es)" and returned $null - so Pass B never resolved an Id at all,
+    # and Type2's winget-by-exact-Id removal layer never received one.
+    return , $rows.ToArray()
+}
+
+<#
+.SYNOPSIS
+    Reduces a winget package Id to the bare package stem that bloatware patterns are
+    written against.
+.DESCRIPTION
+    winget's Id column is NOT the AppX package name - it is source-prefixed, and for
+    MSIX/ARP packages it also carries version/architecture/publisher detail. Verified live
+    against `winget list` on a real machine:
+
+        Name                   Id
+        ----                   --
+        AV1 Video Extension    MSIX\Microsoft.AV1VideoExtension_2.0.24.0_x64__8wekyb3d8bbwe
+        BabyWare               ARP\Machine\X64\BabyWare
+        Angry IP Scanner       angryziber.AngryIPScanner
+
+    bloatware-detection.json writes patterns as AppX short names (`Microsoft.AV1VideoExtension`),
+    and the display Name is "AV1 Video Extension". So for the ~100 entries that use an exact
+    identifier with no wildcard, NEITHER the Name column nor the raw Id column can ever
+    -like-match, which silently made the whole winget source blind to every Microsoft in-box
+    app - only wildcard patterns such as `*Netflix*` ever worked there. Normalising the Id to
+    its stem recovers exactly the string the patterns target.
+.OUTPUTS
+    [string] the stem (e.g. 'Microsoft.AV1VideoExtension'), or the input unchanged when it
+    carries no recognised prefix/suffix.
+#>
+function ConvertFrom-WingetPackageId {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([string]$PackageId)
+
+    if (-not $PackageId) { return $PackageId }
+
+    # Strip the source prefix: MSIX\ , ARP\Machine\X64\ , ARP\User\X86\ , ...
+    $stem = $PackageId -replace '^(MSIX|ARP)\\(Machine\\|User\\)?(X64\\|X86\\|ARM64\\)?', ''
+
+    # Strip the _<version>_<arch>__<publisherHash> tail that MSIX ids carry. MSIX package
+    # names cannot contain '_' (allowed set is [A-Za-z0-9.-]) and the segment after the first
+    # '_' is the version, so splitting at the first '_' that precedes a digit is unambiguous -
+    # same rule as Get-AppxNameStem in the Type2 module.
+    if ($stem -match '^([A-Za-z0-9.\-]+?)_\d') { $stem = $Matches[1] }
+
+    return $stem
+}
+
+<#
+.SYNOPSIS
+    Parses `choco outdated --limit-output` rows into Name/CurrentVersion/AvailableVersion.
+.DESCRIPTION
+    Chocolatey's --limit-output (-r) row format is "name|current|available|pinned", e.g.
+    "chocolatey|2.6.0|2.7.3|false".
+
+    This MUST split on the delimiter. It must NOT be matched with '^(\S+)\|(\S+)\|(\S+)',
+    which is what it used to do: '\S' matches '|' as well as everything else, so the greedy
+    groups swallow a delimiter and shift every field one place left. The row above parsed as
+    Name='chocolatey|2.6.0', Current='2.7.3', Available='false' - and since a 4-field row is
+    what --limit-output ALWAYS emits, this mis-parsed every chocolatey package, every run.
+    The mangled Name was written into the diff verbatim and reached Type2, which ran
+    `choco upgrade 'chocolatey|2.6.0'`; chocolatey reported "is not installed. Installing..."
+    then "not installed. The package was not found with the source(s) listed", exited 1, and
+    the module ended as Failed with 0 processed.
+
+    Pinned packages are dropped. A chocolatey pin means "hold this version deliberately", so
+    queueing one guarantees a refusal or no-op from `choco upgrade` that Type2 can only
+    report as a failure - the same false failure this parser exists to stop producing.
+
+    Rows with fewer than 3 fields (banner text, blank lines, anything a future chocolatey
+    version prints alongside the data) are skipped rather than trusted.
+.OUTPUTS
+    [hashtable[]] one row per upgradable package: Name, CurrentVersion, AvailableVersion.
+#>
+function ConvertFrom-ChocoOutdatedTable {
+    [CmdletBinding()]
+    [OutputType([hashtable[]])]
+    param([Parameter()] [AllowEmptyCollection()] [string[]]$Lines = @())
+
+    $rows = [System.Collections.Generic.List[hashtable]]::new()
+    foreach ($line in $Lines) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $parts = @($line -split '\|')
+        if ($parts.Count -lt 3) { continue }
+
+        $pname = $parts[0].Trim()
+        $curVer = $parts[1].Trim()
+        $newVer = $parts[2].Trim()
+        if (-not $pname -or -not $newVer) { continue }
+
+        # 4th field is the pin flag. -eq on strings is case-insensitive in PowerShell.
+        if ($parts.Count -ge 4 -and $parts[3].Trim() -eq 'true') { continue }
+
+        $rows.Add(@{ Name = $pname; CurrentVersion = $curVer; AvailableVersion = $newVer })
+    }
+    # `,` (array-wrap) is REQUIRED - see ConvertFrom-WingetListTable for the full reason: a
+    # single-row result would otherwise be unrolled to a bare hashtable and .Count would
+    # report its key count instead of 1.
+    return , $rows.ToArray()
 }
 
 <#
@@ -148,7 +256,10 @@ function Resolve-WingetIdForCandidate {
     try {
         $raw = & $WingetExe list $Query --accept-source-agreements --disable-interactivity 2>&1 |
             Where-Object { $_ -is [string] }
-        $rows = ConvertFrom-WingetListTable -Lines $raw
+        # @() is belt-and-braces: ConvertFrom-WingetListTable now array-wraps its return,
+        # but this call site is the one that BREAKS on unrolling (it keys on Count -eq 1),
+        # so it does not rely on the callee alone.
+        $rows = @(ConvertFrom-WingetListTable -Lines $raw)
         if ($rows.Count -eq 1 -and $rows[0].Id) {
             return $rows[0].Id
         }
@@ -162,67 +273,105 @@ function Resolve-WingetIdForCandidate {
     return $null
 }
 
-function Get-BloatwareFromAllSources {
+<#
+.SYNOPSIS
+    Source 1: installed AppX packages, matched on the SHORT package Name.
+.DESCRIPTION
+    Extracted verbatim from Get-BloatwareFromAllSources.
+
+    Detected and AllInstalledNames are MUTATED IN PLACE. They are a hashtable and a HashSet -
+    reference types - so the shared dedup map and the flat installed-name set stay shared
+    across all four sources without any merge step. AllInstalledNames is what lets the
+    cascade-safety pass later tell "not installed" apart from "installed but not queued".
+
+    Each source only sees the patterns that DECLARE it (bloatware-detection.json's
+    "detection" array). Testing every pattern against every source is what once turned
+    AppX-shaped wildcards into registry false positives - '*Plex*' matching any
+    "Duplex ..." scanner utility.
+.OUTPUTS
+    None. Results are accumulated into Detected.
+#>
+function Add-BloatwareFromAppxSource {
+    [CmdletBinding()]
     param(
-        [hashtable]$BloatwareConfig,
-        [hashtable]$Protected,
-        [hashtable]$Dependencies,
-        # Pre-scanned registry+AppX inventory (Get-InstalledApp), passed in so the caller's
-        # essential-apps sub-audit can reuse the same scan instead of each side rescanning the
-        # registry/AppX independently within the same run.
-        [object[]]$InstalledApps
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$Patterns,
+        [Parameter(Mandatory)] [hashtable]$Detected,
+        [Parameter(Mandatory)] $AllInstalledNames,
+        [Parameter()] $Protected,
+        [Parameter()] $Dependencies
     )
 
-    $detected = @{}  # hashtable for deduplication
-    $hasWinget = Test-CommandAvailable 'winget'
-    $wingetExe = if ($hasWinget) { Resolve-WingetPath } else { $null }
-    # Flat set of every identifier seen across all four sources this run, used by the
-    # cascade-safety pass below to tell "not installed" apart from "installed but not queued
-    # for removal" when checking a dependency-matrix entry's declared dependents.
-    $allInstalledNames = [System.Collections.Generic.HashSet[string]]::new()
-
-    # $BloatwareConfig.patterns is a list of @{ Pattern; Sources } - see the pattern-extraction
-    # block in Invoke-SoftwareManagementAudit. Each entry declares which detection sources it is
-    # valid for (bloatware-detection.json's "detection" array), so a pattern only ever runs
-    # against the surfaces it was written for. Matching every pattern against every source (the
-    # old behaviour, which ignored "detection" entirely) turned AppX-shaped wildcards into
-    # registry false positives: '*Plex*' is declared AppX/Provisioned-only but was also tested
-    # against registry DisplayName, where it matches any "Duplex ..." scanner/printer utility.
-    $allPatterns = @($BloatwareConfig.patterns)
-    $appxPatterns = @($allPatterns | Where-Object { $_.Sources -contains 'AppX' })
-    $provPatterns = @($allPatterns | Where-Object { $_.Sources -contains 'Provisioned' })
-    $regPatterns = @($allPatterns | Where-Object { $_.Sources -contains 'Registry' })
-    $wingetPatterns = @($allPatterns | Where-Object { $_.Sources -contains 'WinGet' })
-    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Patterns per source - AppX: $($appxPatterns.Count), Provisioned: $($provPatterns.Count), Registry: $($regPatterns.Count), WinGet: $($wingetPatterns.Count)"
-
     # Source 1: AppX packages (modern UWP apps). Matched on the SHORT package Name.
+    #
+    # PackageFullName is captured here (it was previously discarded) purely so the exact winget
+    # Id can be DERIVED without spending a winget invocation: for an MSIX package the winget Id
+    # is literally 'MSIX\' + PackageFullName. Verified live against `winget list` - three of
+    # three sampled MSIX rows matched Get-AppxPackage's PackageFullName exactly, e.g.
+    #     MSIX\Microsoft.AV1VideoExtension_2.0.24.0_x64__8wekyb3d8bbwe
+    # That is the precise Id form `winget uninstall <id>` accepts, so Type2 gets a targeted,
+    # unambiguous uninstall for every AppX-detected package at zero extra cost - no per-entry
+    # `winget list` probing, no table parsing, and nothing that can be truncated or mis-parsed.
     Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning AppX packages...'
     try {
-        $appxPackages = Get-AppxPackageCompat -AllUsers -ErrorAction Stop |
-            Select-Object -ExpandProperty Name | Where-Object { $_ }
-        foreach ($n in $appxPackages) { $null = $allInstalledNames.Add($n.ToLowerInvariant()) }
+        $appxPackages = @(Get-AppxPackageCompat -AllUsers -ErrorAction Stop | Where-Object { $_.Name })
+        foreach ($p in $appxPackages) { $null = $AllInstalledNames.Add($p.Name.ToLowerInvariant()) }
 
-        foreach ($pat in $appxPatterns) {
-            foreach ($app in $appxPackages) {
+        foreach ($pat in $Patterns) {
+            foreach ($appPkg in $appxPackages) {
+                $app = $appPkg.Name
                 if ($app -like $pat.Pattern) {
                     if ((Test-CanRemovePackage -PackageName $app -Protected $Protected -Dependencies $Dependencies)) {
                         $key = $app.ToLowerInvariant()
-                        if (-not $detected.ContainsKey($key)) {
-                            $detected[$key] = @{
+                        if (-not $Detected.ContainsKey($key)) {
+                            $entry = @{
                                 Name = $app
                                 Sources = @('AppX')
                                 Patterns = @($pat.Pattern)
                             }
+                            if ($appPkg.PackageFullName) {
+                                $entry.WingetId = "MSIX\$($appPkg.PackageFullName)"
+                                $entry.PackageFullName = $appPkg.PackageFullName
+                            }
+                            $Detected[$key] = $entry
                         }
                     }
                 }
             }
         }
-        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "AppX detection found: $($detected.Count)"
+        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "AppX detection found: $($Detected.Count)"
     }
     catch {
         Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "AppX query failed: $_"
     }
+}
+
+<#
+.SYNOPSIS
+    Source 2: provisioned packages (staged for NEW user profiles), matched on DisplayName.
+.DESCRIPTION
+    Extracted verbatim from Get-BloatwareFromAllSources.
+
+    Detected and AllInstalledNames are MUTATED IN PLACE. They are a hashtable and a HashSet -
+    reference types - so the shared dedup map and the flat installed-name set stay shared
+    across all four sources without any merge step. AllInstalledNames is what lets the
+    cascade-safety pass later tell "not installed" apart from "installed but not queued".
+
+    Each source only sees the patterns that DECLARE it (bloatware-detection.json's
+    "detection" array). Testing every pattern against every source is what once turned
+    AppX-shaped wildcards into registry false positives - '*Plex*' matching any
+    "Duplex ..." scanner utility.
+.OUTPUTS
+    None. Results are accumulated into Detected.
+#>
+function Add-BloatwareFromProvisionedSource {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$Patterns,
+        [Parameter(Mandatory)] [hashtable]$Detected,
+        [Parameter(Mandatory)] $AllInstalledNames,
+        [Parameter()] $Protected,
+        [Parameter()] $Dependencies
+    )
 
     # Source 2: Provisioned packages (staged for NEW user profiles).
     #
@@ -247,20 +396,20 @@ function Get-BloatwareFromAllSources {
                 if ($_.DisplayName) { $_.DisplayName }
                 elseif ($_.PackageName -match '^([A-Za-z0-9.\-]+?)_\d') { $Matches[1] }
             } | Where-Object { $_ })
-        foreach ($n in $provNames) { $null = $allInstalledNames.Add($n.ToLowerInvariant()) }
+        foreach ($n in $provNames) { $null = $AllInstalledNames.Add($n.ToLowerInvariant()) }
 
-        foreach ($pat in $provPatterns) {
+        foreach ($pat in $Patterns) {
             foreach ($pkg in $provNames) {
                 if ($pkg -like $pat.Pattern) {
                     if ((Test-CanRemovePackage -PackageName $pkg -Protected $Protected -Dependencies $Dependencies)) {
                         $key = $pkg.ToLowerInvariant()
-                        if ($detected.ContainsKey($key)) {
-                            if ($detected[$key].Sources -notcontains 'Provisioned') {
-                                $detected[$key].Sources += 'Provisioned'
+                        if ($Detected.ContainsKey($key)) {
+                            if ($Detected[$key].Sources -notcontains 'Provisioned') {
+                                $Detected[$key].Sources += 'Provisioned'
                             }
                         }
                         else {
-                            $detected[$key] = @{
+                            $Detected[$key] = @{
                                 Name = $pkg
                                 Sources = @('Provisioned')
                                 Patterns = @($pat.Pattern)
@@ -270,11 +419,41 @@ function Get-BloatwareFromAllSources {
                 }
             }
         }
-        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Provisioned packages found: $(($detected.Count))"
+        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Provisioned packages found: $(($Detected.Count))"
     }
     catch {
         Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "Provisioned packages query failed: $_"
     }
+}
+
+<#
+.SYNOPSIS
+    Source 3: registry-installed Win32 programs, matched on DisplayName.
+.DESCRIPTION
+    Extracted verbatim from Get-BloatwareFromAllSources.
+
+    Detected and AllInstalledNames are MUTATED IN PLACE. They are a hashtable and a HashSet -
+    reference types - so the shared dedup map and the flat installed-name set stay shared
+    across all four sources without any merge step. AllInstalledNames is what lets the
+    cascade-safety pass later tell "not installed" apart from "installed but not queued".
+
+    Each source only sees the patterns that DECLARE it (bloatware-detection.json's
+    "detection" array). Testing every pattern against every source is what once turned
+    AppX-shaped wildcards into registry false positives - '*Plex*' matching any
+    "Duplex ..." scanner utility.
+.OUTPUTS
+    None. Results are accumulated into Detected.
+#>
+function Add-BloatwareFromRegistrySource {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$Patterns,
+        [Parameter(Mandatory)] [hashtable]$Detected,
+        [Parameter(Mandatory)] $AllInstalledNames,
+        [Parameter()] [AllowEmptyCollection()] [array]$InstalledApps,
+        [Parameter()] $Protected,
+        [Parameter()] $Dependencies
+    )
 
     # Source 3: Registry (Win32 programs). Reuses the caller's single Get-InstalledApp scan
     # (passed in as $InstalledApps) rather than rescanning the registry+AppX a second time in
@@ -282,20 +461,20 @@ function Get-BloatwareFromAllSources {
     Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning registry for Win32 programs...'
     try {
         $regApps = @($InstalledApps) | Select-Object -ExpandProperty Name | Where-Object { $_ }
-        foreach ($n in $regApps) { $null = $allInstalledNames.Add($n.ToLowerInvariant()) }
+        foreach ($n in $regApps) { $null = $AllInstalledNames.Add($n.ToLowerInvariant()) }
 
-        foreach ($pat in $regPatterns) {
+        foreach ($pat in $Patterns) {
             foreach ($app in $regApps) {
                 if ($app -like $pat.Pattern) {
                     if ((Test-CanRemovePackage -PackageName $app -Protected $Protected -Dependencies $Dependencies)) {
                         $key = $app.ToLowerInvariant()
-                        if ($detected.ContainsKey($key)) {
-                            if ($detected[$key].Sources -notcontains 'Registry') {
-                                $detected[$key].Sources += 'Registry'
+                        if ($Detected.ContainsKey($key)) {
+                            if ($Detected[$key].Sources -notcontains 'Registry') {
+                                $Detected[$key].Sources += 'Registry'
                             }
                         }
                         else {
-                            $detected[$key] = @{
+                            $Detected[$key] = @{
                                 Name = $app
                                 Sources = @('Registry')
                                 Patterns = @($pat.Pattern)
@@ -305,31 +484,94 @@ function Get-BloatwareFromAllSources {
                 }
             }
         }
-        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Registry programs found: $($detected.Count)"
+        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Registry programs found: $($Detected.Count)"
     }
     catch {
         Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "Registry query failed: $_"
     }
+}
+
+function Get-BloatwareFromAllSources {
+    param(
+        [hashtable]$BloatwareConfig,
+        [hashtable]$Protected,
+        [hashtable]$Dependencies,
+        # Pre-scanned registry+AppX inventory (Get-InstalledApp), passed in so the caller's
+        # essential-apps sub-audit can reuse the same scan instead of each side rescanning the
+        # registry/AppX independently within the same run.
+        [object[]]$InstalledApps
+    )
+
+    $detected = @{}  # hashtable for deduplication
+    $hasWinget = Test-CommandAvailable 'winget'
+    $wingetExe = if ($hasWinget) { Resolve-WingetPath } else { $null }
+    # Every row of the single bulk `winget list` (Name/Id/Version/Source + a derived Id Stem),
+    # hoisted here so the Id-correlation pass after cascade-safety can reuse it instead of
+    # re-shelling out. Stays empty when winget is unavailable.
+    $wingetApps = @()
+    # Flat set of every identifier seen across all four sources this run, used by the
+    # cascade-safety pass below to tell "not installed" apart from "installed but not queued
+    # for removal" when checking a dependency-matrix entry's declared dependents.
+    $allInstalledNames = [System.Collections.Generic.HashSet[string]]::new()
+
+    # $BloatwareConfig.patterns is a list of @{ Pattern; Sources } - see the pattern-extraction
+    # block in Invoke-SoftwareManagementAudit. Each entry declares which detection sources it is
+    # valid for (bloatware-detection.json's "detection" array), so a pattern only ever runs
+    # against the surfaces it was written for. Matching every pattern against every source (the
+    # old behaviour, which ignored "detection" entirely) turned AppX-shaped wildcards into
+    # registry false positives: '*Plex*' is declared AppX/Provisioned-only but was also tested
+    # against registry DisplayName, where it matches any "Duplex ..." scanner/printer utility.
+    $allPatterns = @($BloatwareConfig.patterns)
+    $appxPatterns = @($allPatterns | Where-Object { $_.Sources -contains 'AppX' })
+    $provPatterns = @($allPatterns | Where-Object { $_.Sources -contains 'Provisioned' })
+    $regPatterns = @($allPatterns | Where-Object { $_.Sources -contains 'Registry' })
+    $wingetPatterns = @($allPatterns | Where-Object { $_.Sources -contains 'WinGet' })
+    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Patterns per source - AppX: $($appxPatterns.Count), Provisioned: $($provPatterns.Count), Registry: $($regPatterns.Count), WinGet: $($wingetPatterns.Count)"
+
+    # Source 1: AppX packages (modern UWP apps).
+    Add-BloatwareFromAppxSource -Patterns $appxPatterns -Detected $detected `
+        -AllInstalledNames $allInstalledNames -Protected $Protected -Dependencies $Dependencies
+
+    # Source 2: Provisioned packages (staged for NEW user profiles).
+    Add-BloatwareFromProvisionedSource -Patterns $provPatterns -Detected $detected `
+        -AllInstalledNames $allInstalledNames -Protected $Protected -Dependencies $Dependencies
+
+    # Source 3: Registry (Win32 programs).
+    Add-BloatwareFromRegistrySource -Patterns $regPatterns -Detected $detected `
+        -AllInstalledNames $allInstalledNames -InstalledApps $InstalledApps `
+        -Protected $Protected -Dependencies $Dependencies
 
     # Source 4: WinGet (if available). Parse the fixed-width table into Name/Id columns and match
     # the pattern against those - NEVER against the raw formatted line (the old code stored the
     # whole "Name  Id  Version  Source" line as the package name, producing junk detections that
     # Type2 could not act on). The winget Id is captured so Type2's winget-uninstall fallback works.
+    #
+    # Patterns are tested against the Name, the raw Id AND the Id's normalised STEM. The stem is
+    # what makes this source work at all for Microsoft in-box apps: winget reports
+    #   Name = 'AV1 Video Extension'   Id = 'MSIX\Microsoft.AV1VideoExtension_2.0.24.0_x64__...'
+    # while bloatware-detection.json writes the pattern as 'Microsoft.AV1VideoExtension'. Neither
+    # column -like-matches that, so before this every exact-identifier pattern (~100 of the 166
+    # entries) was invisible to the winget source and only wildcards like '*Netflix*' ever hit.
+    # See ConvertFrom-WingetPackageId for the verified Id shapes.
     if ($hasWinget) {
         Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning WinGet packages...'
         try {
             $wingetRaw = & $wingetExe list --accept-source-agreements --disable-interactivity 2>&1 |
                 Where-Object { $_ -is [string] }
-            $wingetApps = ConvertFrom-WingetListTable -Lines $wingetRaw
+            $wingetApps = @(ConvertFrom-WingetListTable -Lines $wingetRaw)
             foreach ($wa in $wingetApps) {
                 if ($wa.Name) { $null = $allInstalledNames.Add($wa.Name.ToLowerInvariant()) }
                 if ($wa.Id) { $null = $allInstalledNames.Add($wa.Id.ToLowerInvariant()) }
+                if ($wa.Stem) { $null = $allInstalledNames.Add($wa.Stem.ToLowerInvariant()) }
             }
 
             foreach ($pat in $wingetPatterns) {
                 foreach ($wa in $wingetApps) {
-                    if ($wa.Name -like $pat.Pattern -or $wa.Id -like $pat.Pattern) {
-                        $target = if ($wa.Name) { $wa.Name } else { $wa.Id }
+                    if ($wa.Name -like $pat.Pattern -or $wa.Id -like $pat.Pattern -or ($wa.Stem -and $wa.Stem -like $pat.Pattern)) {
+                        # Prefer the stem as the identity: it is the AppX/package short name, so
+                        # it dedups against Source 1/2/3 keys instead of creating a second entry
+                        # under winget's human-readable display Name.
+                        $target = if ($wa.Stem) { $wa.Stem } elseif ($wa.Name) { $wa.Name } else { $wa.Id }
                         if ((Test-CanRemovePackage -PackageName $target -Protected $Protected -Dependencies $Dependencies)) {
                             $key = $target.ToLowerInvariant()
                             if ($detected.ContainsKey($key)) {
@@ -404,19 +646,56 @@ function Get-BloatwareFromAllSources {
         }
     }
 
-    # Per-candidate WinGet Id resolution: for every SURVIVING candidate (after cascade-safety,
-    # so no winget calls are wasted on items that just got protected) that doesn't already have
-    # a WingetId from the bulk scan above, run a targeted 'winget list <name>' - the same lookup
-    # a human would run by hand. This closes the gap where a package is only known via AppX/
-    # Provisioned/Registry (its detected name never matched winget's Name/Id text directly in
-    # the bulk scan) but winget CAN resolve and remove it once queried by that name specifically.
-    # Every resolved Id flows straight into Type2's existing WinGet-by-id removal layer -
-    # already fully non-interactive (--silent --disable-interactivity) - no Type2 change needed.
+    # ------------------------------------------------------------------------------------------
+    # WinGet Id resolution for every SURVIVING candidate (run after cascade-safety, so no lookup
+    # is wasted on an item that just got protected). The goal is the one Type2 actually needs: an
+    # exact, unambiguous Id that `winget uninstall <Id>` can act on, e.g.
+    #   winget list maps  ->  Windows Maps  MSIX\Microsoft.WindowsMaps_5.1906.1972.0_x64__8wek...
+    #
+    # Done in two passes, cheapest first:
+    #
+    #   Pass A - correlate against $wingetApps, the SINGLE bulk `winget list` already run above.
+    #            Free (no new process). Matches the candidate's own name against a row's Id stem,
+    #            raw Id or display Name, and - for AppX/Provisioned detections - against the
+    #            PackageFullName embedded in the row's MSIX Id. This resolves the large majority.
+    #
+    #   Pass B - only for what Pass A could not place: one targeted `winget list <name>`, the
+    #            lookup a human would type. Capped by $maxTargetedLookups because each one is a
+    #            process launch (~1-2s); querying all ~166 baseline entries unconditionally would
+    #            add minutes to every unattended run for no gain over the bulk table.
+    #
+    # Deliberately NOT restructured so winget becomes the PRIMARY removal path: winget is
+    # officially unsupported under NT AUTHORITY\SYSTEM (MSIX packages register per-user and
+    # SYSTEM has no such registration), and SYSTEM is exactly the context of the monthly
+    # scheduled task. AppX-via-PS5.1 stays Layer 1-3; the Id resolved here feeds Layer 4.
+    # ------------------------------------------------------------------------------------------
     if ($hasWinget) {
+        $unresolved = @($detected.Values | Where-Object { -not $_.WingetId })
+        if ($unresolved.Count -gt 0 -and $wingetApps.Count -gt 0) {
+            foreach ($item in $unresolved) {
+                $needle = $item.Name.ToLowerInvariant()
+                $fullName = if ($item.PackageFullName) { $item.PackageFullName.ToLowerInvariant() } else { $null }
+                $row = $wingetApps | Where-Object {
+                    ($_.Stem -and $_.Stem.ToLowerInvariant() -eq $needle) -or
+                    ($_.Id -and $_.Id.ToLowerInvariant() -eq $needle) -or
+                    ($_.Name -and $_.Name.ToLowerInvariant() -eq $needle) -or
+                    ($fullName -and $_.Id -and $_.Id.ToLowerInvariant() -eq "msix\$fullName")
+                } | Select-Object -First 1
+                if ($row -and $row.Id) {
+                    $item.WingetId = $row.Id
+                    if ($item.Sources -notcontains 'WinGet(correlated)') { $item.Sources += 'WinGet(correlated)' }
+                    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "  Correlated '$($item.Name)' -> $($row.Id)"
+                }
+            }
+        }
+
         $toResolve = @($detected.Values | Where-Object { -not $_.WingetId })
         if ($toResolve.Count -gt 0) {
-            Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Resolving winget Id for $($toResolve.Count) candidate(s) with no bulk-scan match..."
-            foreach ($item in $toResolve) {
+            $maxTargetedLookups = 40
+            $lookups = @($toResolve | Select-Object -First $maxTargetedLookups)
+            Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message `
+                "Targeted winget lookup for $($lookups.Count) of $($toResolve.Count) candidate(s) still without an Id..."
+            foreach ($item in $lookups) {
                 $resolvedId = Resolve-WingetIdForCandidate -WingetExe $wingetExe -Query $item.Name
                 if ($resolvedId) {
                     $item.WingetId = $resolvedId
@@ -425,6 +704,10 @@ function Get-BloatwareFromAllSources {
                 }
             }
         }
+
+        $withId = @($detected.Values | Where-Object { $_.WingetId }).Count
+        Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message `
+            "WinGet Id resolved for $withId of $($detected.Count) removal candidate(s)"
     }
 
     return $detected.Values
@@ -561,130 +844,169 @@ function Invoke-SoftwareManagementAudit {
             Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message "Bloatware to remove: $removeFound (from $($detected.Count) detection(s))"
         }
 
+        # ── CHECKPOINT: PERSIST THE BLOATWARE DIFF NOW ───────────────────────
+        # Everything above is the expensive, high-value half of this audit: four detection
+        # sources, a bulk `winget list`, AppX enumeration through the PS5.1 compat layer, up to
+        # 40 targeted winget lookups, dedup, cascade-safety and Id resolution.
+        #
+        # Everything BELOW is optional enrichment that shells out to external package managers
+        # (`winget upgrade`, `choco outdated`). Those fail in novel ways. Before this checkpoint
+        # existed there was a single Save-DiffList at the very end inside one big try/catch, so
+        # ANY throw in the optional tail discarded the completed bloatware work entirely - the
+        # diff file was never written, Stage 2 saw zero items, and Stage 3 skipped the whole
+        # Type2 module. The most valuable result was the easiest to lose.
+        #
+        # Same principle SystemConfigurationAudit already applies by saving at the end of its
+        # Phase A before the slow report-only Phase B. The diff is re-saved with the full set
+        # after the optional sections below; saving twice is one small JSON write.
+        Save-DiffList -ModuleName 'SoftwareManagement' -DiffList $diff.ToArray()
+        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Checkpoint: $($diff.Count) bloatware item(s) persisted before optional scans"
+
+        # Optional-section failures degrade the module result to Warning rather than losing the
+        # run's work. Collected here, applied to the return value at the bottom.
+        $optionalWarnings = @()
+
         # ─── ESSENTIAL APPS (INSTALL) AUDIT ──────────────────────────────────
-        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Auditing essential apps to install...'
+        # Isolated: a failure here must not cost the bloatware diff, nor prevent the upgrade
+        # scan below from running.
+        try {
+            Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Auditing essential apps to install...'
 
-        $essential = Get-BaselineList -ModuleFolder 'essential-apps' -FileName 'essential-apps.json'
-        if (-not $essential) {
-            Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message 'Essential apps baseline not found'
-        }
-        else {
-            $baselineApps = @($essential)
-            $installedNames = $installedApps | ForEach-Object { $_.Name.ToLowerInvariant() } | Where-Object { $_ }
-            $hasWinget = Test-CommandAvailable 'winget'
-            $hasMsOffice = [bool]($installedNames | Where-Object { $_ -match 'microsoft.*(office|word|excel|outlook)' })
-
-            foreach ($app in $baselineApps) {
-                $appNameLow = if ($app.name) { $app.name.ToLowerInvariant() } else { continue }
-
-                if ($appNameLow -match 'libreoffice' -and $hasMsOffice) {
-                    Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'LibreOffice skipped - MS Office detected'
-                    continue
-                }
-
-                # Precise check first: an exact winget --id match is authoritative when
-                # available. Name-substring is only a fallback (winget unavailable, or this app
-                # has no winget id) - registry DisplayName often doesn't literally contain the
-                # baseline's "name" string (e.g. "Java Runtime Environment" vs. an installed
-                # "Java(TM) SE Runtime Environment 8u401"), so trying substring FIRST used to
-                # both miss real installs and mask the more precise check below.
-                $wingetId = $app.winget
-                $alreadyInstalled = $false
-                if ($hasWinget -and $wingetId) {
-                    $null = & (Resolve-WingetPath) list --id $wingetId --exact --accept-source-agreements --disable-interactivity 2>&1
-                    if ($LASTEXITCODE -eq 0) { $alreadyInstalled = $true }
-                }
-                if (-not $alreadyInstalled) {
-                    $foundByName = $installedNames | Where-Object { $_ -like "*$appNameLow*" }
-                    if ($foundByName) { $alreadyInstalled = $true }
-                }
-                if ($alreadyInstalled) { continue }
-
-                # TimeoutSeconds carries essential-apps.json's per-app "timeout" through to
-                # Type2. It used to be dropped here, so every install fell back to
-                # Invoke-ExternalPackageCommand's 600s default - LibreOffice declares 900 and
-                # was being killed mid-install at 600 and reported as a failure.
-                $diff.Add(@{
-                        Action = 'install'
-                        Name = $app.name
-                        WingetId = $app.winget ?? ''
-                        ChocoId = $app.choco ?? ''
-                        Scope = $app.scope ?? 'machine'
-                        ExcludeOn = $app.excludeOn ?? @()
-                        TimeoutSeconds = $app.timeout ?? 0
-                    })
-                $installFound++
-                Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "  MISSING: $($app.name)"
+            $essential = Get-BaselineList -ModuleFolder 'essential-apps' -FileName 'essential-apps.json'
+            if (-not $essential) {
+                Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message 'Essential apps baseline not found'
             }
+            else {
+                $baselineApps = @($essential)
+                $installedNames = $installedApps | ForEach-Object { $_.Name.ToLowerInvariant() } | Where-Object { $_ }
+                $hasWinget = Test-CommandAvailable 'winget'
+                $hasMsOffice = [bool]($installedNames | Where-Object { $_ -match 'microsoft.*(office|word|excel|outlook)' })
+
+                foreach ($app in $baselineApps) {
+                    $appNameLow = if ($app.name) { $app.name.ToLowerInvariant() } else { continue }
+
+                    if ($appNameLow -match 'libreoffice' -and $hasMsOffice) {
+                        Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'LibreOffice skipped - MS Office detected'
+                        continue
+                    }
+
+                    # Precise check first: an exact winget --id match is authoritative when
+                    # available. Name-substring is only a fallback (winget unavailable, or this app
+                    # has no winget id) - registry DisplayName often doesn't literally contain the
+                    # baseline's "name" string (e.g. "Java Runtime Environment" vs. an installed
+                    # "Java(TM) SE Runtime Environment 8u401"), so trying substring FIRST used to
+                    # both miss real installs and mask the more precise check below.
+                    $wingetId = $app.winget
+                    $alreadyInstalled = $false
+                    if ($hasWinget -and $wingetId) {
+                        $null = & (Resolve-WingetPath) list --id $wingetId --exact --accept-source-agreements --disable-interactivity 2>&1
+                        if ($LASTEXITCODE -eq 0) { $alreadyInstalled = $true }
+                    }
+                    if (-not $alreadyInstalled) {
+                        $foundByName = $installedNames | Where-Object { $_ -like "*$appNameLow*" }
+                        if ($foundByName) { $alreadyInstalled = $true }
+                    }
+                    if ($alreadyInstalled) { continue }
+
+                    # TimeoutSeconds carries essential-apps.json's per-app "timeout" through to
+                    # Type2. It used to be dropped here, so every install fell back to
+                    # Invoke-ExternalPackageCommand's 600s default - LibreOffice declares 900 and
+                    # was being killed mid-install at 600 and reported as a failure.
+                    $diff.Add(@{
+                            Action = 'install'
+                            Name = $app.name
+                            WingetId = $app.winget ?? ''
+                            ChocoId = $app.choco ?? ''
+                            Scope = $app.scope ?? 'machine'
+                            ExcludeOn = $app.excludeOn ?? @()
+                            TimeoutSeconds = $app.timeout ?? 0
+                        })
+                    $installFound++
+                    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "  MISSING: $($app.name)"
+                }
+            }
+        }
+        catch {
+            Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "Essential-apps audit failed (bloatware diff is already safe): $_"
+            $optionalWarnings += "EssentialApps: $_"
         }
 
         # ─── APP UPGRADE AUDIT ───────────────────────────────────────────────
-        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Auditing app upgrades...'
+        # Isolated for the same reason as the section above, and more so: this one shells out to
+        # BOTH winget and chocolatey, so it is the likeliest thing in the whole audit to throw.
+        try {
+            Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Auditing app upgrades...'
 
-        $upgradeCfg = Get-BaselineList -ModuleFolder 'app-upgrade' -FileName 'app-upgrade-config.json'
-        if (-not $upgradeCfg -or $upgradeCfg.ModuleEnabled -eq $false) {
-            Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'App upgrade disabled in config'
-        }
-        elseif (-not $upgradeCfg.EnabledSources) {
-            Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message 'Invalid app upgrade config (missing EnabledSources)'
-        }
-        else {
-            $excludePatterns = if ($upgradeCfg.ExcludePatterns) { $upgradeCfg.ExcludePatterns } else { @() }
-
-            if ((Test-CommandAvailable 'winget') -and $upgradeCfg.EnabledSources -contains 'Winget') {
-                Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'Querying winget for upgrades...'
-                foreach ($item in (Get-WingetUpgrade)) {
-                    if (-not $item.Name) { continue }
-                    $excluded = $false
-                    foreach ($pattern in $excludePatterns) {
-                        if ($item.Name -like $pattern -or $item.Id -like $pattern) { $excluded = $true; break }
-                    }
-                    if ($excluded) { continue }
-                    $diff.Add(@{
-                            Action           = 'upgrade'
-                            Name             = $item.Name
-                            Id               = $item.Id
-                            CurrentVersion   = $item.CurrentVersion
-                            AvailableVersion = $item.AvailableVersion
-                            Source           = 'winget'
-                        })
-                    $upgradeFound++
-                }
+            $upgradeCfg = Get-BaselineList -ModuleFolder 'app-upgrade' -FileName 'app-upgrade-config.json'
+            if (-not $upgradeCfg -or $upgradeCfg.ModuleEnabled -eq $false) {
+                Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'App upgrade disabled in config'
             }
+            elseif (-not $upgradeCfg.EnabledSources) {
+                Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message 'Invalid app upgrade config (missing EnabledSources)'
+            }
+            else {
+                $excludePatterns = if ($upgradeCfg.ExcludePatterns) { $upgradeCfg.ExcludePatterns } else { @() }
 
-            if ((Test-CommandAvailable 'choco') -and $upgradeCfg.EnabledSources -contains 'Chocolatey') {
-                Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'Querying chocolatey for upgrades...'
-                try {
-                    # --limit-output forces the pipe-delimited "name|current|available|pinned"
-                    # format explicitly, rather than relying on it being the default across
-                    # every Chocolatey version/locale.
-                    $chocoOutput = & choco outdated --no-progress --no-color --limit-output 2>&1 | Where-Object { $_ -is [string] }
-                    foreach ($line in $chocoOutput) {
-                        if ($line -match '^(\S+)\|(\S+)\|(\S+)') {
-                            $pname = $Matches[1]; $curVer = $Matches[2]; $newVer = $Matches[3]
+                if ((Test-CommandAvailable 'winget') -and $upgradeCfg.EnabledSources -contains 'Winget') {
+                    Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'Querying winget for upgrades...'
+                    foreach ($item in (Get-WingetUpgrade)) {
+                        if (-not $item.Name) { continue }
+                        $excluded = $false
+                        foreach ($pattern in $excludePatterns) {
+                            if ($item.Name -like $pattern -or $item.Id -like $pattern) { $excluded = $true; break }
+                        }
+                        if ($excluded) { continue }
+                        $diff.Add(@{
+                                Action           = 'upgrade'
+                                Name             = $item.Name
+                                Id               = $item.Id
+                                CurrentVersion   = $item.CurrentVersion
+                                AvailableVersion = $item.AvailableVersion
+                                Source           = 'winget'
+                            })
+                        $upgradeFound++
+                    }
+                }
+
+                if ((Test-CommandAvailable 'choco') -and $upgradeCfg.EnabledSources -contains 'Chocolatey') {
+                    Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'Querying chocolatey for upgrades...'
+                    try {
+                        # --limit-output forces the pipe-delimited "name|current|available|pinned"
+                        # format explicitly, rather than relying on it being the default across
+                        # every Chocolatey version/locale. Parsing (and the pinned-package
+                        # filter) lives in ConvertFrom-ChocoOutdatedTable - see the header there
+                        # for why this must not be done with a '\S+' regex.
+                        $chocoOutput = & choco outdated --no-progress --no-color --limit-output 2>&1 | Where-Object { $_ -is [string] }
+                        foreach ($row in (ConvertFrom-ChocoOutdatedTable -Lines @($chocoOutput))) {
                             $excluded = $false
                             foreach ($pattern in $excludePatterns) {
-                                if ($pname -like $pattern) { $excluded = $true; break }
+                                if ($row.Name -like $pattern) { $excluded = $true; break }
                             }
                             if ($excluded) { continue }
                             $diff.Add(@{
                                     Action           = 'upgrade'
-                                    Name             = $pname
-                                    Id               = $pname
-                                    CurrentVersion   = $curVer
-                                    AvailableVersion = $newVer
+                                    Name             = $row.Name
+                                    Id               = $row.Name
+                                    CurrentVersion   = $row.CurrentVersion
+                                    AvailableVersion = $row.AvailableVersion
                                     Source           = 'choco'
                                 })
                             $upgradeFound++
                         }
                     }
+                    catch { Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "choco outdated failed: $_" }
                 }
-                catch { Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "choco outdated failed: $_" }
             }
+        }
+        catch {
+            Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "App-upgrade audit failed (bloatware + essential-apps diff is already safe): $_"
+            $optionalWarnings += "AppUpgrade: $_"
         }
 
         Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message "Software items found: $($diff.Count) (Remove: $removeFound, Install: $installFound, Upgrade: $upgradeFound)"
 
+        # Final save with the complete set. The checkpoint above already persisted the bloatware
+        # half, so this either adds the optional items or harmlessly rewrites the same content.
         Save-DiffList -ModuleName 'SoftwareManagement' -DiffList $diff.ToArray()
 
         $auditPath = Get-TempPath -Category 'data' -FileName 'software-management-audit.json'
@@ -697,9 +1019,15 @@ function Invoke-SoftwareManagementAudit {
             OS           = $osCtx.DisplayText
         } | ConvertTo-Json -Depth 8 | Set-Content -Path $auditPath -Encoding UTF8 -Force
 
-        return New-ModuleResult -ModuleName 'SoftwareManagementAudit' -Status 'Success' `
-            -ItemsDetected $diff.Count `
-            -Message "$($diff.Count) software action(s): $removeFound remove, $installFound install, $upgradeFound upgrade"
+        # A failed OPTIONAL section degrades to Warning, never Failed: the diff - the actual
+        # contract with Stage 2/3 - was computed and saved successfully. Same reasoning as
+        # SystemConfigurationAudit's Phase B report-only failures.
+        $status = if ($optionalWarnings.Count -gt 0) { 'Warning' } else { 'Success' }
+        $suffix = if ($optionalWarnings.Count -gt 0) { " ($($optionalWarnings.Count) optional scan(s) failed)" } else { '' }
+
+        return New-ModuleResult -ModuleName 'SoftwareManagementAudit' -Status $status `
+            -ItemsDetected $diff.Count -Errors $optionalWarnings `
+            -Message "$($diff.Count) software action(s): $removeFound remove, $installFound install, $upgradeFound upgrade$suffix"
     }
     catch {
         Write-Log -Level ERROR -Component SOFTWARE-AUDIT -Message "Audit failed: $_"

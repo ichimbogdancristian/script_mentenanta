@@ -519,6 +519,440 @@ function Get-SystemHealthData {
 
 #endregion
 
+<#
+.SYNOPSIS
+    Phase A2 of the configuration audit: security baseline -> diff items.
+.DESCRIPTION
+    Extracted verbatim from Invoke-SystemConfigurationAudit. Covers all three CIS
+    enforcement mechanisms, which are NOT interchangeable - a rule in the wrong baseline
+    block is silently never enforced:
+      registry       -> Compare-RegistryBaselineWithFallback  (CIS 2.3.x / 18.x)
+      securityPolicy -> Compare-SecurityPolicyBaseline (secedit, CIS 1.1 / 1.2)
+      auditPolicy    -> Compare-AuditPolicyBaseline    (auditpol, CIS 17.x)
+    plus Defender feature state, firewall profiles, services and Sysmon presence.
+.OUTPUTS
+    [hashtable[]] diff items, every one tagged ConfigType = 'security'.
+#>
+function Get-SecurityConfigurationDiff {
+    [CmdletBinding()]
+    [OutputType([hashtable[]])]
+    param(
+        [Parameter(Mandatory)] [AllowNull()] $Baseline,
+        [Parameter()] [bool]$SkipPasswordPolicy,
+        [Parameter()] [bool]$SkipAuditPolicy
+    )
+    $items = [System.Collections.Generic.List[hashtable]]::new()
+    if ($Baseline) {
+        Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message 'Auditing security settings...'
+
+        # Security registry (with fallback detection)
+        if ($Baseline.registry) {
+            Compare-RegistryBaselineWithFallback -Entries @($Baseline.registry) | ForEach-Object {
+                $_.ConfigType = 'security'
+                $items.Add($_)
+            }
+        }
+
+        # Services that must be running / disabled for a hardened baseline
+        if ($Baseline.services.ensureDisabled) {
+            Compare-ServiceBaseline -ServiceNames @($Baseline.services.ensureDisabled) -Action 'EnsureDisabled' | ForEach-Object {
+                $_.ConfigType = 'security'
+                $items.Add($_)
+            }
+        }
+        if ($Baseline.services.ensureRunning) {
+            Compare-ServiceBaseline -ServiceNames @($Baseline.services.ensureRunning) -Action 'EnsureRunning' | ForEach-Object {
+                $_.ConfigType = 'security'
+                $items.Add($_)
+            }
+        }
+
+        # Windows Defender feature checks
+        if ($Baseline.windowsDefender) {
+            $wd = $Baseline.windowsDefender
+            try {
+                $mpStatus = Get-MpComputerStatus -ErrorAction Stop
+                if ($wd.realTimeProtection -and -not $mpStatus.RealTimeProtectionEnabled) {
+                    $items.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'RealTimeProtection'; Feature = 'RealTimeProtection'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
+                    Write-Log -Level WARN -Component CONFIG-AUDIT -Message 'Defender: Real-time protection DISABLED'
+                }
+                if (-not $mpStatus.AntivirusEnabled) {
+                    $items.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'AntivirusEnabled'; Feature = 'AntivirusEnabled'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
+                }
+            }
+            catch {
+                Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Defender status query failed: $_"
+            }
+            try {
+                $mpPrefs = Get-MpPreference -ErrorAction Stop
+                if ($wd.cloudProtection -and $mpPrefs.MAPSReporting -eq 0) {
+                    $items.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'CloudProtection'; Feature = 'CloudProtection'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
+                }
+                if ($wd.networkProtection -and $mpPrefs.EnableNetworkProtection -eq 0) {
+                    $items.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'NetworkProtection'; Feature = 'NetworkProtection'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
+                }
+                if ($wd.pua -and $mpPrefs.PUAProtection -eq 0) {
+                    $items.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'PUAProtection'; Feature = 'PUAProtection'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
+                }
+            }
+            catch {
+                Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Defender preference query failed: $_"
+            }
+        }
+
+        # Firewall profiles
+        if ($Baseline.firewall.enabled) {
+            try {
+                $fwProfiles = Get-NetFirewallProfile -ErrorAction Stop
+                foreach ($profileName in @('Domain', 'Private', 'Public')) {
+                    $key = $profileName.ToLowerInvariant()
+                    if ($Baseline.firewall.enabled.$key) {
+                        $prof = $fwProfiles | Where-Object { $_.Name -eq $profileName }
+                        if ($prof -and -not $prof.Enabled) {
+                            $items.Add(@{ ConfigType = 'security'; Type = 'firewall'; Name = "Firewall.$profileName"; Profile = $profileName; CurrentState = $false; DesiredState = $true })
+                        }
+                    }
+                }
+            }
+            catch { Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Firewall query failed: $_" }
+        }
+
+        # ── Local security policy: CIS 1.1 password + 1.2 account lockout ────
+        # These are NOT registry values - they live in the Local Security Policy
+        # database and are only reachable via secedit. The baseline has declared a
+        # securityPolicy block for a long time but NOTHING read it, so every one of
+        # these CIS rules stayed non-compliant no matter how often the run completed.
+        if ($Baseline.securityPolicy -and -not $SkipPasswordPolicy) {
+            Compare-SecurityPolicyBaseline -Baseline $Baseline.securityPolicy | ForEach-Object {
+                $_.ConfigType = 'security'
+                $items.Add($_)
+            }
+        }
+        elseif ($SkipPasswordPolicy) {
+            Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Password/lockout policy skipped (config: skipPasswordPolicy)'
+        }
+
+        # ── Advanced audit policy: CIS 17.x ──────────────────────────────────
+        # Same story: auditpol-only, declared in the baseline, never consumed.
+        if ($Baseline.auditPolicy -and -not $SkipAuditPolicy) {
+            Compare-AuditPolicyBaseline -Baseline $Baseline.auditPolicy | ForEach-Object {
+                $_.ConfigType = 'security'
+                $items.Add($_)
+            }
+        }
+        elseif ($SkipAuditPolicy) {
+            Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Advanced audit policy skipped (config: skipAuditPolicy)'
+        }
+
+        # Sysmon presence check (installed via SystemConfiguration Type2 with sysmonconfig.xml)
+        $sysmonSvc = Get-Service -Name 'Sysmon', 'Sysmon64' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $sysmonSvc) {
+            $items.Add(@{ ConfigType = 'security'; Type = 'sysmon'; Name = 'Sysmon'; CurrentState = 'NotInstalled'; DesiredState = 'Installed' })
+            Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Sysmon not installed - queued for install'
+        }
+    }
+    # NO comma-wrap. `return , $arr` emits the array as ONE pipeline element, so a caller
+    # writing @(Get-...) gets a 1-element array CONTAINING the array instead of the items -
+    # and the callers below do exactly that. Returning it plainly lets the pipeline unroll,
+    # and the caller's @() then normalises 0/1/N uniformly. (Get-DiffList uses the comma
+    # because ITS callers use plain assignment, not @(). The two idioms must not be mixed.)
+    return $items.ToArray()
+}
+
+<#
+.SYNOPSIS
+    Phase A3 of the configuration audit: telemetry/privacy baseline -> diff items.
+.OUTPUTS
+    [hashtable[]] diff items, every one tagged ConfigType = 'telemetry'.
+#>
+function Get-TelemetryConfigurationDiff {
+    [CmdletBinding()]
+    [OutputType([hashtable[]])]
+    param(
+        [Parameter(Mandatory)] [AllowNull()] $Baseline
+    )
+    $items = [System.Collections.Generic.List[hashtable]]::new()
+    if ($Baseline) {
+        Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message 'Auditing telemetry/privacy settings...'
+
+        if ($Baseline.services.disable) {
+            Compare-ServiceBaseline -ServiceNames @($Baseline.services.disable) -Action 'EnsureDisabled' | ForEach-Object {
+                $_.ConfigType = 'telemetry'
+                $items.Add($_)
+            }
+        }
+
+        if ($Baseline.registry) {
+            foreach ($grp in @('telemetry', 'advertising', 'cortana', 'privacy')) {
+                if (-not $Baseline.registry.$grp) { continue }
+                Compare-RegistryBaselineWithFallback -Entries @($Baseline.registry.$grp) | ForEach-Object {
+                    $_.ConfigType = 'telemetry'
+                    $items.Add($_)
+                }
+            }
+        }
+
+        if ($Baseline.scheduledTasks.disable) {
+            foreach ($taskPath in $Baseline.scheduledTasks.disable) {
+                try {
+                    $taskName = Split-Path $taskPath -Leaf
+                    $taskFolder = Split-Path $taskPath -Parent
+                    $task = Get-ScheduledTask -TaskName $taskName -TaskPath "$taskFolder\" -ErrorAction SilentlyContinue
+                    if ($task -and $task.State -ne 'Disabled') {
+                        $items.Add(@{ ConfigType = 'telemetry'; Type = 'scheduledtask'; Name = $taskPath; TaskPath = "$taskFolder\"; TaskName = $taskName; CurrentState = $task.State.ToString(); DesiredState = 'Disabled' })
+                    }
+                }
+                catch { Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Task query failed '$taskPath': $_" }
+            }
+        }
+    }
+    # NO comma-wrap. `return , $arr` emits the array as ONE pipeline element, so a caller
+    # writing @(Get-...) gets a 1-element array CONTAINING the array instead of the items -
+    # and the callers below do exactly that. Returning it plainly lets the pipeline unroll,
+    # and the caller's @() then normalises 0/1/N uniformly. (Get-DiffList uses the comma
+    # because ITS callers use plain assignment, not @(). The two idioms must not be mixed.)
+    return $items.ToArray()
+}
+
+<#
+.SYNOPSIS
+    Phase A4 of the configuration audit: optimization baseline -> diff items.
+.DESCRIPTION
+    Extracted verbatim from Invoke-SystemConfigurationAudit. Covers services, power plan,
+    startup entries, visual effects and desktop background. Merges the common block with the
+    OS-specific (windows10 / windows11) block via OSContext.
+.OUTPUTS
+    [hashtable[]] diff items, every one tagged ConfigType = 'optimization'.
+#>
+function Get-OptimizationConfigurationDiff {
+    [CmdletBinding()]
+    [OutputType([hashtable[]])]
+    param(
+        [Parameter(Mandatory)] [AllowNull()] $Baseline,
+        [Parameter(Mandatory)] [hashtable]$OSContext
+    )
+    $items = [System.Collections.Generic.List[hashtable]]::new()
+    if ($Baseline -and $Baseline.common) {
+        Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message 'Auditing optimization settings...'
+
+        # Services to disable
+        $svcsToDisable = [System.Collections.Generic.List[string]]::new()
+        if ($Baseline.common.services.safeToDisable) { $Baseline.common.services.safeToDisable | ForEach-Object { $svcsToDisable.Add($_) } }
+        if ($OSContext.IsWindows11 -and $Baseline.windows11.services.safeToDisable) {
+            $Baseline.windows11.services.safeToDisable | ForEach-Object { $svcsToDisable.Add($_) }
+        }
+        elseif (-not $OSContext.IsWindows11 -and $Baseline.windows10.services.safeToDisable) {
+            $Baseline.windows10.services.safeToDisable | ForEach-Object { $svcsToDisable.Add($_) }
+        }
+        Compare-ServiceBaseline -ServiceNames @($svcsToDisable) -Action 'EnsureDisabled' | ForEach-Object {
+            $_.ConfigType = 'optimization'
+            $items.Add($_)
+        }
+
+        # Power plan
+        if ($Baseline.common.powerPlan.defaultPlan) {
+            $desiredPlan = $Baseline.common.powerPlan.defaultPlan
+            try {
+                $powercfg = Join-Path $env:SystemRoot 'System32\powercfg.exe'
+                $currentPlan = & $powercfg /getactivescheme 2>&1
+                if ($currentPlan -notmatch [regex]::Escape($desiredPlan)) {
+                    # foreach, NOT `| ForEach-Object`: the pipeline scriptblock gets its own
+                    # scope, so assigning $planGuid in there only updated a copy and the
+                    # lookup ALWAYS fell through to the hard-coded GUID below - i.e. the
+                    # baseline's defaultPlan name was effectively ignored. Same scope trap
+                    # as the old per-section counters.
+                    $planGuid = $null
+                    foreach ($line in (& $powercfg /list 2>&1)) {
+                        if ($line -match 'GUID:\s+([0-9a-f-]{36})\s+\(([^)]+)\)' -and $Matches[2] -like "*$desiredPlan*") {
+                            $planGuid = $Matches[1]
+                            break
+                        }
+                    }
+                    if (-not $planGuid) {
+                        Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Power plan '$desiredPlan' not found in powercfg /list - falling back to the High Performance GUID"
+                    }
+                    $items.Add(@{ ConfigType = 'optimization'; Type = 'powerplan'; Name = 'ActivePlan'; GUID = $planGuid ?? '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'; CurrentState = "$currentPlan"; DesiredState = $desiredPlan })
+                }
+            }
+            catch { Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Power plan query failed: $_" }
+        }
+
+        # Startup programs
+        if ($Baseline.common.startupPrograms) {
+            $safePatterns = $Baseline.common.startupPrograms.safeToDisablePatterns ?? @()
+            $neverDisable = $Baseline.common.startupPrograms.neverDisable ?? @()
+            $runPaths = @(
+                'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
+                'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
+            )
+            foreach ($runPath in $runPaths) {
+                try {
+                    $props = Get-ItemProperty -Path $runPath -ErrorAction SilentlyContinue
+                    if (-not $props) { continue }
+                    $props.PSObject.Properties | Where-Object { $_.Name -notlike 'PS*' } | ForEach-Object {
+                        $entryName = $_.Name
+                        $isSafe = $false
+                        foreach ($pattern in $safePatterns) { if ($entryName -like $pattern) { $isSafe = $true; break } }
+                        if (-not $isSafe) { continue }
+                        $isProtected = $false
+                        foreach ($pattern in $neverDisable) { if ($entryName -like $pattern) { $isProtected = $true; break } }
+                        if ($isProtected) { continue }
+                        $items.Add(@{ ConfigType = 'optimization'; Type = 'startup'; Name = $entryName; RegistryPath = $runPath; CurrentState = 'Enabled'; DesiredState = 'Disabled' })
+                    }
+                }
+                catch { Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Failed to read $runPath : $_" }
+            }
+        }
+
+        # Visual effects.
+        #
+        # The baseline's visualEffects block used to be DECORATIVE: the audit hardcoded
+        # DesiredState = 3 and the Type2 arm hardcoded all six registry writes. Every value
+        # happened to match the JSON, so the behaviour was correct - but editing the JSON
+        # changed nothing, which is the more dangerous kind of wrong. The declared values are
+        # now threaded through the diff item and read by the apply arm.
+        #
+        # 'preset' maps to Windows' VisualFXSetting: 0 = let Windows choose, 1 = best
+        # appearance, 2 = best performance, 3 = custom. 'balanced' is this project's own word
+        # for "custom mix of the five toggles below", hence 3.
+        if ($Baseline.common.visualEffects) {
+            $vfx = $Baseline.common.visualEffects
+            $desiredFx = switch ("$($vfx.preset)".ToLowerInvariant()) {
+                'auto' { 0 }
+                'appearance' { 1 }
+                'performance' { 2 }
+                'balanced' { 3 }
+                default { 3 }
+            }
+            $visualPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects'
+            $currentVisual = Get-RegistryValue -Path $visualPath -Name 'VisualFXSetting'
+            if ($null -eq $currentVisual -or $currentVisual -ne $desiredFx) {
+                $items.Add(@{
+                        ConfigType   = 'optimization'
+                        Type         = 'visualfx'
+                        Name         = 'VisualFXSetting'
+                        CurrentState = $currentVisual
+                        DesiredState = $desiredFx
+                        # Individual toggles, read by the Type2 arm instead of being hardcoded
+                        # there. Defaults preserve the previous behaviour when a key is absent.
+                        DisableAnimations        = [bool]($vfx.disableAnimations ?? $true)
+                        DisableShadows           = [bool]($vfx.disableShadows ?? $true)
+                        EnableSmoothEdges        = [bool]($vfx.enableSmoothEdges ?? $true)
+                        ShowWindowContents       = [bool]($vfx.enableShowWindowContents ?? $true)
+                        DisableTransparency      = [bool]($vfx.disableTransparency ?? $true)
+                    })
+            }
+        }
+
+        # Desktop background (Spotlight -> Picture)
+        if ($Baseline.common.background.type -eq 'Picture') {
+            $cdmPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
+            $spotlightEnabled = Get-RegistryValue -Path $cdmPath -Name 'RotatingLockScreenEnabled'
+            $cdmSubscriptions = Get-RegistryValue -Path $cdmPath -Name 'SubscribedContent-338387Enabled'
+            if ($spotlightEnabled -eq 1 -or $cdmSubscriptions -eq 1) {
+                $items.Add(@{ ConfigType = 'optimization'; Type = 'background'; Name = 'DesktopBackground'; CurrentState = 'Spotlight'; DesiredState = 'Picture' })
+            }
+        }
+    }
+    # Plain return, no comma-wrap - the caller uses @(). See Get-SecurityConfigurationDiff.
+    return $items.ToArray()
+}
+
+<#
+.SYNOPSIS
+    Phase A1 of the configuration audit: restore point create + prune -> diff items.
+.DESCRIPTION
+    Extracted verbatim from Invoke-SystemConfigurationAudit.
+
+    The 'create' item is queued UNCONDITIONALLY (unless skipped by config). It is the rollback
+    safety net for every other change in the run, AND it is what guarantees this pair's diff is
+    never empty - so Stage 2 always schedules the Type2 module. Get-ConfigItemRank then sorts
+    create to rank 0 and prune to rank 4, so creation precedes every mutation and the
+    destructive prune happens only after everything else succeeded.
+
+    Unlike the other phase helpers this returns a RESULT OBJECT, not a bare item array: the
+    caller also needs the enumerated restore points and the prune count for the report JSON
+    and ExtraData. A hashtable return also sidesteps pipeline unrolling entirely.
+.OUTPUTS
+    [hashtable] @{ Items = [hashtable[]]; RestorePoints = [object[]]; ToRemove = [int] }
+#>
+function Get-RestorePointConfigurationDiff {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter()] [bool]$SkipRestorePoint,
+        [Parameter()] [int]$MinimumToKeep = 5,
+        [Parameter()] [int]$AllocationGB = 10
+    )
+    $items = [System.Collections.Generic.List[hashtable]]::new()
+    $restorePoints = @()
+    $toRemove = 0
+
+    # Queued FIRST so the create item is the first thing Type2 sees. The 'create'
+    # item is queued UNCONDITIONALLY (unless skipped by config): it is the rollback
+    # safety net for every other change in this run, and it also guarantees this
+    # pair's diff is never empty, so Stage 2 always schedules Type2.
+    if ($SkipRestorePoint) {
+        Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Restore point management skipped (config: skipRestorePointManagement)'
+    }
+    else {
+        try {
+            $restorePoints = Get-SystemRestorePointList
+            Write-Log -Level INFO -Component CONFIG-AUDIT -Message "Current restore points: $($restorePoints.Count)"
+
+            # Create a fresh one every run.
+            $items.Add(@{
+                    ConfigType   = 'restorepoint'
+                    Type         = 'restorepoint'
+                    Action       = 'create'
+                    Name         = 'CreateRestorePoint'
+                    Description  = "Maintenance: $([datetime]::Now.ToString('yyyy-MM-dd HH:mm'))"
+                    AllocationGB = $AllocationGB
+                })
+
+            # Prune anything beyond the newest $MinimumToKeep.
+            if ($restorePoints.Count -gt $MinimumToKeep) {
+                foreach ($point in $restorePoints[$MinimumToKeep..($restorePoints.Count - 1)]) {
+                    $items.Add(@{
+                            ConfigType       = 'restorepoint'
+                            Type             = 'restorepoint'
+                            Action           = 'remove'
+                            Name             = "RestorePoint-$($point.SequenceNumber)"
+                            ShadowId         = $point.ShadowId
+                            SequenceNumber   = $point.SequenceNumber
+                            Description      = $point.Description
+                            CreationTime     = $point.CreationTimeText
+                            EventType        = $point.EventType
+                            RestorePointType = $point.RestorePointType
+                        })
+                    $toRemove++
+                    Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message "Marked for removal: $($point.Description) (seq: $($point.SequenceNumber), created: $($point.CreationTimeText))"
+                }
+            }
+            Write-Log -Level INFO -Component CONFIG-AUDIT -Message "Restore points: $($restorePoints.Count) current, $toRemove to prune, 1 to create"
+        }
+        catch {
+            # A failed restore point QUERY must not cost us the create action - that is
+            # the safety net. Queue the create anyway and carry on with the rest.
+            Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Could not enumerate restore points: $_ - queuing create only"
+            $items.Add(@{
+                    ConfigType   = 'restorepoint'
+                    Type         = 'restorepoint'
+                    Action       = 'create'
+                    Name         = 'CreateRestorePoint'
+                    Description  = "Maintenance: $([datetime]::Now.ToString('yyyy-MM-dd HH:mm'))"
+                    AllocationGB = $AllocationGB
+                })
+        }
+    }
+
+    return @{
+        Items         = $items.ToArray()
+        RestorePoints = $restorePoints
+        ToRemove      = $toRemove
+    }
+}
+
 #region ─── MAIN AUDIT ────────────────────────────────────────────────────────
 
 function Invoke-SystemConfigurationAudit {
@@ -552,304 +986,25 @@ function Invoke-SystemConfigurationAudit {
         # ══════════════════════════════════════════════════════════════════════
 
         # ═══ A1. RESTORE POINTS ══════════════════════════════════════════════
-        # Queued FIRST so the create item is the first thing Type2 sees. The 'create'
-        # item is queued UNCONDITIONALLY (unless skipped by config): it is the rollback
-        # safety net for every other change in this run, and it also guarantees this
-        # pair's diff is never empty, so Stage 2 always schedules Type2.
-        if ($skipRestorePoint) {
-            Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Restore point management skipped (config: skipRestorePointManagement)'
-        }
-        else {
-            try {
-                $restorePoints = Get-SystemRestorePointList
-                Write-Log -Level INFO -Component CONFIG-AUDIT -Message "Current restore points: $($restorePoints.Count)"
-
-                # Create a fresh one every run.
-                $diff.Add(@{
-                        ConfigType   = 'restorepoint'
-                        Type         = 'restorepoint'
-                        Action       = 'create'
-                        Name         = 'CreateRestorePoint'
-                        Description  = "Maintenance: $([datetime]::Now.ToString('yyyy-MM-dd HH:mm'))"
-                        AllocationGB = $allocationGB
-                    })
-
-                # Prune anything beyond the newest $minToKeep.
-                if ($restorePoints.Count -gt $minToKeep) {
-                    foreach ($point in $restorePoints[$minToKeep..($restorePoints.Count - 1)]) {
-                        $diff.Add(@{
-                                ConfigType       = 'restorepoint'
-                                Type             = 'restorepoint'
-                                Action           = 'remove'
-                                Name             = "RestorePoint-$($point.SequenceNumber)"
-                                ShadowId         = $point.ShadowId
-                                SequenceNumber   = $point.SequenceNumber
-                                Description      = $point.Description
-                                CreationTime     = $point.CreationTimeText
-                                EventType        = $point.EventType
-                                RestorePointType = $point.RestorePointType
-                            })
-                        $rpToRemove++
-                        Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message "Marked for removal: $($point.Description) (seq: $($point.SequenceNumber), created: $($point.CreationTimeText))"
-                    }
-                }
-                Write-Log -Level INFO -Component CONFIG-AUDIT -Message "Restore points: $($restorePoints.Count) current, $rpToRemove to prune, 1 to create"
-            }
-            catch {
-                # A failed restore point QUERY must not cost us the create action - that is
-                # the safety net. Queue the create anyway and carry on with the rest.
-                Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Could not enumerate restore points: $_ - queuing create only"
-                $diff.Add(@{
-                        ConfigType   = 'restorepoint'
-                        Type         = 'restorepoint'
-                        Action       = 'create'
-                        Name         = 'CreateRestorePoint'
-                        Description  = "Maintenance: $([datetime]::Now.ToString('yyyy-MM-dd HH:mm'))"
-                        AllocationGB = $allocationGB
-                    })
-            }
-        }
+        # ═══ A1. RESTORE POINTS ══════════════════════════════════════════════
+        $rpAudit = Get-RestorePointConfigurationDiff -SkipRestorePoint $skipRestorePoint `
+            -MinimumToKeep $minToKeep -AllocationGB $allocationGB
+        foreach ($item in @($rpAudit.Items)) { $diff.Add($item) }
+        $restorePoints = @($rpAudit.RestorePoints)
+        $rpToRemove = $rpAudit.ToRemove
 
         # ═══ A2. SECURITY ════════════════════════════════════════════════════
         $securityBaseline = Get-BaselineList -ModuleFolder 'security' -FileName 'security-baseline.json'
-        if ($securityBaseline) {
-            Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message 'Auditing security settings...'
-
-            # Security registry (with fallback detection)
-            if ($securityBaseline.registry) {
-                Compare-RegistryBaselineWithFallback -Entries @($securityBaseline.registry) | ForEach-Object {
-                    $_.ConfigType = 'security'
-                    $diff.Add($_)
-                }
-            }
-
-            # Services that must be running / disabled for a hardened baseline
-            if ($securityBaseline.services.ensureDisabled) {
-                Compare-ServiceBaseline -ServiceNames @($securityBaseline.services.ensureDisabled) -Action 'EnsureDisabled' | ForEach-Object {
-                    $_.ConfigType = 'security'
-                    $diff.Add($_)
-                }
-            }
-            if ($securityBaseline.services.ensureRunning) {
-                Compare-ServiceBaseline -ServiceNames @($securityBaseline.services.ensureRunning) -Action 'EnsureRunning' | ForEach-Object {
-                    $_.ConfigType = 'security'
-                    $diff.Add($_)
-                }
-            }
-
-            # Windows Defender feature checks
-            if ($securityBaseline.windowsDefender) {
-                $wd = $securityBaseline.windowsDefender
-                try {
-                    $mpStatus = Get-MpComputerStatus -ErrorAction Stop
-                    if ($wd.realTimeProtection -and -not $mpStatus.RealTimeProtectionEnabled) {
-                        $diff.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'RealTimeProtection'; Feature = 'RealTimeProtection'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
-                        Write-Log -Level WARN -Component CONFIG-AUDIT -Message 'Defender: Real-time protection DISABLED'
-                    }
-                    if (-not $mpStatus.AntivirusEnabled) {
-                        $diff.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'AntivirusEnabled'; Feature = 'AntivirusEnabled'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
-                    }
-                }
-                catch {
-                    Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Defender status query failed: $_"
-                }
-                try {
-                    $mpPrefs = Get-MpPreference -ErrorAction Stop
-                    if ($wd.cloudProtection -and $mpPrefs.MAPSReporting -eq 0) {
-                        $diff.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'CloudProtection'; Feature = 'CloudProtection'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
-                    }
-                    if ($wd.networkProtection -and $mpPrefs.EnableNetworkProtection -eq 0) {
-                        $diff.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'NetworkProtection'; Feature = 'NetworkProtection'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
-                    }
-                    if ($wd.pua -and $mpPrefs.PUAProtection -eq 0) {
-                        $diff.Add(@{ ConfigType = 'security'; Type = 'defender'; Name = 'PUAProtection'; Feature = 'PUAProtection'; ShouldEnable = $true; CurrentState = $false; DesiredState = $true })
-                    }
-                }
-                catch {
-                    Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Defender preference query failed: $_"
-                }
-            }
-
-            # Firewall profiles
-            if ($securityBaseline.firewall.enabled) {
-                try {
-                    $fwProfiles = Get-NetFirewallProfile -ErrorAction Stop
-                    foreach ($profileName in @('Domain', 'Private', 'Public')) {
-                        $key = $profileName.ToLowerInvariant()
-                        if ($securityBaseline.firewall.enabled.$key) {
-                            $prof = $fwProfiles | Where-Object { $_.Name -eq $profileName }
-                            if ($prof -and -not $prof.Enabled) {
-                                $diff.Add(@{ ConfigType = 'security'; Type = 'firewall'; Name = "Firewall.$profileName"; Profile = $profileName; CurrentState = $false; DesiredState = $true })
-                            }
-                        }
-                    }
-                }
-                catch { Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Firewall query failed: $_" }
-            }
-
-            # ── Local security policy: CIS 1.1 password + 1.2 account lockout ────
-            # These are NOT registry values - they live in the Local Security Policy
-            # database and are only reachable via secedit. The baseline has declared a
-            # securityPolicy block for a long time but NOTHING read it, so every one of
-            # these CIS rules stayed non-compliant no matter how often the run completed.
-            if ($securityBaseline.securityPolicy -and -not $skipPasswordPolicy) {
-                Compare-SecurityPolicyBaseline -Baseline $securityBaseline.securityPolicy | ForEach-Object {
-                    $_.ConfigType = 'security'
-                    $diff.Add($_)
-                }
-            }
-            elseif ($skipPasswordPolicy) {
-                Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Password/lockout policy skipped (config: skipPasswordPolicy)'
-            }
-
-            # ── Advanced audit policy: CIS 17.x ──────────────────────────────────
-            # Same story: auditpol-only, declared in the baseline, never consumed.
-            if ($securityBaseline.auditPolicy -and -not $skipAuditPolicy) {
-                Compare-AuditPolicyBaseline -Baseline $securityBaseline.auditPolicy | ForEach-Object {
-                    $_.ConfigType = 'security'
-                    $diff.Add($_)
-                }
-            }
-            elseif ($skipAuditPolicy) {
-                Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Advanced audit policy skipped (config: skipAuditPolicy)'
-            }
-
-            # Sysmon presence check (installed via SystemConfiguration Type2 with sysmonconfig.xml)
-            $sysmonSvc = Get-Service -Name 'Sysmon', 'Sysmon64' -ErrorAction SilentlyContinue | Select-Object -First 1
-            if (-not $sysmonSvc) {
-                $diff.Add(@{ ConfigType = 'security'; Type = 'sysmon'; Name = 'Sysmon'; CurrentState = 'NotInstalled'; DesiredState = 'Installed' })
-                Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Sysmon not installed - queued for install'
-            }
-        }
+        foreach ($item in @(Get-SecurityConfigurationDiff -Baseline $securityBaseline `
+                    -SkipPasswordPolicy $skipPasswordPolicy -SkipAuditPolicy $skipAuditPolicy)) { $diff.Add($item) }
 
         # ═══ A3. TELEMETRY / PRIVACY ═════════════════════════════════════════
         $telemetryBaseline = Get-BaselineList -ModuleFolder 'telemetry' -FileName 'telemetry-list.json'
-        if ($telemetryBaseline) {
-            Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message 'Auditing telemetry/privacy settings...'
-
-            if ($telemetryBaseline.services.disable) {
-                Compare-ServiceBaseline -ServiceNames @($telemetryBaseline.services.disable) -Action 'EnsureDisabled' | ForEach-Object {
-                    $_.ConfigType = 'telemetry'
-                    $diff.Add($_)
-                }
-            }
-
-            if ($telemetryBaseline.registry) {
-                foreach ($grp in @('telemetry', 'advertising', 'cortana', 'privacy')) {
-                    if (-not $telemetryBaseline.registry.$grp) { continue }
-                    Compare-RegistryBaselineWithFallback -Entries @($telemetryBaseline.registry.$grp) | ForEach-Object {
-                        $_.ConfigType = 'telemetry'
-                        $diff.Add($_)
-                    }
-                }
-            }
-
-            if ($telemetryBaseline.scheduledTasks.disable) {
-                foreach ($taskPath in $telemetryBaseline.scheduledTasks.disable) {
-                    try {
-                        $taskName = Split-Path $taskPath -Leaf
-                        $taskFolder = Split-Path $taskPath -Parent
-                        $task = Get-ScheduledTask -TaskName $taskName -TaskPath "$taskFolder\" -ErrorAction SilentlyContinue
-                        if ($task -and $task.State -ne 'Disabled') {
-                            $diff.Add(@{ ConfigType = 'telemetry'; Type = 'scheduledtask'; Name = $taskPath; TaskPath = "$taskFolder\"; TaskName = $taskName; CurrentState = $task.State.ToString(); DesiredState = 'Disabled' })
-                        }
-                    }
-                    catch { Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Task query failed '$taskPath': $_" }
-                }
-            }
-        }
+        foreach ($item in @(Get-TelemetryConfigurationDiff -Baseline $telemetryBaseline)) { $diff.Add($item) }
 
         # ═══ A4. OPTIMIZATION ════════════════════════════════════════════════
         $optBaseline = Get-BaselineList -ModuleFolder 'system-optimization' -FileName 'system-optimization-config.json'
-        if ($optBaseline -and $optBaseline.common) {
-            Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message 'Auditing optimization settings...'
-
-            # Services to disable
-            $svcsToDisable = [System.Collections.Generic.List[string]]::new()
-            if ($optBaseline.common.services.safeToDisable) { $optBaseline.common.services.safeToDisable | ForEach-Object { $svcsToDisable.Add($_) } }
-            if ($osCtx.IsWindows11 -and $optBaseline.windows11.services.safeToDisable) {
-                $optBaseline.windows11.services.safeToDisable | ForEach-Object { $svcsToDisable.Add($_) }
-            }
-            elseif (-not $osCtx.IsWindows11 -and $optBaseline.windows10.services.safeToDisable) {
-                $optBaseline.windows10.services.safeToDisable | ForEach-Object { $svcsToDisable.Add($_) }
-            }
-            Compare-ServiceBaseline -ServiceNames @($svcsToDisable) -Action 'EnsureDisabled' | ForEach-Object {
-                $_.ConfigType = 'optimization'
-                $diff.Add($_)
-            }
-
-            # Power plan
-            if ($optBaseline.common.powerPlan.defaultPlan) {
-                $desiredPlan = $optBaseline.common.powerPlan.defaultPlan
-                try {
-                    $powercfg = Join-Path $env:SystemRoot 'System32\powercfg.exe'
-                    $currentPlan = & $powercfg /getactivescheme 2>&1
-                    if ($currentPlan -notmatch [regex]::Escape($desiredPlan)) {
-                        # foreach, NOT `| ForEach-Object`: the pipeline scriptblock gets its own
-                        # scope, so assigning $planGuid in there only updated a copy and the
-                        # lookup ALWAYS fell through to the hard-coded GUID below - i.e. the
-                        # baseline's defaultPlan name was effectively ignored. Same scope trap
-                        # as the old per-section counters.
-                        $planGuid = $null
-                        foreach ($line in (& $powercfg /list 2>&1)) {
-                            if ($line -match 'GUID:\s+([0-9a-f-]{36})\s+\(([^)]+)\)' -and $Matches[2] -like "*$desiredPlan*") {
-                                $planGuid = $Matches[1]
-                                break
-                            }
-                        }
-                        if (-not $planGuid) {
-                            Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Power plan '$desiredPlan' not found in powercfg /list - falling back to the High Performance GUID"
-                        }
-                        $diff.Add(@{ ConfigType = 'optimization'; Type = 'powerplan'; Name = 'ActivePlan'; GUID = $planGuid ?? '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'; CurrentState = "$currentPlan"; DesiredState = $desiredPlan })
-                    }
-                }
-                catch { Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Power plan query failed: $_" }
-            }
-
-            # Startup programs
-            if ($optBaseline.common.startupPrograms) {
-                $safePatterns = $optBaseline.common.startupPrograms.safeToDisablePatterns ?? @()
-                $neverDisable = $optBaseline.common.startupPrograms.neverDisable ?? @()
-                $runPaths = @(
-                    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
-                    'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
-                )
-                foreach ($runPath in $runPaths) {
-                    try {
-                        $props = Get-ItemProperty -Path $runPath -ErrorAction SilentlyContinue
-                        if (-not $props) { continue }
-                        $props.PSObject.Properties | Where-Object { $_.Name -notlike 'PS*' } | ForEach-Object {
-                            $entryName = $_.Name
-                            $isSafe = $false
-                            foreach ($pattern in $safePatterns) { if ($entryName -like $pattern) { $isSafe = $true; break } }
-                            if (-not $isSafe) { continue }
-                            $isProtected = $false
-                            foreach ($pattern in $neverDisable) { if ($entryName -like $pattern) { $isProtected = $true; break } }
-                            if ($isProtected) { continue }
-                            $diff.Add(@{ ConfigType = 'optimization'; Type = 'startup'; Name = $entryName; RegistryPath = $runPath; CurrentState = 'Enabled'; DesiredState = 'Disabled' })
-                        }
-                    }
-                    catch { Write-Log -Level WARN -Component CONFIG-AUDIT -Message "Failed to read $runPath : $_" }
-                }
-            }
-
-            # Visual effects
-            $visualPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects'
-            $currentVisual = Get-RegistryValue -Path $visualPath -Name 'VisualFXSetting'
-            if ($null -eq $currentVisual -or $currentVisual -ne 3) {
-                $diff.Add(@{ ConfigType = 'optimization'; Type = 'visualfx'; Name = 'VisualFXSetting'; CurrentState = $currentVisual; DesiredState = 3 })
-            }
-
-            # Desktop background (Spotlight -> Picture)
-            if ($optBaseline.common.background.type -eq 'Picture') {
-                $cdmPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager'
-                $spotlightEnabled = Get-RegistryValue -Path $cdmPath -Name 'RotatingLockScreenEnabled'
-                $cdmSubscriptions = Get-RegistryValue -Path $cdmPath -Name 'SubscribedContent-338387Enabled'
-                if ($spotlightEnabled -eq 1 -or $cdmSubscriptions -eq 1) {
-                    $diff.Add(@{ ConfigType = 'optimization'; Type = 'background'; Name = 'DesktopBackground'; CurrentState = 'Spotlight'; DesiredState = 'Picture' })
-                }
-            }
-        }
+        foreach ($item in @(Get-OptimizationConfigurationDiff -Baseline $optBaseline -OSContext $osCtx)) { $diff.Add($item) }
 
         # ── Counts are derived from the finished diff, never incremented inside a
         #    ForEach-Object: that scriptblock gets its own scope, so `$n++` in there
