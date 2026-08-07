@@ -151,6 +151,146 @@ Describe 'Get-SecurityConfigurationDiff' {
     }
 }
 
+Describe 'Get-RestorePointConfigurationDiff' {
+    # This one guards the rollback safety net. If the 'create' item stops being queued
+    # unconditionally, two things break at once: the run loses its restore point, AND the
+    # SystemConfiguration diff can become empty - at which point Stage 2 skips the whole pair
+    # and none of the security/telemetry/optimization work runs either.
+
+    Context 'the create item is unconditional' {
+        It 'queues exactly one create when there are no existing restore points' {
+            InModuleScope SystemConfigurationAudit {
+                Mock Get-SystemRestorePointList { @() }
+                $r = Get-RestorePointConfigurationDiff -SkipRestorePoint $false -MinimumToKeep 5
+                $create = @($r.Items | Where-Object { $_.Action -eq 'create' })
+                $create.Count | Should -Be 1
+                $create[0].ConfigType | Should -Be 'restorepoint'
+                $r.ToRemove | Should -Be 0
+            }
+        }
+
+        It 'still queues the create when enumeration THROWS' {
+            # A failed query must not cost the run its safety net.
+            InModuleScope SystemConfigurationAudit {
+                Mock Get-SystemRestorePointList { throw 'WMI unavailable' }
+                $r = Get-RestorePointConfigurationDiff -SkipRestorePoint $false
+                @($r.Items | Where-Object { $_.Action -eq 'create' }).Count | Should -Be 1 `
+                    -Because 'the rollback net must survive a failed enumeration'
+                @($r.Items | Where-Object { $_.Action -eq 'remove' }).Count | Should -Be 0
+            }
+        }
+
+        It 'queues nothing at all when management is skipped by config' {
+            InModuleScope SystemConfigurationAudit {
+                Mock Get-SystemRestorePointList { @() }
+                $r = Get-RestorePointConfigurationDiff -SkipRestorePoint $true
+                @($r.Items).Count | Should -Be 0
+                Should -Invoke Get-SystemRestorePointList -Times 0 -Exactly
+            }
+        }
+    }
+
+    Context 'pruning' {
+        It 'keeps MinimumToKeep and queues the rest for removal' {
+            InModuleScope SystemConfigurationAudit {
+                Mock Get-SystemRestorePointList {
+                    1..8 | ForEach-Object {
+                        [pscustomobject]@{ SequenceNumber = $_; ShadowId = "id$_"; Description = "rp$_"
+                            CreationTimeText = '2026-08-01'; EventType = 'BEGIN'; RestorePointType = 'MODIFY'
+                        }
+                    }
+                }
+                $r = Get-RestorePointConfigurationDiff -SkipRestorePoint $false -MinimumToKeep 5
+                $r.ToRemove | Should -Be 3 -Because '8 points minus the 5 newest kept'
+                @($r.Items | Where-Object { $_.Action -eq 'remove' }).Count | Should -Be 3
+                @($r.Items | Where-Object { $_.Action -eq 'create' }).Count | Should -Be 1
+                @($r.RestorePoints).Count | Should -Be 8 -Because 'the caller needs these for the report'
+            }
+        }
+
+        It 'prunes nothing when the count is at or below the threshold' {
+            InModuleScope SystemConfigurationAudit {
+                Mock Get-SystemRestorePointList {
+                    1..5 | ForEach-Object { [pscustomobject]@{ SequenceNumber = $_; Description = "rp$_" } }
+                }
+                $r = Get-RestorePointConfigurationDiff -SkipRestorePoint $false -MinimumToKeep 5
+                $r.ToRemove | Should -Be 0
+                @($r.Items).Count | Should -Be 1 -Because 'only the create item'
+            }
+        }
+    }
+
+    Context 'result shape' {
+        It 'returns a hashtable carrying Items, RestorePoints and ToRemove' {
+            InModuleScope SystemConfigurationAudit {
+                Mock Get-SystemRestorePointList { @() }
+                $r = Get-RestorePointConfigurationDiff -SkipRestorePoint $false
+                $r | Should -BeOfType [hashtable]
+                foreach ($k in 'Items', 'RestorePoints', 'ToRemove') {
+                    $r.ContainsKey($k) | Should -BeTrue -Because "the caller reads '$k'"
+                }
+            }
+        }
+    }
+}
+
+Describe 'Get-OptimizationConfigurationDiff' {
+
+    It 'returns an empty array for a null baseline' {
+        InModuleScope SystemConfigurationAudit {
+            @(Get-OptimizationConfigurationDiff -Baseline $null -OSContext @{ IsWindows11 = $true }).Count |
+                Should -Be 0
+        }
+    }
+
+    It 'returns an empty array when the baseline has no .common block' {
+        InModuleScope SystemConfigurationAudit {
+            @(Get-OptimizationConfigurationDiff -Baseline @{ windows11 = @{} } -OSContext @{ IsWindows11 = $true }).Count |
+                Should -Be 0
+        }
+    }
+
+    It "tags service items ConfigType 'optimization'" {
+        InModuleScope SystemConfigurationAudit {
+            Mock Compare-ServiceBaseline { @(@{ Type = 'service'; Name = 'SysMain' }) }
+            $r = @(Get-OptimizationConfigurationDiff `
+                    -Baseline @{ common = @{ services = @{ safeToDisable = @('SysMain') } } } `
+                    -OSContext @{ IsWindows11 = $true })
+            @($r | Where-Object { $_.Type -eq 'service' }).Count | Should -BeGreaterThan 0
+            foreach ($i in $r) { $i.ConfigType | Should -Be 'optimization' }
+        }
+    }
+
+    It 'merges the OS-specific service list with the common one' {
+        InModuleScope SystemConfigurationAudit {
+            $script:seen = $null
+            Mock Compare-ServiceBaseline { $script:seen = $ServiceNames; @() }
+            $null = Get-OptimizationConfigurationDiff -Baseline @{
+                common    = @{ services = @{ safeToDisable = @('CommonSvc') } }
+                windows11 = @{ services = @{ safeToDisable = @('Win11Svc') } }
+                windows10 = @{ services = @{ safeToDisable = @('Win10Svc') } }
+            } -OSContext @{ IsWindows11 = $true }
+            $script:seen | Should -Contain 'CommonSvc'
+            $script:seen | Should -Contain 'Win11Svc'
+            $script:seen | Should -Not -Contain 'Win10Svc' -Because 'OSContext says Windows 11'
+        }
+    }
+
+    It 'picks the windows10 list when OSContext is not Windows 11' {
+        InModuleScope SystemConfigurationAudit {
+            $script:seen = $null
+            Mock Compare-ServiceBaseline { $script:seen = $ServiceNames; @() }
+            $null = Get-OptimizationConfigurationDiff -Baseline @{
+                common    = @{ services = @{ safeToDisable = @('CommonSvc') } }
+                windows11 = @{ services = @{ safeToDisable = @('Win11Svc') } }
+                windows10 = @{ services = @{ safeToDisable = @('Win10Svc') } }
+            } -OSContext @{ IsWindows11 = $false }
+            $script:seen | Should -Contain 'Win10Svc'
+            $script:seen | Should -Not -Contain 'Win11Svc'
+        }
+    }
+}
+
 Describe 'Get-TelemetryConfigurationDiff' {
 
     It 'returns an empty array for a null baseline' {
