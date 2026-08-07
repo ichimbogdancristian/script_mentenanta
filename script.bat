@@ -941,7 +941,7 @@ IF "!WINGET_AVAILABLE!"=="YES" (
 
 REM ============================================================================
 REM PowerShell 7 Installation - Enhanced Strategy (v2.0)
-REM Method priority: GitHub MSI (most reliable) → Winget → Chocolatey
+REM Method priority: GitHub MSI (most reliable) ? Winget ? Chocolatey
 REM Path verification: 4-tier system for all installation types
 REM ============================================================================
 
@@ -1147,32 +1147,20 @@ FOR /F "tokens=*" %%V IN ('"!PS7_EXECUTABLE!" -Command "$PSVersionTable.PSVersio
 :PS7_COMPLETE
 
 REM -----------------------------------------------------------------------------
-REM PowerShell Module Dependencies (PSWindowsUpdate for Windows Update management)
+REM PowerShell Module Dependencies (PSWindowsUpdate)
 REM -----------------------------------------------------------------------------
-REM The probe MUST set a non-zero exit code when the module is missing. Write-Host does not
-REM affect $LASTEXITCODE, so the old probe ("...else { Write-Host 'MISSING' }") always exited 0
-REM and this block always took the "already installed" branch - the install below never ran on
-REM ANY machine. WindowsUpdates (Type2) then always fell through to its usoclient fallback.
-REM 'exit 1' in the else branch is what makes the ERRORLEVEL test below meaningful.
+REM MOVED to the orchestrator's Stage 0 preflight (Install-PSWindowsUpdateModule in
+REM MaintenanceOrchestrator.ps1). It was a 616-character `pwsh -Command "..."` string here:
+REM unlintable, untestable, and with no error handling beyond ERRORLEVEL. Everything past
+REM :PS7_COMPLETE runs with pwsh already proven present, so it does not have to be batch.
 REM
-REM Scope is ALLUSERS, not CurrentUser: the monthly task runs as SYSTEM, which has its own
-REM profile (C:\Windows\system32\config\systemprofile) and cannot see a per-user module the
-REM interactive admin installed. AllUsers lands in %ProgramFiles%\PowerShell\Modules, which is
-REM on PSModulePath for every account including SYSTEM. (A redirected/OneDrive Documents
-REM folder makes the CurrentUser path even less predictable.)
-CALL :LOG_MESSAGE "Checking PSWindowsUpdate module availability..." "INFO" "LAUNCHER"
-pwsh.exe -NoProfile -Command "if (Get-Module -ListAvailable -Name PSWindowsUpdate) { exit 0 } else { exit 1 }" >nul 2>&1
-IF !ERRORLEVEL! EQU 0 (
-    CALL :LOG_MESSAGE "PSWindowsUpdate module is already installed" "SUCCESS" "LAUNCHER"
-) ELSE (
-    CALL :LOG_MESSAGE "PSWindowsUpdate module not found. Installing (AllUsers)..." "INFO" "LAUNCHER"
-    pwsh.exe -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Install-PackageProvider -Name NuGet -Force -Scope AllUsers -ErrorAction Stop | Out-Null; Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue; Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -Repository PSGallery -AllowClobber -ErrorAction Stop; if (Get-Module -ListAvailable -Name PSWindowsUpdate) { exit 0 } else { exit 1 } } catch { Write-Host $_.Exception.Message; exit 1 }"
-    IF !ERRORLEVEL! EQU 0 (
-        CALL :LOG_MESSAGE "PSWindowsUpdate module installed successfully" "SUCCESS" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "PSWindowsUpdate install failed - WindowsUpdates will use the built-in Windows Update COM API instead" "WARN" "LAUNCHER"
-    )
-)
+REM Nothing in the launcher depends on PSWindowsUpdate. The only consumer is the
+REM WindowsUpdates Type2 module in Stage 3, and even there it is a fallback - the primary
+REM path is the Windows Update COM API. The AllUsers scope rationale moved with the code.
+REM
+REM (The pending-reboot probe near the top of this script also prefers PSWindowsUpdate when
+REM present, but it runs long before this point and already falls back to registry reboot
+REM signals - that ordering is unchanged by this move.)
 
 REM -----------------------------------------------------------------------------
 REM Windows Defender Exclusions (Moved after PowerShell installation)
@@ -1184,8 +1172,29 @@ REM folder (%ORIGINAL_SCRIPT_DIR%, e.g. the Desktop), which is never covered by 
 REM exclusion. A batch file that self-elevates, downloads a zip from GitHub, extracts it and
 REM launches PowerShell is exactly the heuristic Defender flags, so excluding only the
 REM extracted subfolder still leaves script.bat itself exposed on every run.
+REM This stays in the launcher ON PURPOSE, and must not be moved into the orchestrator's
+REM Stage 0 preflight the way the PSWindowsUpdate install was. The exclusions have to be in
+REM place BEFORE pwsh.exe starts and BEFORE the orchestrator imports its modules out of the
+REM extracted tree - both of which happen before any orchestrator code could run. Moving the
+REM add would leave the process launch and the module load unprotected, which is strictly
+REM worse than today. Stage 5 still removes them (Remove-DefenderSessionExclusions).
+REM
+REM The result is captured into the log rather than only echoed: this call used to Write-Host
+REM 'EXCLUSIONS_ADDED'/'EXCLUSIONS_FAILED' to a console nobody reads on an unattended run, so
+REM a failure to exclude - the thing most likely to make Defender interfere with the run -
+REM left no trace anywhere in maintenance.log.
 CALL :LOG_MESSAGE "Setting up Windows Defender exclusions..." "INFO" "LAUNCHER"
-powershell -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionPath '%ORIGINAL_SCRIPT_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Host 'EXCLUSIONS_ADDED' } catch { Write-Host 'EXCLUSIONS_FAILED' }"
+SET "EXCL_RESULT="
+FOR /F "usebackq tokens=* delims=" %%i IN (`powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Add-MpPreference -ExclusionPath '%WORKING_DIR%' -ErrorAction Stop; Add-MpPreference -ExclusionPath '%ORIGINAL_SCRIPT_DIR%' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'powershell.exe' -ErrorAction SilentlyContinue; Add-MpPreference -ExclusionProcess 'pwsh.exe' -ErrorAction SilentlyContinue; Write-Output 'EXCLUSIONS_ADDED' } catch { Write-Output ('EXCLUSIONS_FAILED: ' + $_.Exception.Message) }" 2^>nul`) DO SET "EXCL_RESULT=%%i"
+IF "!EXCL_RESULT!"=="EXCLUSIONS_ADDED" (
+    CALL :LOG_MESSAGE "Defender exclusions added: %WORKING_DIR% + %ORIGINAL_SCRIPT_DIR% + powershell.exe/pwsh.exe" "SUCCESS" "LAUNCHER"
+) ELSE (
+    IF DEFINED EXCL_RESULT (
+        CALL :LOG_MESSAGE "Defender exclusions not fully applied - !EXCL_RESULT!" "WARN" "LAUNCHER"
+    ) ELSE (
+        CALL :LOG_MESSAGE "Defender exclusion command produced no result (Defender may be disabled or managed by policy)" "WARN" "LAUNCHER"
+    )
+)
 
 REM Package Manager Dependencies
 CALL :LOG_MESSAGE "Verifying package managers..." "INFO" "LAUNCHER"
@@ -1498,124 +1507,28 @@ IF "%PS_EXECUTABLE%"=="" (
 )
 
 REM -----------------------------------------------------------------------------
-REM System Restore Point Creation (before orchestrator execution)
-REM Includes: Availability check, space allocation (minimum 10GB), and creation
+REM System Restore Point
 REM -----------------------------------------------------------------------------
-CALL :LOG_MESSAGE "Checking System Protection status..." "INFO" "LAUNCHER"
-
-SET "SYS_DRIVE=%SystemDrive%"
-SET "SR_STATUS=UNKNOWN"
-SET "SR_VERIFY_STATUS=UNKNOWN"
-SET "MIN_RESTORE_SPACE_GB=10"
-
-REM Simple check for System Protection availability
-FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Stop'; if (Get-Command 'Get-ComputerRestorePoint' -ErrorAction SilentlyContinue) { try { $rp = Get-ComputerRestorePoint -ErrorAction SilentlyContinue; Write-Host 'SR_AVAILABLE' } catch { Write-Host 'SR_ERROR' } } else { Write-Host 'SR_NOT_SUPPORTED' } } catch { Write-Host 'SR_FAILED' }" 2^>nul`) DO SET "SR_CHECK=%%i"
-
-REM Check and allocate System Restore Point space (minimum 10GB)
-IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
-    CALL :LOG_MESSAGE "Checking System Protection disk space allocation..." "INFO" "LAUNCHER"
-    
-    REM Use vssadmin to check current shadow storage allocation (modern method)
-    FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $vssOutput = & vssadmin list shadowstorage 2>&1 | Out-String; if ($vssOutput -match 'Maximum Shadow Copy Storage space.*?([0-9.]+)\s*(GB|MB|TB)') { $size = [decimal]$matches[1]; $unit = $matches[2]; $sizeGB = switch ($unit) { 'TB' { $size * 1024 } 'GB' { $size } 'MB' { $size / 1024 } default { 0 } }; Write-Host ('CURRENT:' + [math]::Round($sizeGB, 2)) } elseif ($vssOutput -match 'UNBOUNDED|No.*found') { Write-Host 'UNBOUNDED' } else { Write-Host 'NO_CONFIG' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_SPACE_CHECK=%%i"
-    
-    REM Parse current allocation
-    IF "!SR_SPACE_CHECK:~0,8!"=="CURRENT:" (
-        SET "SR_CURRENT_GB=!SR_SPACE_CHECK:~8!"
-        FOR /F "tokens=1 delims=." %%a IN ("!SR_CURRENT_GB!") DO SET "SR_CURRENT_GB_INT=%%a"
-        
-        REM Check if allocation is less than 10GB
-        IF !SR_CURRENT_GB_INT! LSS !MIN_RESTORE_SPACE_GB! (
-            CALL :LOG_MESSAGE "Current allocation is !SR_CURRENT_GB! GB (minimum required: !MIN_RESTORE_SPACE_GB! GB). Allocating..." "WARN" "LAUNCHER"
-            
-            REM Use vssadmin resize shadowstorage (correct modern method)
-            FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $result = & vssadmin resize shadowstorage /For=%SYS_DRIVE%\ /On=%SYS_DRIVE%\ /MaxSize=10GB 2>&1 | Out-String; if ($result -match 'successfully') { Write-Host 'ALLOCATED' } else { Write-Host 'FAILED' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_ALLOCATE_RESULT=%%i"
-            
-            IF /I "!SR_ALLOCATE_RESULT!"=="ALLOCATED" (
-                CALL :LOG_MESSAGE "System Restore Point allocation set to !MIN_RESTORE_SPACE_GB! GB successfully" "SUCCESS" "LAUNCHER"
-            ) ELSE (
-                CALL :LOG_MESSAGE "Failed to allocate System Restore Point space (may require administrator elevation or storage not yet configured)" "WARN" "LAUNCHER"
-            )
-        ) ELSE (
-            CALL :LOG_MESSAGE "System Protection allocation is sufficient (!SR_CURRENT_GB! GB >= !MIN_RESTORE_SPACE_GB! GB)" "SUCCESS" "LAUNCHER"
-        )
-    ) ELSE IF /I "!SR_SPACE_CHECK!"=="UNBOUNDED" (
-        CALL :LOG_MESSAGE "System Protection storage is unbounded (will use available space)" "SUCCESS" "LAUNCHER"
-    ) ELSE IF /I "!SR_SPACE_CHECK!"=="NO_CONFIG" (
-        CALL :LOG_MESSAGE "No shadow storage configured yet. Attempting to configure 10GB allocation..." "INFO" "LAUNCHER"
-        
-        REM Initialize shadow storage with vssadmin
-        FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $result = & vssadmin resize shadowstorage /For=%SYS_DRIVE%\ /On=%SYS_DRIVE%\ /MaxSize=10GB 2>&1 | Out-String; if ($result -match 'successfully') { Write-Host 'ALLOCATED' } else { Write-Host 'FAILED' } } catch { Write-Host 'ERROR' }" 2^>nul`) DO SET "SR_ALLOCATE_RESULT=%%i"
-        
-        IF /I "!SR_ALLOCATE_RESULT!"=="ALLOCATED" (
-            CALL :LOG_MESSAGE "Shadow storage initialized with 10GB allocation" "SUCCESS" "LAUNCHER"
-        ) ELSE (
-            CALL :LOG_MESSAGE "Failed to initialize shadow storage - System Protection may need manual configuration" "WARN" "LAUNCHER"
-        )
-    )
-)
-
-IF /I "!SR_CHECK!"=="SR_AVAILABLE" (
-    CALL :LOG_MESSAGE "System Protection is available and functional" "SUCCESS" "LAUNCHER"
-    
-    REM Try to enable System Protection if not already enabled
-    FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Continue'; $drive = $env:SystemDrive; try { Enable-ComputerRestore -Drive $drive -ErrorAction Stop; Write-Host 'SR_ENABLED' } catch { if ($_.Exception.Message -like '*already enabled*' -or $_.Exception.Message -like '*System Protection*already*') { Write-Host 'SR_ALREADY_ENABLED' } else { Write-Host 'SR_ENABLE_FAILED' } } } catch { Write-Host 'SR_ENABLE_ERROR' }" 2^>nul`) DO SET "SR_ENABLE_STATUS=%%i"
-    
-    IF /I "!SR_ENABLE_STATUS!"=="SR_ENABLED" (
-        CALL :LOG_MESSAGE "System Protection enabled successfully" "SUCCESS" "LAUNCHER"
-        SET "SR_STATUS=ENABLED"
-    ) ELSE IF /I "!SR_ENABLE_STATUS!"=="SR_ALREADY_ENABLED" (
-        CALL :LOG_MESSAGE "System Protection already enabled" "SUCCESS" "LAUNCHER"
-        SET "SR_STATUS=ENABLED"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Could not enable System Protection (!SR_ENABLE_STATUS!) - will try restore point anyway" "WARN" "LAUNCHER"
-        SET "SR_STATUS=UNKNOWN"
-    )
-    
-) ELSE IF /I "!SR_CHECK!"=="SR_NOT_SUPPORTED" (
-    CALL :LOG_MESSAGE "System Protection commands not available on this system" "WARN" "LAUNCHER"
-    GOTO :SKIP_RESTORE_POINT
-) ELSE (
-    CALL :LOG_MESSAGE "System Protection check failed (!SR_CHECK!) - skipping restore point" "WARN" "LAUNCHER"
-    GOTO :SKIP_RESTORE_POINT
-)
-
-CALL :LOG_MESSAGE "Creating system restore point before execution..." "INFO" "LAUNCHER"
-
-FOR /F "usebackq tokens=*" %%i IN (`%PS_EXECUTABLE% -NoProfile -Command "[guid]::NewGuid().ToString().Substring(0,8)" 2^>nul`) DO SET "RESTORE_GUID=%%i"
-SET "RESTORE_DESC=WindowsMaintenance-!RESTORE_GUID!"
-
-REM Simple restore point creation using Checkpoint-Computer
-FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $ErrorActionPreference='Stop'; Checkpoint-Computer -Description '!RESTORE_DESC!' -RestorePointType 'MODIFY_SETTINGS'; Write-Host 'RESTORE_CREATED' } catch { Write-Host 'RESTORE_FAILED'; Write-Host $_.Exception.Message }" 2^>nul`) DO (
-    IF /I "%%i"=="RESTORE_CREATED" (
-        SET "RESTORE_RESULT=SUCCESS"
-    ) ELSE (
-        SET "RESTORE_RESULT=FAILED"
-        SET "RESTORE_ERROR=%%i"
-    )
-)
-
-IF /I "!RESTORE_RESULT!"=="SUCCESS" (
-    CALL :LOG_MESSAGE "System restore point created successfully: !RESTORE_DESC!" "SUCCESS" "LAUNCHER"
-    
-    REM Quick verification that restore point exists
-    FOR /F "usebackq tokens=* delims=" %%i IN (`%PS_EXECUTABLE% -NoProfile -ExecutionPolicy Bypass -Command "try { $rp = Get-ComputerRestorePoint | Where-Object Description -eq '!RESTORE_DESC!' | Select-Object -First 1; if ($rp) { Write-Host ('VERIFIED:' + $rp.SequenceNumber) } else { Write-Host 'NOT_FOUND' } } catch { Write-Host 'VERIFY_ERROR' }" 2^>nul`) DO SET "RESTORE_VERIFY=%%i"
-    
-    IF "!RESTORE_VERIFY:~0,8!"=="VERIFIED" (
-        SET "RESTORE_SEQ=!RESTORE_VERIFY:~9!"
-        CALL :LOG_MESSAGE "Restore point verified (Sequence: !RESTORE_SEQ!)" "SUCCESS" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Restore point created but verification inconclusive (!RESTORE_VERIFY!)" "WARN" "LAUNCHER"
-    )
-) ELSE (
-    IF DEFINED RESTORE_ERROR (
-        CALL :LOG_MESSAGE "Failed to create restore point: !RESTORE_ERROR!" "WARN" "LAUNCHER"
-    ) ELSE (
-        CALL :LOG_MESSAGE "Failed to create system restore point (System Protection may be disabled)" "WARN" "LAUNCHER"
-    )
-    CALL :LOG_MESSAGE "Continuing without restore point - you may want to create one manually" "WARN" "LAUNCHER"
-)
-
-:SKIP_RESTORE_POINT
+REM MOVED to the orchestrator: New-SystemRestorePoint in modules/type2/SystemConfiguration.psm1,
+REM which SystemConfigurationAudit queues UNCONDITIONALLY every run (ConfigType=restorepoint,
+REM Action=create) and Get-ConfigItemRank sorts to rank 0 - so the restore point is still the
+REM first thing that happens before any other change, it is just no longer done twice.
+REM
+REM The ~119 lines removed here created a SECOND restore point via Checkpoint-Computer /
+REM Enable-ComputerRestore / Get-ComputerRestorePoint in 7 embedded PowerShell one-liners.
+REM That duplicated the orchestrator path and was strictly worse than it:
+REM   - it never cleared SystemRestorePointCreationFrequency, so Windows silently throttled
+REM     it to a no-op whenever a restore point already existed from the past 24h (it then
+REM     reported "created" and only half-noticed via "verification inconclusive");
+REM   - those three cmdlets are not native to PowerShell 7. They resolve only through the
+REM     Windows PowerShell compatibility layer as implicit-remoting proxy functions, which
+REM     spins up a background WinPS 5.1 session - slow, and not something to depend on under
+REM     SYSTEM in session 0. The orchestrator uses root/default:SystemRestore via
+REM     Invoke-CimMethod instead, which is native to PS7.
+REM
+REM The one piece worth keeping - sizing shadow storage to 10GB via vssadmin, without which
+REM a created restore point can be discarded immediately - moved into New-SystemRestorePoint
+REM alongside the code that depends on it.
 
 REM -----------------------------------------------------------------------------
 REM PowerShell Orchestrator Launch

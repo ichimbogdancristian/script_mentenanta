@@ -141,6 +141,79 @@ try {
 
     #endregion
 
+    #region ─── STAGE 0: PREFLIGHT ────────────────────────────────────────────────
+    # Work that needs PowerShell 7 but must happen before any module runs.
+    #
+    # This lives here rather than in script.bat because script.bat reaches :PS7_COMPLETE
+    # with pwsh already proven present, so everything after that point was PowerShell being
+    # written as escaped batch one-liners - unlintable, untestable, and with no error
+    # handling beyond ERRORLEVEL. The PSWindowsUpdate install below was a single 616-character
+    # `pwsh -Command "..."` string.
+    #
+    # NOTE ON SCOPE: Defender exclusions deliberately stay in script.bat. They must be in
+    # place BEFORE pwsh.exe starts and before this script imports its modules out of the
+    # extracted tree - both of which happen before Stage 0 can run. Moving the add here would
+    # leave the process launch and module load unprotected, i.e. strictly worse than today.
+    # Stage 5 still removes them (see Remove-DefenderSessionExclusions).
+
+    <#
+    .SYNOPSIS
+        Ensures the PSWindowsUpdate module is available for the WindowsUpdates Type2 module.
+    .DESCRIPTION
+        Best-effort. WindowsUpdates works without it - the module's primary path is the
+        Windows Update COM API - so a failure here degrades a fallback, never the run.
+
+        Scope is ALLUSERS, not CurrentUser: the monthly task runs as SYSTEM, which has its own
+        profile (C:\Windows\system32\config\systemprofile) and cannot see a per-user module an
+        interactive admin installed. AllUsers lands in %ProgramFiles%\PowerShell\Modules, which
+        is on PSModulePath for every account including SYSTEM. (A redirected/OneDrive Documents
+        folder makes the CurrentUser path even less predictable.)
+    .OUTPUTS
+        [bool] $true when the module is available afterwards.
+    #>
+    function Install-PSWindowsUpdateModule {
+        [CmdletBinding()]
+        [OutputType([bool])]
+        param()
+
+        if (Get-Module -ListAvailable -Name PSWindowsUpdate) {
+            Write-Log -Level SUCCESS -Component PREFLIGHT -Message 'PSWindowsUpdate module already installed'
+            return $true
+        }
+
+        Write-Log -Level INFO -Component PREFLIGHT -Message 'PSWindowsUpdate not found - installing (AllUsers)'
+        try {
+            $prevProgress = $ProgressPreference
+            $ProgressPreference = 'SilentlyContinue'
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+            $null = Install-PackageProvider -Name NuGet -Force -Scope AllUsers -ErrorAction Stop
+            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
+            Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -Repository PSGallery `
+                -AllowClobber -ErrorAction Stop
+
+            if (Get-Module -ListAvailable -Name PSWindowsUpdate) {
+                Write-Log -Level SUCCESS -Component PREFLIGHT -Message 'PSWindowsUpdate module installed'
+                return $true
+            }
+            Write-Log -Level WARN -Component PREFLIGHT -Message 'PSWindowsUpdate install reported success but module is still not available'
+            return $false
+        }
+        catch {
+            # Not fatal: WindowsUpdates uses the Windows Update COM API as its primary source.
+            Write-Log -Level WARN -Component PREFLIGHT -Message "PSWindowsUpdate install failed (WindowsUpdates will use the COM API): $($_.Exception.Message)"
+            return $false
+        }
+        finally {
+            if ($null -ne $prevProgress) { $ProgressPreference = $prevProgress }
+        }
+    }
+
+    Write-Log -Level INFO -Component ORCH -Message 'Stage 0: preflight'
+    $null = Install-PSWindowsUpdateModule
+
+    #endregion
+
     #region ─── MODULE PAIR REGISTRY ──────────────────────────────────────────────
     # Each entry maps a Type1 audit module to its Type2 action counterpart.
     # DiffKey must match the -ModuleName used in Save-DiffList / Get-DiffList.

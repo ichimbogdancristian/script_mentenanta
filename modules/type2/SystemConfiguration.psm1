@@ -217,7 +217,8 @@ function New-SystemRestorePoint {
     [CmdletBinding()]
     [OutputType([bool])]
     param(
-        [Parameter(Mandatory)] [string]$Description
+        [Parameter(Mandatory)] [string]$Description,
+        [Parameter()] [int]$MinShadowStorageGB = 10
     )
 
     # Make sure protection is on for the system drive; a disabled System Restore makes
@@ -239,6 +240,57 @@ function New-SystemRestorePoint {
     }
     catch {
         Write-Log -Level DEBUG -Component CONFIG -Message "Could not clear restore point creation frequency limit: $_"
+    }
+
+    # Make sure shadow storage is actually allocated. Enabling System Restore does not by
+    # itself guarantee usable space: on a machine where shadow storage is unconfigured or
+    # sized at 0, CreateRestorePoint can report success while the point is immediately
+    # discarded, leaving the run with no real rollback target.
+    #
+    # This moved here from script.bat, which used to size shadow storage as part of a
+    # ~127-line restore-point block that otherwise duplicated this function (and did so via
+    # Checkpoint-Computer WITHOUT clearing the 24h throttle above, so it was silently a no-op
+    # whenever a restore point already existed from the last day). Only the sizing was worth
+    # keeping, and it belongs next to the code that depends on it.
+    #
+    # vssadmin is used rather than WMI because Win32_ShadowStorage's MaxSpace is read-only in
+    # practice; 'vssadmin resize shadowstorage' is the supported way to change it.
+    try {
+        $listed = & vssadmin list shadowstorage 2>&1 | Out-String
+        $needsResize = $true
+        if ($listed -match 'UNBOUNDED') {
+            $needsResize = $false
+            Write-Log -Level DEBUG -Component CONFIG -Message 'Shadow storage is unbounded - no resize needed'
+        }
+        elseif ($listed -match 'Maximum Shadow Copy Storage space[^\r\n]*?([0-9.,]+)\s*(GB|MB|TB)') {
+            $size = [decimal]($Matches[1] -replace ',', '')
+            $currentGB = switch ($Matches[2]) {
+                'TB' { $size * 1024 }
+                'GB' { $size }
+                'MB' { $size / 1024 }
+                default { 0 }
+            }
+            if ($currentGB -ge $MinShadowStorageGB) {
+                $needsResize = $false
+                Write-Log -Level DEBUG -Component CONFIG -Message "Shadow storage allocation is $([math]::Round($currentGB,2)) GB (>= $MinShadowStorageGB GB)"
+            }
+            else {
+                Write-Log -Level INFO -Component CONFIG -Message "Shadow storage is $([math]::Round($currentGB,2)) GB - raising to $MinShadowStorageGB GB"
+            }
+        }
+
+        if ($needsResize) {
+            $resized = & vssadmin resize shadowstorage /For=$sysDrive /On=$sysDrive /MaxSize=${MinShadowStorageGB}GB 2>&1 | Out-String
+            if ($resized -match 'successfully') {
+                Write-Log -Level SUCCESS -Component CONFIG -Message "Shadow storage allocation set to $MinShadowStorageGB GB"
+            }
+            else {
+                Write-Log -Level WARN -Component CONFIG -Message 'Could not resize shadow storage - restore point may not persist'
+            }
+        }
+    }
+    catch {
+        Write-Log -Level WARN -Component CONFIG -Message "Shadow storage check failed (continuing): $_"
     }
 
     try {

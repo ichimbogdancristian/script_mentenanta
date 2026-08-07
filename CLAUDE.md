@@ -188,6 +188,16 @@ reading the file mid-run). The orchestrator wraps the whole body in a fatal-capt
 `try/catch/finally` (any uncaught error is written to `maintenance.log` with a stack trace; the
 log is always closed via `Close-LogFile` in `finally`), then:
 
+0. **Stage 0 – Preflight:** work that needs PS7 but must happen before any module runs.
+   Currently just `Install-PSWindowsUpdateModule` (`-Scope AllUsers`, because the monthly task
+   runs as SYSTEM and cannot see a per-user module). Best-effort: `WindowsUpdates`'s primary path
+   is the Windows Update COM API, so a failure here degrades a fallback, never the run. This moved
+   out of `script.bat`, where it was a 616-character `pwsh -Command` string — everything past
+   `:PS7_COMPLETE` in the launcher runs with pwsh already proven present, so it does not have to
+   be batch. **Defender exclusions deliberately did NOT move**: they must be in place before
+   `pwsh.exe` starts and before the orchestrator imports its modules out of the extracted tree,
+   both of which precede Stage 0, so moving the add would leave the process launch and module load
+   unprotected. Stage 5 still removes them.
 1. **Stage 1 – Audit (Type1):** interactive menu with a 10s auto-run countdown; runs
    audit modules. A circuit breaker aborts the stage after 3 consecutive module failures.
    Buffered keystrokes are drained (`Clear-PendingConsoleInput`) before each timed prompt so a
@@ -307,11 +317,23 @@ turn the two non-registry areas off. Both default to enforcing.
 **Notable implementations:**
 - `SystemConfiguration` creates/deletes restore points through the **`root/default:SystemRestore`
   WMI class via `Invoke-CimMethod`**, never `Checkpoint-Computer` / `Get-ComputerRestorePoint` /
-  `Get-WmiObject`: those are Windows PowerShell 5.1-only and simply do not exist in PS7, which is
-  the only shell modules run under (the pre-consolidation `RestorePointManagement.psm1` used all
-  three and failed at runtime). It also clears
-  `SystemRestorePointCreationFrequency`, or Windows' default one-per-24h throttle would silently
-  turn "a restore point every run" into "one per day".
+  `Get-WmiObject`. Those are **not native to PowerShell 7** — they resolve only through the Windows
+  PowerShell compatibility layer, as implicit-remoting *proxy functions* backed by a background
+  WinPS 5.1 session (verified: `Get-Command Checkpoint-Computer` in pwsh 7.6 returns
+  `CommandType: Function` from a `remoteIpMoProxy_…` path, not a cmdlet). They therefore appear to
+  exist while carrying a hidden session dependency that is slow and not something to rely on under
+  SYSTEM in session 0; `Get-WmiObject` genuinely does not exist. The pre-consolidation
+  `RestorePointManagement.psm1` used all three and failed at runtime.
+  `New-SystemRestorePoint` also (a) clears `SystemRestorePointCreationFrequency`, or Windows'
+  default one-per-24h throttle would silently turn "a restore point every run" into "one per day",
+  and (b) sizes **shadow storage** to 10 GB via `vssadmin resize shadowstorage` when it is
+  unconfigured or below that — enabling System Restore does not by itself guarantee usable space,
+  and a point created with none can be discarded immediately.
+  **This is the only restore point the system takes.** `script.bat` used to create a second one
+  before launching the orchestrator, in ~119 lines and 7 embedded PowerShell one-liners built on
+  the compat-proxied cmdlets above — and without clearing the 24h throttle, so it was silently a
+  no-op whenever a point already existed from the past day. That block was removed; only its
+  shadow-storage sizing was worth keeping and moved into `New-SystemRestorePoint`.
 - `SystemConfiguration` installs **Sysinternals Sysmon** via winget (`Microsoft.Sysinternals.Sysmon`)
   and applies `config/sysmon/sysmonconfig.xml` (with `-accepteula`) when the Sysmon service is
   absent. It resolves the **real** `Sysmon64.exe` (from `%windir%` or the winget `Packages`
