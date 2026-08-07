@@ -220,6 +220,224 @@ function Resolve-WingetIdForCandidate {
     return $null
 }
 
+<#
+.SYNOPSIS
+    Source 1: installed AppX packages, matched on the SHORT package Name.
+.DESCRIPTION
+    Extracted verbatim from Get-BloatwareFromAllSources.
+
+    Detected and AllInstalledNames are MUTATED IN PLACE. They are a hashtable and a HashSet -
+    reference types - so the shared dedup map and the flat installed-name set stay shared
+    across all four sources without any merge step. AllInstalledNames is what lets the
+    cascade-safety pass later tell "not installed" apart from "installed but not queued".
+
+    Each source only sees the patterns that DECLARE it (bloatware-detection.json's
+    "detection" array). Testing every pattern against every source is what once turned
+    AppX-shaped wildcards into registry false positives - '*Plex*' matching any
+    "Duplex ..." scanner utility.
+.OUTPUTS
+    None. Results are accumulated into Detected.
+#>
+function Add-BloatwareFromAppxSource {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$Patterns,
+        [Parameter(Mandatory)] [hashtable]$Detected,
+        [Parameter(Mandatory)] $AllInstalledNames,
+        [Parameter()] $Protected,
+        [Parameter()] $Dependencies
+    )
+
+    # Source 1: AppX packages (modern UWP apps). Matched on the SHORT package Name.
+    #
+    # PackageFullName is captured here (it was previously discarded) purely so the exact winget
+    # Id can be DERIVED without spending a winget invocation: for an MSIX package the winget Id
+    # is literally 'MSIX\' + PackageFullName. Verified live against `winget list` - three of
+    # three sampled MSIX rows matched Get-AppxPackage's PackageFullName exactly, e.g.
+    #     MSIX\Microsoft.AV1VideoExtension_2.0.24.0_x64__8wekyb3d8bbwe
+    # That is the precise Id form `winget uninstall <id>` accepts, so Type2 gets a targeted,
+    # unambiguous uninstall for every AppX-detected package at zero extra cost - no per-entry
+    # `winget list` probing, no table parsing, and nothing that can be truncated or mis-parsed.
+    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning AppX packages...'
+    try {
+        $appxPackages = @(Get-AppxPackageCompat -AllUsers -ErrorAction Stop | Where-Object { $_.Name })
+        foreach ($p in $appxPackages) { $null = $AllInstalledNames.Add($p.Name.ToLowerInvariant()) }
+
+        foreach ($pat in $Patterns) {
+            foreach ($appPkg in $appxPackages) {
+                $app = $appPkg.Name
+                if ($app -like $pat.Pattern) {
+                    if ((Test-CanRemovePackage -PackageName $app -Protected $Protected -Dependencies $Dependencies)) {
+                        $key = $app.ToLowerInvariant()
+                        if (-not $Detected.ContainsKey($key)) {
+                            $entry = @{
+                                Name = $app
+                                Sources = @('AppX')
+                                Patterns = @($pat.Pattern)
+                            }
+                            if ($appPkg.PackageFullName) {
+                                $entry.WingetId = "MSIX\$($appPkg.PackageFullName)"
+                                $entry.PackageFullName = $appPkg.PackageFullName
+                            }
+                            $Detected[$key] = $entry
+                        }
+                    }
+                }
+            }
+        }
+        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "AppX detection found: $($Detected.Count)"
+    }
+    catch {
+        Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "AppX query failed: $_"
+    }
+}
+
+<#
+.SYNOPSIS
+    Source 2: provisioned packages (staged for NEW user profiles), matched on DisplayName.
+.DESCRIPTION
+    Extracted verbatim from Get-BloatwareFromAllSources.
+
+    Detected and AllInstalledNames are MUTATED IN PLACE. They are a hashtable and a HashSet -
+    reference types - so the shared dedup map and the flat installed-name set stay shared
+    across all four sources without any merge step. AllInstalledNames is what lets the
+    cascade-safety pass later tell "not installed" apart from "installed but not queued".
+
+    Each source only sees the patterns that DECLARE it (bloatware-detection.json's
+    "detection" array). Testing every pattern against every source is what once turned
+    AppX-shaped wildcards into registry false positives - '*Plex*' matching any
+    "Duplex ..." scanner utility.
+.OUTPUTS
+    None. Results are accumulated into Detected.
+#>
+function Add-BloatwareFromProvisionedSource {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$Patterns,
+        [Parameter(Mandatory)] [hashtable]$Detected,
+        [Parameter(Mandatory)] $AllInstalledNames,
+        [Parameter()] $Protected,
+        [Parameter()] $Dependencies
+    )
+
+    # Source 2: Provisioned packages (staged for NEW user profiles).
+    #
+    # Matched and keyed on DisplayName (the short package name, e.g. Microsoft.BingNews), NOT
+    # PackageName (the versioned full name, e.g. Microsoft.BingNews_2019.616.2027.0_neutral_~_
+    # 8wekyb3d8bbwe). Using PackageName - as this did - broke three things at once:
+    #   1. Every bare-identifier pattern (~100 entries that use "name" with no wildcard) could
+    #      never match, so those apps were only ever detectable when already installed for a
+    #      user, never when merely provisioned.
+    #   2. protected-packages.json keys without a trailing wildcard could never match either,
+    #      so the ONLY hard block on removal silently did not apply to this source.
+    #   3. The dedup key differed from Source 1's short name, so an app found by BOTH sources
+    #      was queued TWICE; Type2 removed it on the first item and reported the second as a
+    #      failure, degrading a clean run to Warning with a phantom error in the report.
+    # Type2 does not need PackageName from the diff - Remove-BloatwareLayered re-queries the
+    # live provisioned list and matches on the name stem.
+    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning provisioned packages...'
+    try {
+        $provisioned = @(Get-AppxProvisionedPackageCompat -ErrorAction Stop)
+        # Fall back to the stem of PackageName when DisplayName is absent (older DISM output).
+        $provNames = @($provisioned | ForEach-Object {
+                if ($_.DisplayName) { $_.DisplayName }
+                elseif ($_.PackageName -match '^([A-Za-z0-9.\-]+?)_\d') { $Matches[1] }
+            } | Where-Object { $_ })
+        foreach ($n in $provNames) { $null = $AllInstalledNames.Add($n.ToLowerInvariant()) }
+
+        foreach ($pat in $Patterns) {
+            foreach ($pkg in $provNames) {
+                if ($pkg -like $pat.Pattern) {
+                    if ((Test-CanRemovePackage -PackageName $pkg -Protected $Protected -Dependencies $Dependencies)) {
+                        $key = $pkg.ToLowerInvariant()
+                        if ($Detected.ContainsKey($key)) {
+                            if ($Detected[$key].Sources -notcontains 'Provisioned') {
+                                $Detected[$key].Sources += 'Provisioned'
+                            }
+                        }
+                        else {
+                            $Detected[$key] = @{
+                                Name = $pkg
+                                Sources = @('Provisioned')
+                                Patterns = @($pat.Pattern)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Provisioned packages found: $(($Detected.Count))"
+    }
+    catch {
+        Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "Provisioned packages query failed: $_"
+    }
+}
+
+<#
+.SYNOPSIS
+    Source 3: registry-installed Win32 programs, matched on DisplayName.
+.DESCRIPTION
+    Extracted verbatim from Get-BloatwareFromAllSources.
+
+    Detected and AllInstalledNames are MUTATED IN PLACE. They are a hashtable and a HashSet -
+    reference types - so the shared dedup map and the flat installed-name set stay shared
+    across all four sources without any merge step. AllInstalledNames is what lets the
+    cascade-safety pass later tell "not installed" apart from "installed but not queued".
+
+    Each source only sees the patterns that DECLARE it (bloatware-detection.json's
+    "detection" array). Testing every pattern against every source is what once turned
+    AppX-shaped wildcards into registry false positives - '*Plex*' matching any
+    "Duplex ..." scanner utility.
+.OUTPUTS
+    None. Results are accumulated into Detected.
+#>
+function Add-BloatwareFromRegistrySource {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$Patterns,
+        [Parameter(Mandatory)] [hashtable]$Detected,
+        [Parameter(Mandatory)] $AllInstalledNames,
+        [Parameter()] [AllowEmptyCollection()] [array]$InstalledApps,
+        [Parameter()] $Protected,
+        [Parameter()] $Dependencies
+    )
+
+    # Source 3: Registry (Win32 programs). Reuses the caller's single Get-InstalledApp scan
+    # (passed in as $InstalledApps) rather than rescanning the registry+AppX a second time in
+    # the same run.
+    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning registry for Win32 programs...'
+    try {
+        $regApps = @($InstalledApps) | Select-Object -ExpandProperty Name | Where-Object { $_ }
+        foreach ($n in $regApps) { $null = $AllInstalledNames.Add($n.ToLowerInvariant()) }
+
+        foreach ($pat in $Patterns) {
+            foreach ($app in $regApps) {
+                if ($app -like $pat.Pattern) {
+                    if ((Test-CanRemovePackage -PackageName $app -Protected $Protected -Dependencies $Dependencies)) {
+                        $key = $app.ToLowerInvariant()
+                        if ($Detected.ContainsKey($key)) {
+                            if ($Detected[$key].Sources -notcontains 'Registry') {
+                                $Detected[$key].Sources += 'Registry'
+                            }
+                        }
+                        else {
+                            $Detected[$key] = @{
+                                Name = $app
+                                Sources = @('Registry')
+                                Patterns = @($pat.Pattern)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Registry programs found: $($Detected.Count)"
+    }
+    catch {
+        Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "Registry query failed: $_"
+    }
+}
+
 function Get-BloatwareFromAllSources {
     param(
         [hashtable]$BloatwareConfig,
@@ -257,135 +475,18 @@ function Get-BloatwareFromAllSources {
     $wingetPatterns = @($allPatterns | Where-Object { $_.Sources -contains 'WinGet' })
     Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Patterns per source - AppX: $($appxPatterns.Count), Provisioned: $($provPatterns.Count), Registry: $($regPatterns.Count), WinGet: $($wingetPatterns.Count)"
 
-    # Source 1: AppX packages (modern UWP apps). Matched on the SHORT package Name.
-    #
-    # PackageFullName is captured here (it was previously discarded) purely so the exact winget
-    # Id can be DERIVED without spending a winget invocation: for an MSIX package the winget Id
-    # is literally 'MSIX\' + PackageFullName. Verified live against `winget list` - three of
-    # three sampled MSIX rows matched Get-AppxPackage's PackageFullName exactly, e.g.
-    #     MSIX\Microsoft.AV1VideoExtension_2.0.24.0_x64__8wekyb3d8bbwe
-    # That is the precise Id form `winget uninstall <id>` accepts, so Type2 gets a targeted,
-    # unambiguous uninstall for every AppX-detected package at zero extra cost - no per-entry
-    # `winget list` probing, no table parsing, and nothing that can be truncated or mis-parsed.
-    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning AppX packages...'
-    try {
-        $appxPackages = @(Get-AppxPackageCompat -AllUsers -ErrorAction Stop | Where-Object { $_.Name })
-        foreach ($p in $appxPackages) { $null = $allInstalledNames.Add($p.Name.ToLowerInvariant()) }
-
-        foreach ($pat in $appxPatterns) {
-            foreach ($appPkg in $appxPackages) {
-                $app = $appPkg.Name
-                if ($app -like $pat.Pattern) {
-                    if ((Test-CanRemovePackage -PackageName $app -Protected $Protected -Dependencies $Dependencies)) {
-                        $key = $app.ToLowerInvariant()
-                        if (-not $detected.ContainsKey($key)) {
-                            $entry = @{
-                                Name = $app
-                                Sources = @('AppX')
-                                Patterns = @($pat.Pattern)
-                            }
-                            if ($appPkg.PackageFullName) {
-                                $entry.WingetId = "MSIX\$($appPkg.PackageFullName)"
-                                $entry.PackageFullName = $appPkg.PackageFullName
-                            }
-                            $detected[$key] = $entry
-                        }
-                    }
-                }
-            }
-        }
-        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "AppX detection found: $($detected.Count)"
-    }
-    catch {
-        Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "AppX query failed: $_"
-    }
+    # Source 1: AppX packages (modern UWP apps).
+    Add-BloatwareFromAppxSource -Patterns $appxPatterns -Detected $detected `
+        -AllInstalledNames $allInstalledNames -Protected $Protected -Dependencies $Dependencies
 
     # Source 2: Provisioned packages (staged for NEW user profiles).
-    #
-    # Matched and keyed on DisplayName (the short package name, e.g. Microsoft.BingNews), NOT
-    # PackageName (the versioned full name, e.g. Microsoft.BingNews_2019.616.2027.0_neutral_~_
-    # 8wekyb3d8bbwe). Using PackageName - as this did - broke three things at once:
-    #   1. Every bare-identifier pattern (~100 entries that use "name" with no wildcard) could
-    #      never match, so those apps were only ever detectable when already installed for a
-    #      user, never when merely provisioned.
-    #   2. protected-packages.json keys without a trailing wildcard could never match either,
-    #      so the ONLY hard block on removal silently did not apply to this source.
-    #   3. The dedup key differed from Source 1's short name, so an app found by BOTH sources
-    #      was queued TWICE; Type2 removed it on the first item and reported the second as a
-    #      failure, degrading a clean run to Warning with a phantom error in the report.
-    # Type2 does not need PackageName from the diff - Remove-BloatwareLayered re-queries the
-    # live provisioned list and matches on the name stem.
-    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning provisioned packages...'
-    try {
-        $provisioned = @(Get-AppxProvisionedPackageCompat -ErrorAction Stop)
-        # Fall back to the stem of PackageName when DisplayName is absent (older DISM output).
-        $provNames = @($provisioned | ForEach-Object {
-                if ($_.DisplayName) { $_.DisplayName }
-                elseif ($_.PackageName -match '^([A-Za-z0-9.\-]+?)_\d') { $Matches[1] }
-            } | Where-Object { $_ })
-        foreach ($n in $provNames) { $null = $allInstalledNames.Add($n.ToLowerInvariant()) }
+    Add-BloatwareFromProvisionedSource -Patterns $provPatterns -Detected $detected `
+        -AllInstalledNames $allInstalledNames -Protected $Protected -Dependencies $Dependencies
 
-        foreach ($pat in $provPatterns) {
-            foreach ($pkg in $provNames) {
-                if ($pkg -like $pat.Pattern) {
-                    if ((Test-CanRemovePackage -PackageName $pkg -Protected $Protected -Dependencies $Dependencies)) {
-                        $key = $pkg.ToLowerInvariant()
-                        if ($detected.ContainsKey($key)) {
-                            if ($detected[$key].Sources -notcontains 'Provisioned') {
-                                $detected[$key].Sources += 'Provisioned'
-                            }
-                        }
-                        else {
-                            $detected[$key] = @{
-                                Name = $pkg
-                                Sources = @('Provisioned')
-                                Patterns = @($pat.Pattern)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Provisioned packages found: $(($detected.Count))"
-    }
-    catch {
-        Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "Provisioned packages query failed: $_"
-    }
-
-    # Source 3: Registry (Win32 programs). Reuses the caller's single Get-InstalledApp scan
-    # (passed in as $InstalledApps) rather than rescanning the registry+AppX a second time in
-    # the same run.
-    Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message 'Scanning registry for Win32 programs...'
-    try {
-        $regApps = @($InstalledApps) | Select-Object -ExpandProperty Name | Where-Object { $_ }
-        foreach ($n in $regApps) { $null = $allInstalledNames.Add($n.ToLowerInvariant()) }
-
-        foreach ($pat in $regPatterns) {
-            foreach ($app in $regApps) {
-                if ($app -like $pat.Pattern) {
-                    if ((Test-CanRemovePackage -PackageName $app -Protected $Protected -Dependencies $Dependencies)) {
-                        $key = $app.ToLowerInvariant()
-                        if ($detected.ContainsKey($key)) {
-                            if ($detected[$key].Sources -notcontains 'Registry') {
-                                $detected[$key].Sources += 'Registry'
-                            }
-                        }
-                        else {
-                            $detected[$key] = @{
-                                Name = $app
-                                Sources = @('Registry')
-                                Patterns = @($pat.Pattern)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Registry programs found: $($detected.Count)"
-    }
-    catch {
-        Write-Log -Level WARN -Component SOFTWARE-AUDIT -Message "Registry query failed: $_"
-    }
+    # Source 3: Registry (Win32 programs).
+    Add-BloatwareFromRegistrySource -Patterns $regPatterns -Detected $detected `
+        -AllInstalledNames $allInstalledNames -InstalledApps $InstalledApps `
+        -Protected $Protected -Dependencies $Dependencies
 
     # Source 4: WinGet (if available). Parse the fixed-width table into Name/Id columns and match
     # the pattern against those - NEVER against the raw formatted line (the old code stored the
