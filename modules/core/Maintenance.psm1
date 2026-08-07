@@ -53,8 +53,10 @@ function Initialize-Maintenance {
     $env:MAINT_LISTS = Join-Path $ProjectRoot 'config\lists'
     $env:MAINT_SETTINGS = Join-Path $ProjectRoot 'config\settings'
 
-    # Guarantee all temp subdirectories exist
-    foreach ($sub in 'data', 'logs', 'reports', 'diff') {
+    # Guarantee all temp subdirectories exist. 'tools' holds externally downloaded binaries
+    # (see Get-ExternalTool); it lives under temp_files so Stage 5 deletes it with the rest of
+    # the extracted tree and it is already inside the Defender exclusion script.bat adds.
+    foreach ($sub in 'data', 'logs', 'reports', 'diff', 'tools') {
         $dir = Join-Path $env:MAINT_TEMP $sub
         if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     }
@@ -513,7 +515,7 @@ function Get-TempPath {
     [OutputType([string])]
     param(
         [Parameter(Mandatory)]
-        [ValidateSet('data', 'logs', 'reports', 'diff')]
+        [ValidateSet('data', 'logs', 'reports', 'diff', 'tools')]
         [string]$Category,
 
         [Parameter()] [string]$SubFolder,
@@ -1826,6 +1828,299 @@ function Invoke-ExternalPackageCommand {
 
 #endregion
 
+#region ─── EXTERNAL TOOL ACQUISITION ─────────────────────────────────────────
+# Downloads a self-contained third-party binary at runtime, verifies it, and hands back a
+# path. Built for the Sysinternals tools (see Sysinternals_Suite_Reference.md), but nothing
+# here is Sysinternals-specific.
+#
+# WHY RUNTIME DOWNLOAD RATHER THAN VENDORING THE BINARIES:
+#   - The Sysinternals licence forbids "publishing the software for others to copy". This
+#     repo's whole delivery mechanism is "anyone downloads master.zip", so committing the
+#     .exe files would be exactly that. Each machine fetches its own copy from Microsoft.
+#   - winget is the WRONG channel for these. Microsoft.Sysinternals.Suite resolves to the
+#     Store MSIX: per-user install, app-execution-alias reparse points under %LOCALAPPDATA%,
+#     invisible to SYSTEM, and a fail-fast 0xC0000409 crash under redirected stdio - the
+#     exact trap Install-SysmonWithConfig already works around. Sysmon works via winget only
+#     because installing it produces a SERVICE whose binary lands in %windir%.
+#
+# Nothing here may ever be a hard dependency: every caller must tolerate $null and degrade to
+# Warning, the same rule winget already lives under.
+
+<#
+.SYNOPSIS
+    Accepts the Sysinternals EULA non-interactively for both the current user and SYSTEM.
+.DESCRIPTION
+    On first run a Sysinternals tool pops a MODAL GUI licence dialog. Under the monthly SYSTEM
+    task there is no desktop to show it on, so the process just sits there until the timeout
+    kills it - precisely the "blocks waiting for a human" failure the operating contract
+    forbids.
+
+    Belt and braces, because neither mechanism alone is sufficient:
+      - Most tools accept -accepteula, but the Learn parameter tables are inconsistent about
+        documenting it and a few ignore it. Callers should still pass it.
+      - The registry flag covers the rest.
+
+    Both HKCU and HKU\S-1-5-18 are written. When running as SYSTEM, HKCU *is* S-1-5-18 (and
+    HKU\.DEFAULT is an alias for the same hive), so writing HKCU alone would seed the wrong
+    hive during an interactive admin run and leave the scheduled run unseeded.
+
+    Note this registry write is a MONITORED behaviour - published Sigma rules watch
+    ...\Sysinternals\*\EulaAccepted because attackers set it for renamed tools. Ours is benign
+    and under our own filename, but expect it to show up in EDR telemetry and in our own
+    Sysmon registry events.
+.OUTPUTS
+    [bool] $true when at least one hive was seeded.
+#>
+function Initialize-SysinternalsEula {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+
+    $ok = $false
+    foreach ($root in 'HKCU:\Software\Sysinternals', 'Registry::HKEY_USERS\S-1-5-18\Software\Sysinternals') {
+        try {
+            if (-not (Test-Path -LiteralPath $root)) {
+                $null = New-Item -Path $root -Force -ErrorAction Stop
+            }
+            Set-ItemProperty -LiteralPath $root -Name 'EulaAccepted' -Value 1 -Type DWord -Force -ErrorAction Stop
+            $ok = $true
+        }
+        catch {
+            # SYSTEM's hive is not always reachable from an interactive session and vice versa.
+            Write-Log -Level DEBUG -Component TOOLS -Message "Could not seed Sysinternals EULA at ${root}: $_"
+        }
+    }
+    if ($ok) { Write-Log -Level DEBUG -Component TOOLS -Message 'Sysinternals EULA pre-accepted' }
+    return $ok
+}
+
+<#
+.SYNOPSIS
+    Verifies a downloaded binary carries a valid Microsoft Authenticode signature.
+.DESCRIPTION
+    The binary arrives over the network at runtime, so it is checked before it is executed.
+    This is PowerShell-native, so there is no bootstrapping problem.
+.OUTPUTS
+    [bool] $true only when the signature is Valid AND the signer is Microsoft.
+#>
+function Test-MicrosoftSignedBinary {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param([Parameter(Mandatory)] [string]$Path)
+
+    try {
+        $sig = Get-AuthenticodeSignature -LiteralPath $Path -ErrorAction Stop
+    }
+    catch {
+        Write-Log -Level WARN -Component TOOLS -Message "Signature check failed for ${Path}: $_"
+        return $false
+    }
+    if ($sig.Status -ne 'Valid') {
+        Write-Log -Level WARN -Component TOOLS -Message "Rejected (signature $($sig.Status)): $Path"
+        return $false
+    }
+    if ($sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+        Write-Log -Level WARN -Component TOOLS -Message "Rejected (not Microsoft-signed): $Path"
+        return $false
+    }
+    return $true
+}
+
+<#
+.SYNOPSIS
+    Resolves an already-extracted tool executable, preferring the 64-bit build.
+.DESCRIPTION
+    The unpackaged Sysinternals downloads ship both architectures side by side
+    (handle.exe + handle64.exe). Prefer the 64-bit build, same shape as the Sysmon binary
+    resolution in SystemConfiguration.psm1.
+.OUTPUTS
+    [string] full path, or $null when neither form is present.
+#>
+function Resolve-ExternalToolPath {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)] [string]$BaseName,
+        [Parameter(Mandatory)] [string]$Directory
+    )
+
+    foreach ($candidate in "$BaseName`64.exe", "$BaseName.exe") {
+        $p = Join-Path $Directory $candidate
+        if (Test-Path -LiteralPath $p -PathType Leaf) { return $p }
+    }
+    return $null
+}
+
+<#
+.SYNOPSIS
+    Downloads, extracts and verifies an external tool; returns its path or $null.
+.DESCRIPTION
+    Idempotent within a run: if the executable is already present in temp_files/tools it is
+    returned without re-downloading.
+
+    BEST-EFFORT BY CONTRACT. Returns $null on any failure - no network, bad zip, missing
+    binary, failed signature check. The caller MUST handle $null and degrade to Warning; a
+    tool download can never fail the run.
+.PARAMETER Name
+    Base name of the executable WITHOUT extension or architecture suffix, e.g. 'handle'.
+.PARAMETER Url
+    Zip to download, e.g. https://download.sysinternals.com/files/Handle.zip
+.PARAMETER SkipSignatureCheck
+    Escape hatch for a non-Microsoft tool. Off by default and should stay off.
+.OUTPUTS
+    [string] full path to the verified executable, or $null.
+#>
+function Get-ExternalTool {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)] [string]$Name,
+        [Parameter(Mandatory)] [string]$Url,
+        [Parameter()] [switch]$SkipSignatureCheck,
+        [Parameter()] [int]$TimeoutSeconds = 120
+    )
+
+    try {
+        $toolDir = Get-TempPath -Category 'tools'
+    }
+    catch {
+        Write-Log -Level WARN -Component TOOLS -Message "Tool directory unavailable: $_"
+        return $null
+    }
+
+    # Already fetched this run? Re-verify rather than trusting the cache. temp_files/tools is
+    # wiped every run and only this function writes there, so a cached file was almost
+    # certainly verified on the way in - but "almost certainly" is not a basis for executing a
+    # binary. Re-checking is cheap and closes the case where anything else drops a file here.
+    $existing = Resolve-ExternalToolPath -BaseName $Name -Directory $toolDir
+    if ($existing) {
+        if ($SkipSignatureCheck -or (Test-MicrosoftSignedBinary -Path $existing)) { return $existing }
+        Write-Log -Level WARN -Component TOOLS -Message "Cached $Name failed verification - discarding"
+        Remove-Item -LiteralPath $existing -Force -ErrorAction SilentlyContinue
+        return $null
+    }
+
+    $zip = Join-Path $toolDir "$Name.zip"
+    try {
+        Write-Log -Level INFO -Component TOOLS -Message "Downloading $Name from $Url"
+        $prevProgress = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue'
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $Url -OutFile $zip -UseBasicParsing -TimeoutSec $TimeoutSeconds -ErrorAction Stop
+    }
+    catch {
+        Write-Log -Level WARN -Component TOOLS -Message "Download failed for ${Name}: $($_.Exception.Message)"
+        return $null
+    }
+    finally {
+        if ($null -ne $prevProgress) { $ProgressPreference = $prevProgress }
+    }
+
+    try {
+        # Expand-Archive (not the Shell.Application COM object): the COM extractor propagates
+        # Mark-of-the-Web onto every extracted file, which can make Windows refuse to run them.
+        Expand-Archive -LiteralPath $zip -DestinationPath $toolDir -Force -ErrorAction Stop
+    }
+    catch {
+        Write-Log -Level WARN -Component TOOLS -Message "Extract failed for ${Name}: $($_.Exception.Message)"
+        return $null
+    }
+    finally {
+        if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue }
+    }
+
+    $exe = Resolve-ExternalToolPath -BaseName $Name -Directory $toolDir
+    if (-not $exe) {
+        Write-Log -Level WARN -Component TOOLS -Message "$Name not found in the extracted archive"
+        return $null
+    }
+
+    if (-not $SkipSignatureCheck -and -not (Test-MicrosoftSignedBinary -Path $exe)) {
+        # DELETE the rejected binary. Leaving it on disk meant the next call's cache-hit path
+        # would hand back the very file this check just refused.
+        Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue
+        return $null
+    }
+
+    Write-Log -Level SUCCESS -Component TOOLS -Message "Tool ready: $exe"
+    return $exe
+}
+
+<#
+.SYNOPSIS
+    Runs an external command and CAPTURES its stdout, with the same timeout guarantees as
+    Invoke-ExternalPackageCommand.
+.DESCRIPTION
+    Invoke-ExternalPackageCommand returns only an exit code, which is right for installers but
+    useless for the audit-shaped tools (autorunsc, sigcheck, du, handle) whose entire value is
+    their stdout.
+
+    Same deadlock-safe shape: start draining BOTH pipes before waiting, kill the process TREE
+    on timeout, and only read ExitCode after the readers are reaped.
+
+    Keep timeouts SHORT. These are audit tools, not installers - 60-180s is generous. Only
+    package installs deserve the 600s default of the sibling function.
+.OUTPUTS
+    [hashtable] @{ ExitCode = [int]; StdOut = [string]; StdErr = [string]; TimedOut = [bool] }
+    ExitCode is -1 on timeout and -2147483648 when the process could not be started at all.
+#>
+function Invoke-CapturedCommand {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory)] [string]$FilePath,
+        [Parameter()] [string[]]$ArgumentList = @(),
+        [Parameter()] [int]$TimeoutSeconds = 180
+    )
+
+    $result = @{ ExitCode = -2147483648; StdOut = ''; StdErr = ''; TimedOut = $false }
+
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = $FilePath
+    $psi.Arguments = $ArgumentList -join ' '
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+
+    $proc = [System.Diagnostics.Process]::new()
+    $proc.StartInfo = $psi
+    try {
+        try { $null = $proc.Start() }
+        catch {
+            Write-Log -Level WARN -Component TOOLS -Message "Failed to start '$FilePath': $($_.Exception.Message)"
+            return $result
+        }
+
+        # Drain before waiting - a full pipe buffer deadlocks the child otherwise.
+        $outTask = $proc.StandardOutput.ReadToEndAsync()
+        $errTask = $proc.StandardError.ReadToEndAsync()
+
+        $exited = if ($TimeoutSeconds -gt 0) {
+            $proc.WaitForExit([int][Math]::Min($TimeoutSeconds * 1000L, [int]::MaxValue))
+        }
+        else { $proc.WaitForExit(); $true }
+
+        if (-not $exited) {
+            try { $proc.Kill($true) } catch { try { $proc.Kill() } catch { } }
+            $result.TimedOut = $true
+            $result.ExitCode = -1
+            Write-Log -Level WARN -Component TOOLS -Message "Timed out after ${TimeoutSeconds}s, process tree killed: $FilePath"
+            return $result
+        }
+
+        try { $result.StdOut = $outTask.GetAwaiter().GetResult() } catch { }
+        try { $result.StdErr = $errTask.GetAwaiter().GetResult() } catch { }
+        $result.ExitCode = $proc.ExitCode
+        return $result
+    }
+    finally {
+        $proc.Dispose()
+    }
+}
+
+#endregion
+
 #region ─── EXPORTS ───────────────────────────────────────────────────────────
 
 Export-ModuleMember -Function @(
@@ -1862,6 +2157,11 @@ Export-ModuleMember -Function @(
     'Get-RegistryValue',
     'Set-RegistryValue',
     'Invoke-ExternalPackageCommand',
+    'Invoke-CapturedCommand',
+    'Get-ExternalTool',
+    'Resolve-ExternalToolPath',
+    'Test-MicrosoftSignedBinary',
+    'Initialize-SysinternalsEula',
     'Invoke-AppxInWinPS',
     'Get-AppxPackageCompat',
     'Remove-AppxPackageCompat',

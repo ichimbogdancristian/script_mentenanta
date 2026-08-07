@@ -2,6 +2,101 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## MANDATORY WORKING RULES — these are not negotiable
+
+These govern *how* you work in this repo. They override convenience, momentum, and any
+plan you are part-way through. Read them before touching anything.
+
+### 1. NEVER COMMIT. The user commits.
+
+**Do not run `git commit`.** Do not stage with `git add`. Do not push, amend, rebase, reset,
+or create tags or branches. The user reviews every change and commits it themselves.
+
+When work is finished: say what changed, say it is ready, and stop. Leave the working tree
+dirty — that is the handoff, not a failure state.
+
+This applies mid-session, after a "looks good", and after any number of previous commits in
+the same conversation. A commit earlier in the session is **not** standing permission for the
+next one.
+
+### 2. VERIFY 3× BEFORE, 3× AFTER — EVERY change, EVERYWHERE in this project
+
+This applies to the **whole project**: `script.bat`, every `.ps1`/`.psm1`, every JSON under
+`config/`, the Sysmon XML, the tests, the workflow, and the docs. Not just the launcher, and
+not just "risky-looking" edits. A one-line change gets the same six checks as a 200-line one —
+the small edits are the ones that slip through.
+
+Three **independent** checks each side — three different questions, not the same command run
+three times. Report all six results. If a check cannot be completed, **stop and say so** rather
+than proceeding on assumption.
+
+**BEFORE making any change:**
+
+| # | Check | Why |
+|---|---|---|
+| 1 | **Read the target region in full**, plus what precedes and follows it | Line numbers shift between edits; slicing or matching the wrong range is the easy mistake |
+| 2 | **Trace everything that crosses the boundary** — callers, callees, variables consumed later, labels/`GOTO`s, exported names, `DiffKey`s, config keys, `$ModulePairs` entries | The damage is almost never local. A variable read 400 lines later, or a key some other file matches on, breaks silently |
+| 3 | **Establish the baseline**: back the file up, print the exact boundary lines, and confirm the gate is *already green* | If you do not know it was green before, a failure afterwards tells you nothing |
+
+**AFTER making any change:**
+
+| # | Check | Why |
+|---|---|---|
+| 1 | **Structural integrity** for the file type — see the table below | Catches the class of break the language can detect for you |
+| 2 | **Line-survival diff**: every moved line accounted for, nothing lost, renames intentional | Verbatim moves must be *provably* verbatim, not assumed |
+| 3 | **Full gate green + `git diff` hunks touch ONLY the intended region**, with line endings and BOM unchanged | A stray whole-file rewrite is invisible in review. This is how the `ENDLOCAL` trailing-newline change slipped through unnoticed |
+
+**Structural integrity, per file type:**
+
+| File type | Check 1 means |
+|---|---|
+| `.ps1` / `.psm1` / `.psd1` | `[Parser]::ParseFile` clean, module still imports, `Export-ModuleMember` surface unchanged |
+| `script.bat` | Every `GOTO` target resolves, no orphaned label, CRLF preserved, no BOM |
+| `config/**/*.json` | Parses via `ConvertFrom-Json`, and the contract tests still pass |
+| tests / workflow | The suite still runs and the counts moved the way you expected |
+
+**`script.bat` gets the same six checks, but they matter most there** — it is the entire
+installed footprint, the only thing surviving a run, and batch has no parser to lean on, so
+`Parser::ParseFile` cannot help. Nothing in the test suite or CI covers it. A mistake there
+silently ends unattended operation on every machine.
+
+**The full gate**, for reference:
+
+```powershell
+Invoke-Pester -Path .\tests -Output None
+Invoke-ScriptAnalyzer -Path . -Recurse -Settings .\PSScriptAnalyzerSettings.psd1   # Errors must be 0
+# plus Parser::ParseFile over every .ps1/.psm1/.psd1
+```
+
+### 3. THE DEV PC IS NOT THE TEST MACHINE
+
+**This project is developed on the user's PC but tested on a separate VM.** The two machines
+have different installed software, different Windows state, different Defender configuration
+and a different user profile. Every real run log the user shares comes from the **VM**.
+
+**Never diagnose a reported failure from this PC's state.** Querying `winget list`,
+`Get-AppxPackage`, the registry, installed programs, services, or scheduled tasks here answers
+a question about the *wrong machine*. It looks authoritative and is worthless — worse than
+worthless, because a confident wrong answer sends the user chasing a bug that does not exist
+on the machine that failed.
+
+What is and is not valid to do locally:
+
+| Valid on the dev PC | NOT valid — VM only |
+|---|---|
+| Read and edit code | "Is X installed?" |
+| `Invoke-Pester`, `Invoke-ScriptAnalyzer`, `Parser::ParseFile` | "What does `winget list` return?" |
+| Reason about logic, control flow, contracts | "Does this service exist / this key hold that value?" |
+| Parse a log the user pasted | "Did the removal actually work?" |
+| Ask the user to run a specific probe on the VM | Any conclusion drawn from local system state |
+
+When machine state is needed to diagnose something, **write the exact probe command and ask
+the user to run it on the VM.** Do not substitute a local run and hope it generalises.
+
+The tests exist precisely so that correctness can be established without a live machine —
+they are all mocked, unelevated and system-independent for this reason. Lean on them, not on
+whatever this PC happens to have installed.
+
 ## What this is
 
 A Windows 10/11 maintenance automation system. A `.bat` launcher bootstraps the

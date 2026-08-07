@@ -30,6 +30,22 @@
       "attemptConsumerEsuEnrollment": false
     }
   },
+  "tools": {
+    "_comment": "Externally downloaded helper binaries, fetched at runtime into temp_files/tools by Get-ExternalTool and deleted with the extracted tree by Stage 5. They are NOT committed to this repo: the Sysinternals licence forbids publishing the software for others to copy, and this project ships as a public master.zip. Do NOT switch these to winget - Microsoft.Sysinternals.* resolves to the Store MSIX, which installs per-user behind app-execution-alias reparse points that SYSTEM cannot see and that fail-fast crash (0xC0000409) under redirected stdio. Every tool is best-effort: a failed download logs a WARN and the caller degrades to Warning, exactly like winget. Set enabled=false to turn the whole layer off.",
+    "enabled": true,
+    "verifySignature": true,
+    "sysinternals": {
+      "_comment": "movefile: queues a boot-time delete for temp files DiskCleanup cannot remove because they are locked. Pairs with the Stage 5 reboot, so a file queued in Stage 3 is gone minutes later in the same run. handle: read-only diagnostic naming the process that holds a locked path - turns a silent RMDIR failure into a named one.",
+      "movefile": {
+        "enabled": true,
+        "url": "https://download.sysinternals.com/files/pendmoves.zip"
+      },
+      "handle": {
+        "enabled": true,
+        "url": "https://download.sysinternals.com/files/Handle.zip"
+      }
+    }
+  },
   "reporting": {
     "enableHtmlReport": true
   },
