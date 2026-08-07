@@ -255,3 +255,62 @@ Describe 'Get-MoveFileTool gating' {
         }
     }
 }
+
+Describe 'Test-CommandAvailable known-location resolution' {
+    <#
+        A tool installed machine-wide but absent from THIS process's inherited PATH must still
+        be reported available. When it is not, every fallback that depends on it is skipped
+        silently - the failure that gets reported is the primary path's, so the missing
+        fallback is invisible.
+
+        Google Chrome hit exactly that: winget cannot install it while the community manifest's
+        hash is stale (--ignore-security-hash is refused for elevated processes, and this
+        project is always elevated), so `choco install googlechrome` was the only remaining
+        path - and it never ran, with nothing in the log to say so.
+
+        These tests are machine-independent: %ProgramData% is redirected at a stub tree and any
+        real chocolatey directory is stripped from PATH, so the fast Get-Command path cannot
+        mask the branch under test.
+    #>
+
+    BeforeAll {
+        $script:StubRoot = Join-Path $script:Sandbox 'pd-stub'
+        New-Item -ItemType Directory -Path (Join-Path $script:StubRoot 'chocolatey\bin') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $script:StubRoot 'chocolatey\bin\choco.exe') -Value 'stub'
+    }
+
+    It 'resolves choco from %ProgramData%\chocolatey\bin when it is not on PATH' {
+        $realPD = $env:ProgramData; $realPath = $env:PATH
+        try {
+            $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -notlike '*chocolatey*' }) -join ';'
+            $env:ProgramData = $script:StubRoot
+            Test-CommandAvailable -Command 'choco' | Should -BeTrue
+        }
+        finally { $env:ProgramData = $realPD; $env:PATH = $realPath }
+    }
+
+    It 'adds the resolved directory to PATH so later invocations work' {
+        $realPD = $env:ProgramData; $realPath = $env:PATH
+        try {
+            $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -notlike '*chocolatey*' }) -join ';'
+            $env:ProgramData = $script:StubRoot
+            $null = Test-CommandAvailable -Command 'choco'
+            $env:PATH | Should -BeLike "*$($script:StubRoot)*"
+        }
+        finally { $env:ProgramData = $realPD; $env:PATH = $realPath }
+    }
+
+    It 'still reports false when choco is genuinely absent' {
+        $realPD = $env:ProgramData; $realPath = $env:PATH
+        try {
+            $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -notlike '*chocolatey*' }) -join ';'
+            $env:ProgramData = Join-Path $script:Sandbox 'no-such-programdata'
+            Test-CommandAvailable -Command 'choco' | Should -BeFalse
+        }
+        finally { $env:ProgramData = $realPD; $env:PATH = $realPath }
+    }
+
+    It 'reports false for a command with no known locations and not on PATH' {
+        Test-CommandAvailable -Command 'definitely-not-a-real-tool-xyz' | Should -BeFalse
+    }
+}

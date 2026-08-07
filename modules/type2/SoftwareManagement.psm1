@@ -580,17 +580,42 @@ function Invoke-SoftwareManagement {
                     Write-Log -Level SUCCESS -Component SOFTWARE -Message "Installed (winget): $name"
                     $installed = $true
                 }
+                # -1978335215 = INSTALLER_HASH_MISMATCH. The manifest's SHA256 no longer matches
+                # the bytes at the vendor's download URL. This is an UPSTREAM problem, not a
+                # machine problem: vendors that republish each new build at a STABLE url age the
+                # community manifest out on every release (Google.Chrome does exactly this, at
+                # …/googlechromestandaloneenterprise64.msi). It is called out separately because
+                # it is not retryable here - '--ignore-security-hash' is refused for elevated
+                # processes, and this project is ALWAYS elevated (SYSTEM under the monthly task),
+                # so winget has no path to success until the manifest is refreshed upstream.
+                # The chocolatey fallback below is the only remaining option.
+                elseif ($exitCode -eq -1978335215) {
+                    Write-Log -Level WARN -Component SOFTWARE -Message "winget installer hash mismatch for $name - stale upstream manifest; not overridable while elevated"
+                }
                 else {
                     Write-Log -Level WARN -Component SOFTWARE -Message "winget exit $exitCode for $name"
                 }
             }
 
             if (-not $installed -and $chocoId -and $hasChoco) {
+                Write-Log -Level INFO -Component SOFTWARE -Message "Falling back to chocolatey for ${name}: choco install $chocoId"
                 $exitCode = Invoke-ExternalPackageCommand -FilePath 'choco' -ArgumentList @('install', $chocoId, '--yes', '--no-progress') @timeoutArgs
                 if ($exitCode -eq 0) {
                     Write-Log -Level SUCCESS -Component SOFTWARE -Message "Installed (choco): $name"
                     $installed = $true
                 }
+                else {
+                    Write-Log -Level WARN -Component SOFTWARE -Message "choco exit $exitCode for $name"
+                }
+            }
+            elseif (-not $installed) {
+                # State WHY no fallback ran. Without this the log is identical whether a fallback
+                # was attempted and failed, was never configured, or was skipped because choco
+                # was not found - which is exactly the ambiguity that hid the Chrome failure.
+                $why = if (-not $chocoId) { 'no "choco" id in essential-apps.json' }
+                elseif (-not $hasChoco) { 'chocolatey not available on this machine' }
+                else { 'unknown' }
+                Write-Log -Level WARN -Component SOFTWARE -Message "No chocolatey fallback for ${name}: $why"
             }
 
             if ($installed) {

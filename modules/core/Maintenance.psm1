@@ -1606,20 +1606,38 @@ function Test-CommandAvailable {
     # Fast path: command is already on $PATH
     if ($null -ne (Get-Command $Command -ErrorAction SilentlyContinue)) { return $true }
 
-    # winget lives in a per-user WindowsApps folder that is often absent from PS7's
-    # elevated session PATH. Try the two known locations before giving up.
-    if ($Command -eq 'winget') {
-        $candidates = @(
+    # Some tools are installed machine-wide but are not necessarily on the PATH this process
+    # inherited, so a bare Get-Command reports them missing even though they are present.
+    # Resolve those from their known install locations before giving up.
+    #
+    #   winget - lives in a per-user WindowsApps folder often absent from PS7's elevated PATH.
+    #   choco  - lives in %ProgramData%\chocolatey\bin. script.bat's :REFRESH_PATH_FROM_REGISTRY
+    #            prepends that directory, but chocolatey may equally have been installed by an
+    #            earlier run or by hand, in which case this process's PATH need not contain it.
+    #            Treating that as "chocolatey is not installed" silently disables every
+    #            chocolatey FALLBACK in SoftwareManagement - and a fallback that never runs is
+    #            invisible, because the winget failure it was meant to cover is what gets
+    #            reported. Google Chrome hit exactly this: winget cannot install it while the
+    #            community manifest's hash is stale (and --ignore-security-hash is refused for
+    #            elevated processes), so the choco path was the only one left and it never ran.
+    $knownLocations = @{
+        'winget' = @(
             (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\winget.exe'),
             (Join-Path $env:ProgramFiles  'WindowsApps\Microsoft.DesktopAppInstaller_*_x64__8wekyb3d8bbwe\winget.exe')
         )
-        foreach ($pattern in $candidates) {
+        'choco'  = @(
+            (Join-Path $env:ProgramData 'chocolatey\bin\choco.exe')
+        )
+    }
+
+    if ($knownLocations.ContainsKey($Command)) {
+        foreach ($pattern in $knownLocations[$Command]) {
             $resolved = Get-Item -Path $pattern -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($resolved) {
                 # Add the directory to the current session's PATH so subsequent calls work
-                $wingetDir = Split-Path $resolved.FullName
-                if ($env:PATH -notlike "*$wingetDir*") {
-                    $env:PATH = "$($env:PATH);$wingetDir"
+                $toolDir = Split-Path $resolved.FullName
+                if ($env:PATH -notlike "*$toolDir*") {
+                    $env:PATH = "$($env:PATH);$toolDir"
                 }
                 return $true
             }
