@@ -1,9 +1,14 @@
 # Temporary files / local-only directories
 temp_files/
 archive/
-tests/
 docs/
 scripts/
+
+# NOTE: tests/ is deliberately NOT ignored. It holds the Pester suite that CI runs
+# (.github/workflows/ci.yml) - ignoring it would leave the workflow executing tests that
+# do not exist in the repo. The suite never ships to a target machine in any meaningful
+# sense: script.bat extracts the whole repo zip, the orchestrator imports only modules/,
+# and Stage 5 deletes the extracted tree, so the few hundred KB costs nothing.
 
 # Self-update extraction + bootstrap download artifacts (created in the launch dir by script.bat)
 script_mentenanta-master/

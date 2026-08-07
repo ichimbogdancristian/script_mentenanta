@@ -115,7 +115,15 @@ function ConvertFrom-WingetListTable {
             $rows.Add(@{ Name = $cols[0].Trim(); Id = $id; Stem = (ConvertFrom-WingetPackageId -PackageId $id) })
         }
     }
-    return $rows.ToArray()
+    # `,` (array-wrap) is REQUIRED - same reason as Get-DiffList in Maintenance.psm1.
+    # PowerShell unrolls a single-element array on return, so a one-row table handed the
+    # caller a BARE HASHTABLE. `$rows.Count` then reported the hashtable's KEY count (3:
+    # Name/Id/Stem) instead of 1. That silently broke Resolve-WingetIdForCandidate, whose
+    # success condition is EXACTLY "the query returned one row": the -eq 1 test could never
+    # be true, the -gt 1 branch always fired, and every targeted lookup logged a bogus
+    # "3 ambiguous match(es)" and returned $null - so Pass B never resolved an Id at all,
+    # and Type2's winget-by-exact-Id removal layer never received one.
+    return , $rows.ToArray()
 }
 
 <#
@@ -195,7 +203,10 @@ function Resolve-WingetIdForCandidate {
     try {
         $raw = & $WingetExe list $Query --accept-source-agreements --disable-interactivity 2>&1 |
             Where-Object { $_ -is [string] }
-        $rows = ConvertFrom-WingetListTable -Lines $raw
+        # @() is belt-and-braces: ConvertFrom-WingetListTable now array-wraps its return,
+        # but this call site is the one that BREAKS on unrolling (it keys on Count -eq 1),
+        # so it does not rely on the callee alone.
+        $rows = @(ConvertFrom-WingetListTable -Lines $raw)
         if ($rows.Count -eq 1 -and $rows[0].Id) {
             return $rows[0].Id
         }
