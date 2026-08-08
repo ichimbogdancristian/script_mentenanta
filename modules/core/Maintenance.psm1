@@ -720,6 +720,27 @@ function Compare-RegistryBaseline {
         $vname = $entry.name ?? $entry.Name
         if (-not $path -or -not $vname) { continue }
 
+        # ── 'apply': false — the ONLY way to keep a rule in the baseline without enforcing it ──
+        # Before this existed there was no exclusion mechanism at all: every entry in the
+        # registry block was applied unconditionally. CLAUDE.md's "Deliberate CIS deviations"
+        # table therefore described rules as "not applied" when the only thing keeping them
+        # unapplied was their ABSENCE from the file - so a later bulk append silently started
+        # enforcing BitLocker TPM+PIN, LAPS, the logon banner and DenyDeviceIDs on every
+        # machine, all four of which that table explicitly excludes.
+        #
+        # Keeping the entry (with its cis reference, description and an "_excluded" rationale)
+        # and skipping it here is deliberately better than deleting it: the next person to sync
+        # the baseline against a CIS release sees the rule and WHY it is off, instead of
+        # re-adding it because it looks missing.
+        #
+        # Absent/true = enforce. Only an explicit false skips, so no existing entry changes
+        # behaviour.
+        $applyRaw = $entry.apply ?? $entry.Apply
+        if ($null -ne $applyRaw -and -not [bool]$applyRaw) {
+            Write-Log -Level DEBUG -Component CORE -Message "Baseline entry skipped (apply=false): $vname - $($entry._excluded ?? 'no reason given')"
+            continue
+        }
+
         $desired = $entry.desiredValue ?? $entry.DesiredValue
         $vtype = $entry.type ?? $entry.Type ?? 'DWord'
         $current = Get-RegistryValue -Path $path -Name $vname
@@ -1281,23 +1302,62 @@ function New-ModuleResult {
     running under PS7 Core (where the Appx module is unreliable).
 .PARAMETER ScriptBlock
     The PowerShell command string to execute (must use AppX cmdlets).
+.PARAMETER AsObject
+    Return real objects instead of console text. REQUIRED by any caller that reads
+    properties off the result - see the warning below.
 .OUTPUTS
-    Raw output from the command (deserialized objects when via powershell.exe).
+    Without -AsObject: raw stdout LINES ([string]) from powershell.exe.
+    With    -AsObject: [pscustomobject[]] round-tripped through JSON (always an array).
 #>
 function Invoke-AppxInWinPS {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [string]$ScriptBlock
+        [string]$ScriptBlock,
+
+        [switch]$AsObject
     )
 
     if ($PSVersionTable.PSEdition -eq 'Core') {
         Write-Verbose 'Delegating AppX operation to Windows PowerShell 5.1'
         $winPS = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+
+        # ── WHY -AsObject EXISTS (this was the bloatware bug) ─────────────────────────────
+        # `& powershell.exe -Command "..."` returns the child's CONSOLE TEXT on stdout. PS7
+        # does NOT deserialize it, so the caller gets [string] lines - including the
+        # Format-Table header and the '----' separator - not objects. Every caller that then
+        # read `$_.Name` / `$_.PackageFullName` got $null on every line, and
+        # `Where-Object { $_.Name }` filtered the whole list away.
+        #
+        # Net effect before this fix: Get-AppxPackageCompat and Get-AppxProvisionedPackageCompat
+        # ALWAYS returned zero usable rows, so the AppX and Provisioned bloatware sources
+        # detected nothing on any machine - 242 of the 149 active patterns' coverage, silently
+        # dead. The unit tests missed it because they mock the *Compat functions, so nothing
+        # ever crossed this boundary.
+        #
+        # The fix is an explicit JSON round-trip. 'ConvertTo-Json -InputObject @( ... )' forces
+        # array semantics, so 0 results give '[]', one gives a 1-element array and N give N -
+        # no single-object collapse to special-case. PS 5.1's ConvertTo-Json is used inside the
+        # child, so nothing extra needs installing.
+        if ($AsObject) {
+            $wrapped = "ConvertTo-Json -Depth 4 -Compress -InputObject @( $ScriptBlock )"
+            $json = (& $winPS -NoProfile -Command $wrapped 2>$null) -join ''
+            if ([string]::IsNullOrWhiteSpace($json) -or $json -eq 'null') { return @() }
+            try { return @($json | ConvertFrom-Json) }
+            catch {
+                Write-Log -Level DEBUG -Component CORE -Message "AppX JSON round-trip failed (returning empty): $_"
+                return @()
+            }
+        }
+
+        # Text mode is still correct for callers that only look for a sentinel LINE
+        # (e.g. Remove-AppxPackageCompat's 'APPX_REMOVED'), which is why it is kept.
         return & $winPS -NoProfile -Command $ScriptBlock 2>$null
     }
 
-    # Desktop edition — run directly
+    # Desktop edition — run directly. Objects are native here, so -AsObject only normalises
+    # the result to an array so both editions hand callers the same shape.
+    if ($AsObject) { return @(& ([scriptblock]::Create($ScriptBlock))) }
     return & ([scriptblock]::Create($ScriptBlock))
 }
 
@@ -1324,11 +1384,13 @@ function Get-AppxPackageCompat {
     $cmd += ' -ErrorAction SilentlyContinue'
     $cmd += ' | Select-Object Name, Version, Publisher, PackageFullName'
 
-    $raw = Invoke-AppxInWinPS -ScriptBlock $cmd
+    # -AsObject is REQUIRED: without it this receives console TEXT and every property below
+    # is $null, which made the AppX bloatware source detect nothing. See Invoke-AppxInWinPS.
+    $raw = Invoke-AppxInWinPS -ScriptBlock $cmd -AsObject
     if (-not $raw) { return @() }
 
     # Normalise into plain hashtables (deserialized objects lose methods)
-    @($raw) | ForEach-Object {
+    @($raw) | Where-Object { $_.Name } | ForEach-Object {
         @{
             Name            = $_.Name
             Version         = "$($_.Version)"
@@ -1400,13 +1462,20 @@ function Get-AppxProvisionedPackageCompat {
     # so this path silently produced nothing and every call fell through to DISM below.
     try {
         $cmd = 'Get-AppxProvisionedPackage -Online -ErrorAction Stop | Select-Object PackageName, DisplayName'
-        $raw = Invoke-AppxInWinPS -ScriptBlock $cmd
-        if ($raw) {
-            @($raw) | ForEach-Object {
-                $result.Add(@{ PackageName = $_.PackageName; DisplayName = $_.DisplayName })
+        # -AsObject is REQUIRED (see Invoke-AppxInWinPS). Without it $raw held console TEXT,
+        # so every record below was added with a $null PackageName AND - because $raw was
+        # non-empty - the function RETURNED EARLY, starving the working DISM fallback below.
+        # That is why the Provisioned source also detected nothing.
+        $raw = Invoke-AppxInWinPS -ScriptBlock $cmd -AsObject
+        $usable = @($raw) | Where-Object { $_.PackageName }
+        if ($usable.Count -gt 0) {
+            foreach ($p in $usable) {
+                $result.Add(@{ PackageName = $p.PackageName; DisplayName = $p.DisplayName })
             }
             return $result.ToArray()
         }
+        # Fall through to DISM when the PS path yields nothing USABLE, not merely nothing at
+        # all - a non-empty-but-unusable result must not count as success.
     }
     catch { Write-Verbose "AppX PowerShell method failed: $_" }
 

@@ -342,3 +342,81 @@ Describe 'security-baseline.json' {
         }
     }
 }
+
+Describe 'security-baseline.json - deliberate CIS deviations are actually enforced' {
+    <#
+        CLAUDE.md carries a "Deliberate CIS deviations" table listing rules that must NOT be
+        applied. Until the 'apply' flag existed there was no mechanism behind that table: every
+        entry in the registry block was applied unconditionally, so "not applied" held only
+        while a rule was ABSENT from the file. A bulk append then silently began enforcing
+        BitLocker TPM+PIN, LAPS, the logon banner and DenyDeviceIDs on every machine.
+
+        These tests make the table enforceable: re-adding one of those rules without
+        apply:false fails here instead of reaching production silently.
+
+        Every test asserts the entries were FOUND before asserting they are excluded - an
+        earlier draft used helper functions from BeforeAll that did not resolve inside the
+        Context blocks, so the loops iterated nothing and passed vacuously. Counts first.
+
+        'apply' semantics: absent or true = enforce; only an explicit false skips.
+    #>
+
+    It 'excludes BitLocker TPM+PIN (a pre-boot PIN can strand a headless box after Stage 5)' {
+        $names = 'UseAdvancedStartup', 'EnableBDEWithNoTPM', 'UseEnhancedPin'
+        $found = @($script:Security.registry | Where-Object { $_.name -in $names })
+        $found.Count | Should -Be 3 -Because 'all three TPM+PIN rules should still be present in the file, just excluded'
+        $enforced = @($found | Where-Object { $null -eq $_.apply -or [bool]$_.apply })
+        $enforced.Count | Should -Be 0 -Because "CLAUDE.md excludes BitLocker TPM+PIN; enforced: $(($enforced | ForEach-Object { $_.name }) -join ', ')"
+    }
+
+    It 'excludes every LAPS rule (domain-only; no-op or harmful on standalone machines)' {
+        $found = @($script:Security.registry | Where-Object { $_.path -like '*Policies\LAPS*' })
+        $found.Count | Should -BeGreaterThan 0 -Because 'entries are kept in-file with a rationale, not deleted'
+        $enforced = @($found | Where-Object { $null -eq $_.apply -or [bool]$_.apply })
+        $enforced.Count | Should -Be 0 -Because "CLAUDE.md excludes LAPS; enforced: $(($enforced | ForEach-Object { $_.name }) -join ', ')"
+    }
+
+    It 'excludes the logon banner' {
+        $found = @($script:Security.registry | Where-Object { $_.name -like 'LegalNotice*' })
+        $found.Count | Should -BeGreaterThan 0
+        $enforced = @($found | Where-Object { $null -eq $_.apply -or [bool]$_.apply })
+        $enforced.Count | Should -Be 0 -Because 'CLAUDE.md excludes legalnoticetext (organisation-specific)'
+    }
+
+    It 'excludes DenyDeviceIDs / DenyDeviceClasses (kills USB-C docks)' {
+        $found = @($script:Security.registry | Where-Object { $_.name -like 'DenyDevice*' })
+        $found.Count | Should -BeGreaterThan 0
+        $enforced = @($found | Where-Object { $null -eq $_.apply -or [bool]$_.apply })
+        $enforced.Count | Should -Be 0 -Because 'CLAUDE.md excludes DenyDeviceIDs'
+    }
+
+    It 'never enforces the same path+name twice' {
+        # Two entries were duplicated by a bulk append and were applied twice every run.
+        $enforced = @($script:Security.registry | Where-Object { $null -eq $_.apply -or [bool]$_.apply })
+        $enforced.Count | Should -BeGreaterThan 0
+        $dupes = @($enforced | Group-Object { "$($_.path)|$($_.name)" } | Where-Object Count -gt 1)
+        $dupes.Count | Should -Be 0 -Because "applied more than once per run: $(($dupes | ForEach-Object { $_.Name }) -join '; ')"
+    }
+
+    It 'never enforces an entry with an empty desiredValue' {
+        $bad = @($script:Security.registry | Where-Object {
+                ($null -eq $_.apply -or [bool]$_.apply) -and
+                ($null -eq $_.desiredValue -or "$($_.desiredValue)".Trim() -eq '')
+            })
+        $bad.Count | Should -Be 0 -Because "an empty desiredValue can never compare compliant: $(($bad | ForEach-Object { $_.name }) -join ', ')"
+    }
+
+    It 'makes every excluded entry explain itself' {
+        $excluded = @($script:Security.registry | Where-Object { $null -ne $_.apply -and -not [bool]$_.apply })
+        $excluded.Count | Should -BeGreaterThan 0 -Because 'the deviation table has entries, so some must be excluded'
+        $silent = @($excluded | Where-Object { [string]::IsNullOrWhiteSpace($_._excluded) })
+        $silent.Count | Should -Be 0 -Because "excluded without a reason: $(($silent | ForEach-Object { $_.name }) -join ', ')"
+    }
+
+    It 'still enforces EnableAppInstaller = 1 (the project depends on winget)' {
+        $e = @($script:Security.registry | Where-Object { $_.name -eq 'EnableAppInstaller' })
+        $e.Count | Should -Be 1
+        ($null -eq $e[0].apply -or [bool]$e[0].apply) | Should -BeTrue -Because 'winget is required by SoftwareManagement and the Sysmon install'
+        $e[0].desiredValue | Should -Be 1
+    }
+}

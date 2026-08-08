@@ -232,6 +232,8 @@
       "cis": "2.3.7.5",
       "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
       "name": "LegalNoticeText",
+      "apply": false,
+      "_excluded": "CLAUDE.md deliberate deviation: organisation-specific logon banner.",
       "type": "String",
       "desiredValue": "This system is for authorized use only. By using this system you consent to monitoring.",
       "description": "Logon legal notice text",
@@ -241,6 +243,8 @@
       "cis": "2.3.7.6",
       "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
       "name": "LegalNoticeCaption",
+      "apply": false,
+      "_excluded": "CLAUDE.md deliberate deviation: organisation-specific logon banner.",
       "type": "String",
       "desiredValue": "WARNING",
       "description": "Logon legal notice caption",
@@ -850,6 +854,8 @@
       "cis": "18.9.7.1.1",
       "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions",
       "name": "DenyDeviceIDs",
+      "apply": false,
+      "_excluded": "CLAUDE.md deliberate deviation: kills USB-C docks / Thunderbolt. Master switch only - the deny list lives in a separate subkey that this baseline does not populate, so enforcing it is all risk and no benefit.",
       "type": "DWord",
       "desiredValue": 1,
       "description": "Prevent device install by Device IDs"
@@ -858,6 +864,8 @@
       "cis": "18.9.7.1.4",
       "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceInstall\\Restrictions",
       "name": "DenyDeviceClasses",
+      "apply": false,
+      "_excluded": "CLAUDE.md deliberate deviation: paired with DenyDeviceIDs.",
       "type": "DWord",
       "desiredValue": 1,
       "description": "Prevent device install by setup classes"
@@ -1042,6 +1050,8 @@
       "cis": "18.9.25.1",
       "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
       "name": "BackupDirectory",
+      "apply": false,
+      "_excluded": "CLAUDE.md deliberate deviation: LAPS is domain-only. BackupDirectory=1 targets Active Directory and is a no-op on the standalone machines this tool targets.",
       "type": "DWord",
       "desiredValue": 1,
       "description": "LAPS: Backup to Active Directory"
@@ -1050,6 +1060,8 @@
       "cis": "18.9.25.3",
       "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
       "name": "ADPasswordEncryptionEnabled",
+      "apply": false,
+      "_excluded": "CLAUDE.md deliberate deviation: LAPS is domain-only.",
       "type": "DWord",
       "desiredValue": 1,
       "description": "LAPS: Enable password encryption"
@@ -1058,6 +1070,8 @@
       "cis": "18.9.25.4",
       "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
       "name": "PasswordComplexity",
+      "apply": false,
+      "_excluded": "CLAUDE.md deliberate deviation: LAPS is domain-only.",
       "type": "DWord",
       "desiredValue": 4,
       "description": "LAPS: Large+small+numbers+special"
@@ -1066,6 +1080,8 @@
       "cis": "18.9.25.5",
       "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
       "name": "PasswordLength",
+      "apply": false,
+      "_excluded": "CLAUDE.md deliberate deviation: LAPS is domain-only.",
       "type": "DWord",
       "desiredValue": 15,
       "description": "LAPS: Password length 15"
@@ -1074,6 +1090,8 @@
       "cis": "18.9.25.6",
       "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
       "name": "PasswordAgeDays",
+      "apply": false,
+      "_excluded": "CLAUDE.md deliberate deviation: LAPS is domain-only.",
       "type": "DWord",
       "desiredValue": 30,
       "description": "LAPS: Password age 30 days"
@@ -1082,6 +1100,8 @@
       "cis": "18.9.25.7",
       "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
       "name": "PostAuthenticationResetDelay",
+      "apply": false,
+      "_excluded": "CLAUDE.md deliberate deviation: LAPS is domain-only.",
       "type": "DWord",
       "desiredValue": 8,
       "description": "LAPS: Post-auth grace period 8 hours"
@@ -1090,6 +1110,8 @@
       "cis": "18.9.25.8",
       "path": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\LAPS",
       "name": "PostAuthenticationActions",
+      "apply": false,
+      "_excluded": "CLAUDE.md deliberate deviation: LAPS is domain-only.",
       "type": "DWord",
       "desiredValue": 3,
       "description": "LAPS: Post-auth reset password and logoff"
@@ -1971,6 +1993,8 @@
       "cis": "18.10.10.2.1",
       "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
       "name": "UseEnhancedPin",
+      "apply": false,
+      "_excluded": "CLAUDE.md deliberate deviation: BitLocker TPM+PIN (see UseAdvancedStartup).",
       "type": "DWord",
       "desiredValue": 1,
       "description": "BitLocker OS: Allow enhanced PINs"
@@ -2019,6 +2043,8 @@
       "cis": "18.10.10.2.13",
       "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
       "name": "UseAdvancedStartup",
+      "apply": false,
+      "_excluded": "CLAUDE.md deliberate deviation: BitLocker TPM+PIN. A pre-boot PIN halts the machine after the Stage 5 reboot and can strand a headless box.",
       "type": "DWord",
       "desiredValue": 1,
       "description": "BitLocker OS: Require additional auth at startup"
@@ -2027,6 +2053,8 @@
       "cis": "18.10.10.2.14",
       "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
       "name": "EnableBDEWithNoTPM",
+      "apply": false,
+      "_excluded": "CLAUDE.md deliberate deviation: BitLocker TPM+PIN (see UseAdvancedStartup).",
       "type": "DWord",
       "desiredValue": 0,
       "description": "BitLocker OS: Require TPM"
@@ -2107,6 +2135,8 @@
       "cis": "18.10.10.1.1",
       "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
       "name": "FDVDiscoveryVolumeType",
+      "apply": false,
+      "_excluded": "desiredValue is an empty string, so this can never compare compliant and rewrites an empty policy value every run. Populate it or leave it excluded.",
       "type": "String",
       "desiredValue": "",
       "description": "BitLocker fixed: Discovery volume type none"
@@ -2115,6 +2145,8 @@
       "cis": "18.10.10.3.1",
       "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE",
       "name": "RDVDiscoveryVolumeType",
+      "apply": false,
+      "_excluded": "desiredValue is an empty string (see FDVDiscoveryVolumeType).",
       "type": "String",
       "desiredValue": "",
       "description": "BitLocker removable: Discovery volume type none"
@@ -2151,6 +2183,8 @@
       "section": "Microsoft Store Prevention",
       "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsStore",
       "name": "RemoveWindowsStore",
+      "apply": false,
+      "_excluded": "DUPLICATE of the cis 18.10.66.4 entry above; applied twice per run. Disabled here, kept for traceability.",
       "type": "DWord",
       "desiredValue": 1,
       "description": "Prevent access to Windows Store (remove from Start menu)"
@@ -2159,6 +2193,8 @@
       "section": "Microsoft Store Prevention",
       "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\WindowsStore",
       "name": "DisableStoreApps",
+      "apply": false,
+      "_excluded": "DUPLICATE of the cis 18.10.66.1 entry above; applied twice per run. Disabled here, kept for traceability.",
       "type": "DWord",
       "desiredValue": 1,
       "description": "Disable Store apps launch"
