@@ -1430,18 +1430,86 @@ function Remove-AppxPackageCompat {
     # (worse) setting its $removed flag, which SKIPPED the winget-by-exact-Id layer that would
     # actually have removed them. Verifying in-process also avoids a second powershell.exe launch
     # per package.
+    # ── VERIFY ON INSTALL STATE, NOT ON PRESENCE ─────────────────────────────────────────
+    # The previous check was `if (Get-AppxPackage -AllUsers | Where PackageFullName -eq X)`.
+    # That is wrong: `Get-AppxPackage -AllUsers` also lists packages that are merely STAGED on
+    # the machine (present on disk, registered to nobody). A successful all-users removal of an
+    # in-box app normally leaves exactly that staged remnant behind, so the package was still
+    # "found" and every removal was reported as a FAILURE - 27 of 27 on a real run - while the
+    # apps had actually gone for the user. Layer 1 then recorded 'AppX(failed)' and the whole
+    # layered strategy ran on a false premise.
+    #
+    # A package is only still installed if some user's PackageUserInformation says 'Installed'.
+    #
+    # Also fixed here:
+    #   * speed - it used to run `Get-AppxPackage -AllUsers` (a FULL enumeration) twice per
+    #     package, which is why each removal took ~17s on the test VM. Removal now targets
+    #     -Package directly and verification queries by -Name.
+    #   * blindness - the child ran with SilentlyContinue and 2>$null, so the real reason a
+    #     removal failed was discarded. The error text is now returned and logged.
+    #   * a per-user fallback for SIDs that survive the -AllUsers attempt.
     $allUsersArg = if ($AllUsers) { ' -AllUsers' } else { '' }
     $cmd = @"
 `$ErrorActionPreference = 'SilentlyContinue'
-Get-AppxPackage -AllUsers | Where-Object { `$_.PackageFullName -eq '$PackageFullName' } | Remove-AppxPackage$allUsersArg
-`$still = Get-AppxPackage -AllUsers | Where-Object { `$_.PackageFullName -eq '$PackageFullName' }
-if (`$still) { 'APPX_PRESENT' } else { 'APPX_REMOVED' }
+`$pfn  = '$PackageFullName'
+`$name = `$pfn.Split('_')[0]
+`$err  = ''
+
+# Returns @{ Ok = <did the query itself succeed>; Sids = <users with InstallState 'Installed'> }.
+# Ok is NOT the same as "no sids": Get-AppxPackage -AllUsers throws Access Denied when not
+# elevated, which yields zero sids and would otherwise be read as "successfully removed".
+# A verification that cannot see the machine must never certify a removal.
+function Get-InstalledSids {
+    param(`$Pfn, `$Name)
+    `$sids = @()
+    try { `$pkgs = @(Get-AppxPackage -AllUsers -Name `$Name -ErrorAction Stop) }
+    catch { return @{ Ok = `$false; Sids = @() } }
+    foreach (`$p in `$pkgs) {
+        if (`$p.PackageFullName -ne `$Pfn) { continue }
+        foreach (`$u in @(`$p.PackageUserInformation)) {
+            if ("`$(`$u.InstallState)" -eq 'Installed') { `$sids += "`$(`$u.UserSecurityId.Sid)" }
+        }
+    }
+    return @{ Ok = `$true; Sids = `$sids }
+}
+
+try { Remove-AppxPackage -Package `$pfn$allUsersArg -ErrorAction Stop }
+catch { `$err = (`$_.Exception.Message -replace '[\r\n]+', ' ') }
+
+# Per-user fallback: -AllUsers is refused for some in-box packages, but the same package can
+# still be removed profile by profile.
+`$mid = Get-InstalledSids -Pfn `$pfn -Name `$name
+if (`$mid.Ok) {
+    foreach (`$sid in `$mid.Sids) {
+        try { Remove-AppxPackage -Package `$pfn -User `$sid -ErrorAction Stop }
+        catch { if (-not `$err) { `$err = (`$_.Exception.Message -replace '[\r\n]+', ' ') } }
+    }
+}
+
+`$final = Get-InstalledSids -Pfn `$pfn -Name `$name
+if (-not `$final.Ok) {
+    if (-not `$err) { `$err = 'verification query failed (elevation required?)' }
+    "APPX_PRESENT|`$err"
+}
+elseif (`$final.Sids.Count -gt 0) { "APPX_PRESENT|`$err" }
+else { "APPX_REMOVED|`$err" }
 "@
 
-    $out = Invoke-AppxInWinPS -ScriptBlock $cmd
-    # Absent output means the child process died before printing a sentinel - treat as failure
+    $out = @(Invoke-AppxInWinPS -ScriptBlock $cmd)
+    $sentinel = $out | Where-Object { $_ -is [string] -and $_ -match '^APPX_(REMOVED|PRESENT)\|' } | Select-Object -First 1
+
+    # Absent sentinel means the child process died before printing one - treat as failure
     # rather than success, so callers fall through to their next removal layer.
-    return ([bool](@($out) -contains 'APPX_REMOVED'))
+    if (-not $sentinel) {
+        Write-Log -Level DEBUG -Component CORE -Message "AppX removal produced no sentinel for $PackageFullName (child process failed)"
+        return $false
+    }
+
+    $reason = ($sentinel -split '\|', 2)[1]
+    if ($reason) {
+        Write-Log -Level DEBUG -Component CORE -Message "AppX removal reported: $PackageFullName - $reason"
+    }
+    return ([bool]($sentinel -like 'APPX_REMOVED*'))
 }
 
 <#
