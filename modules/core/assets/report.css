@@ -228,3 +228,96 @@ body[data-theme="light"] .lvl-chip .cnt{background:rgba(0,0,0,.08)}
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:999px}
 ::-webkit-scrollbar-thumb:hover{background:var(--faint)}
+
+/* ============================================================================
+   RESPONSIVE
+   The grids above use auto-fit/minmax and reflow on their own, but three things
+   are FIXED-column and overflow on a narrow window: the log row (74/66/118/1fr),
+   the per-module metric strip (4 equal columns) and the hero (flex, space-between).
+   ========================================================================== */
+@media (max-width:900px){
+  .hero{flex-direction:column;gap:16px;padding:22px 20px}
+  .hero-r{align-items:flex-start;flex-direction:row;width:100%;justify-content:space-between}
+  .log-toolbar{flex-direction:column;align-items:stretch}
+  .log-controls{width:100%}
+  .log-search{min-width:0;flex:1}
+  .u3,.thead.u3{grid-template-columns:1fr 1.4fr}
+  .u4,.thead.u4{grid-template-columns:.5fr 1.4fr 1fr}
+  .u3>*:last-child,.thead.u3>*:last-child,.u4>*:nth-child(3),.thead.u4>*:nth-child(3){display:none}
+}
+@media (max-width:640px){
+  .wrap{padding:14px}
+  .metrics{grid-template-columns:repeat(2,1fr)}
+  .log-row{grid-template-columns:58px 1fr;row-gap:1px;padding:5px 12px}
+  .log-row .lr-cmp{grid-column:2;font-size:10px}
+  .log-row .lr-msg{grid-column:1/-1;padding-left:58px}
+  .ov-mini{gap:14px}
+  .nic-kv{flex-direction:column;gap:0}
+  .nic-kv>span:last-child{text-align:left}
+}
+
+/* ============================================================================
+   ACCESSIBILITY
+   Every interactive control (theme button, level chips, search/select, the
+   <details> summaries) previously had no visible keyboard focus, and
+   .log-select:focus actively removed the outline. Restore a real focus ring.
+   ========================================================================== */
+.theme-btn:focus-visible,.lvl-chip:focus-visible,.log-select:focus-visible,
+.log-search:focus-visible,.mod-details summary:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px;border-radius:8px
+}
+.lvl-chip:focus-visible{border-radius:999px}
+.mod-details summary:focus{outline:none}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition:none!important;animation:none!important;scroll-behavior:auto!important}
+  .mod:hover{transform:none}
+}
+
+/* ============================================================================
+   SYSTEM COLOUR SCHEME
+   The report opened dark for everyone and only respected an explicit toggle.
+   Honour the OS preference when the user has not chosen; the toggle still wins
+   because report.js sets body[data-theme], which is a more specific selector.
+   ========================================================================== */
+@media (prefers-color-scheme:light){
+  body:not([data-theme="dark"]):not([data-theme="light"]){
+    --bg:#eef1f7;--bg2:#ffffff;--card:#ffffff;--card2:#f3f6fb;--border:#e1e7f0;
+    --text:#141a26;--muted:#5b6472;--faint:#98a2b3;
+    --accent:#6d28d9;--accent2:#0891b2;
+    --success:#059669;--warn:#d97706;--danger:#dc2626;--info:#2563eb;--debug:#6b7280;--fatal:#e11d48;
+    --shadow:0 8px 24px rgba(30,40,80,.10);
+  }
+}
+
+/* ============================================================================
+   PRINT
+   This report is the ONLY artifact that survives Stage 5 cleanup, so it gets
+   archived and printed. Without these rules it printed as a dark slab with the
+   log clipped to one screen: .log-body/.tbody/.item-list all cap max-height and
+   scroll, so everything past the fold was simply lost on paper.
+   ========================================================================== */
+@media print{
+  body{background:#fff!important;color:#000!important;font-size:10.5pt}
+  body,body[data-theme="light"],body[data-theme="dark"]{
+    --bg:#fff;--bg2:#fff;--card:#fff;--card2:#f5f5f5;--border:#bbb;
+    --text:#000;--muted:#444;--faint:#666;--shadow:none;
+  }
+  .wrap{padding:0;max-width:none}
+  /* Release every scroll container so nothing is clipped on paper. */
+  .log-body,.tbody,.item-list,.excl-list{max-height:none!important;overflow:visible!important}
+  /* Expand collapsed detail so the printed record is complete. */
+  .mod-details[open] .item-list,.mod-details .item-list{display:flex!important}
+  details{display:block}
+  details>summary{list-style:none}
+  details:not([open])>*:not(summary){display:none}
+  /* Controls are meaningless on paper. */
+  .theme-btn,.log-toolbar .log-controls,.lvl-chips{display:none!important}
+  .hero{background:#fff!important;border:1px solid #999;box-shadow:none}
+  .card,.mod,.ov-card,.stat,.mini{box-shadow:none;border:1px solid #bbb;break-inside:avoid}
+  .mod,.ov-card,.card{page-break-inside:avoid}
+  .sec{break-after:avoid;page-break-after:avoid}
+  .log-row{font-size:8.5pt;padding:1px 0}
+  .log-row:hover{background:none}
+  a[href]::after{content:''}
+}

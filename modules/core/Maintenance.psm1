@@ -127,11 +127,28 @@ function Initialize-LogFile {
 function Set-LogLevel {
     [CmdletBinding()]
     param([string]$Console, [string]$File)
-    if ($Console -and $script:LevelRank.ContainsKey($Console.ToString().ToUpper())) {
-        $script:LogConsoleRank = $script:LevelRank[$Console.ToString().ToUpper()]
-    }
-    if ($File -and $script:LevelRank.ContainsKey($File.ToString().ToUpper())) {
-        $script:LogFileRank = $script:LevelRank[$File.ToString().ToUpper()]
+
+    # A supplied-but-unrecognised level used to be discarded in SILENCE, so a typo in
+    # main-config.json's logging block ("TRACE", "Verbose", or a stray trailing space) looked
+    # like it had been applied while the thresholds never moved. maintenance.log is the primary
+    # - often only - diagnostic for an unattended run, so a logging setting that quietly does
+    # nothing is worth saying out loud. Values are also trimmed now, so " WARN " works.
+    #
+    # An ABSENT value still means "keep the current threshold" and is not a warning: both
+    # callers (Initialize-LogFile's defaults, and the orchestrator passing $Config.logging.*)
+    # legitimately pass nothing when the config block is missing.
+    foreach ($spec in @(@{ Name = 'Console'; Value = $Console }, @{ Name = 'File'; Value = $File })) {
+        if (-not $spec.Value) { continue }
+        $key = $spec.Value.ToString().Trim().ToUpper()
+        if ($script:LevelRank.ContainsKey($key)) {
+            if ($spec.Name -eq 'Console') { $script:LogConsoleRank = $script:LevelRank[$key] }
+            else { $script:LogFileRank = $script:LevelRank[$key] }
+        }
+        else {
+            $valid = ($script:LevelRank.Keys | Sort-Object { $script:LevelRank[$_] }, { $_ }) -join ', '
+            Write-Log -Level WARN -Component CORE -Message `
+                "Ignoring unknown $($spec.Name) log level '$($spec.Value)' - keeping the current threshold. Valid levels: $valid"
+        }
     }
 }
 
@@ -305,22 +322,36 @@ function Get-ExceptionCategory {
 
     $exception = $ErrorRecord.Exception
     $exceptionType = $exception.GetType().Name
+
+    # Match on the FULL type name, not the short one.
+    #
+    # The Network patterns below are namespace-qualified ('Net.WebException'), but .Name is
+    # unqualified ('WebException'), so matching on .Name made the Network branch UNREACHABLE:
+    # its only satisfiable alternative was 'TimeoutException', which the Timeout branch above
+    # already claims. A System.Net.WebException therefore fell through to 'Unknown'/'Medium'
+    # with the generic "Check error details and logs" suggestion - on a system whose entire
+    # first stage depends on reaching GitHub.
+    #
+    # FullName contains the short name as a substring, so every other branch keeps matching
+    # exactly as before; only Network changes behaviour. SocketException is added because
+    # 'System.Net.Sockets.SocketException' matched none of the original alternatives either.
+    $typeForMatch = $exception.GetType().FullName
     $message = $exception.Message
 
     # Categorize by exception type
-    $category = if ($exceptionType -match 'UnauthorizedAccess|AccessDenied|SecurityException') {
+    $category = if ($typeForMatch -match 'UnauthorizedAccess|AccessDenied|SecurityException') {
         'Permission'
     }
-    elseif ($exceptionType -match 'TimeoutException|OperationCanceledException') {
+    elseif ($typeForMatch -match 'TimeoutException|OperationCanceledException') {
         'Timeout'
     }
-    elseif ($exceptionType -match 'IOException|FileNotFound|DirectoryNotFound') {
+    elseif ($typeForMatch -match 'IOException|FileNotFound|DirectoryNotFound') {
         'IO'
     }
-    elseif ($exceptionType -match 'Net.Http|Net.WebException|TimeoutException') {
+    elseif ($typeForMatch -match 'Net\.Http|Net\.WebException|Net\.Sockets|SocketException') {
         'Network'
     }
-    elseif ($exceptionType -match 'ArgumentException|ArgumentNullException|InvalidOperation') {
+    elseif ($typeForMatch -match 'ArgumentException|ArgumentNullException|InvalidOperation') {
         'Invalid'
     }
     else {
@@ -536,6 +567,39 @@ function Get-TempPath {
 
 <#
 .SYNOPSIS
+    Shape-agnostic "does this item carry that field?" test. INTERNAL - not exported.
+.DESCRIPTION
+    Items reach Compare-ListDiff in two different shapes and the guards have to work for both:
+
+      * baseline items come from Get-BaselineList, i.e. ConvertFrom-Json -AsHashtable, which
+        returns OrderedHashtable (verified) - an IDictionary;
+      * scan items are usually hand-built [pscustomobject].
+
+    '.PSObject.Properties[...]' only works for the SECOND shape. On a hashtable it enumerates
+    the CLR members (Count / Keys / Values / IsReadOnly / ...), never the JSON keys, so a guard
+    written that way silently evaluated to $null for real config data and the 'Changed'
+    strategy returned an EMPTY diff - the pair would then be reported by Stage 2 as
+    "system already in desired state". This is the same failure mode CLAUDE.md documents for
+    the bloatware protection list; it survived here because every 'Changed' unit test passed
+    [pscustomobject] inputs, which take the working branch.
+.OUTPUTS
+    [bool]
+#>
+function Test-ItemHasField {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter()] [AllowNull()] $Item,
+        [Parameter(Mandatory)] [string]$Field
+    )
+
+    if ($null -eq $Item) { return $false }
+    if ($Item -is [System.Collections.IDictionary]) { return $Item.Contains($Field) }
+    return $null -ne $Item.PSObject.Properties[$Field]
+}
+
+<#
+.SYNOPSIS
     Produces a diff list by comparing Type1 scan results against a baseline.
 .DESCRIPTION
     Strategies:
@@ -601,7 +665,7 @@ function Compare-ListDiff {
                     ($_.$MatchProperty -and $_.$MatchProperty.Equals($bName, [System.StringComparison]::OrdinalIgnoreCase))
                 } | Select-Object -First 1
 
-                if ($found -and $found.PSObject.Properties['CurrentState'] -and $baseItem.PSObject.Properties['desiredValue']) {
+                if ($found -and (Test-ItemHasField -Item $found -Field 'CurrentState') -and (Test-ItemHasField -Item $baseItem -Field 'desiredValue')) {
                     if ($found.CurrentState -ne $baseItem.desiredValue) {
                         $diff.Add(@{
                                 Name         = $bName
@@ -613,7 +677,7 @@ function Compare-ListDiff {
                 }
                 elseif (-not $found) {
                     # Item is missing - assume it needs to be set to desired value
-                    if ($baseItem.PSObject.Properties['desiredValue']) {
+                    if (Test-ItemHasField -Item $baseItem -Field 'desiredValue') {
                         $diff.Add(@{
                                 Name         = $bName
                                 CurrentState = $null
@@ -655,6 +719,27 @@ function Compare-RegistryBaseline {
         $path = $entry.path ?? $entry.Path
         $vname = $entry.name ?? $entry.Name
         if (-not $path -or -not $vname) { continue }
+
+        # ── 'apply': false — the ONLY way to keep a rule in the baseline without enforcing it ──
+        # Before this existed there was no exclusion mechanism at all: every entry in the
+        # registry block was applied unconditionally. CLAUDE.md's "Deliberate CIS deviations"
+        # table therefore described rules as "not applied" when the only thing keeping them
+        # unapplied was their ABSENCE from the file - so a later bulk append silently started
+        # enforcing BitLocker TPM+PIN, LAPS, the logon banner and DenyDeviceIDs on every
+        # machine, all four of which that table explicitly excludes.
+        #
+        # Keeping the entry (with its cis reference, description and an "_excluded" rationale)
+        # and skipping it here is deliberately better than deleting it: the next person to sync
+        # the baseline against a CIS release sees the rule and WHY it is off, instead of
+        # re-adding it because it looks missing.
+        #
+        # Absent/true = enforce. Only an explicit false skips, so no existing entry changes
+        # behaviour.
+        $applyRaw = $entry.apply ?? $entry.Apply
+        if ($null -ne $applyRaw -and -not [bool]$applyRaw) {
+            Write-Log -Level DEBUG -Component CORE -Message "Baseline entry skipped (apply=false): $vname - $($entry._excluded ?? 'no reason given')"
+            continue
+        }
 
         $desired = $entry.desiredValue ?? $entry.DesiredValue
         $vtype = $entry.type ?? $entry.Type ?? 'DWord'
@@ -1217,23 +1302,62 @@ function New-ModuleResult {
     running under PS7 Core (where the Appx module is unreliable).
 .PARAMETER ScriptBlock
     The PowerShell command string to execute (must use AppX cmdlets).
+.PARAMETER AsObject
+    Return real objects instead of console text. REQUIRED by any caller that reads
+    properties off the result - see the warning below.
 .OUTPUTS
-    Raw output from the command (deserialized objects when via powershell.exe).
+    Without -AsObject: raw stdout LINES ([string]) from powershell.exe.
+    With    -AsObject: [pscustomobject[]] round-tripped through JSON (always an array).
 #>
 function Invoke-AppxInWinPS {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
-        [string]$ScriptBlock
+        [string]$ScriptBlock,
+
+        [switch]$AsObject
     )
 
     if ($PSVersionTable.PSEdition -eq 'Core') {
         Write-Verbose 'Delegating AppX operation to Windows PowerShell 5.1'
         $winPS = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+
+        # ── WHY -AsObject EXISTS (this was the bloatware bug) ─────────────────────────────
+        # `& powershell.exe -Command "..."` returns the child's CONSOLE TEXT on stdout. PS7
+        # does NOT deserialize it, so the caller gets [string] lines - including the
+        # Format-Table header and the '----' separator - not objects. Every caller that then
+        # read `$_.Name` / `$_.PackageFullName` got $null on every line, and
+        # `Where-Object { $_.Name }` filtered the whole list away.
+        #
+        # Net effect before this fix: Get-AppxPackageCompat and Get-AppxProvisionedPackageCompat
+        # ALWAYS returned zero usable rows, so the AppX and Provisioned bloatware sources
+        # detected nothing on any machine - 242 of the 149 active patterns' coverage, silently
+        # dead. The unit tests missed it because they mock the *Compat functions, so nothing
+        # ever crossed this boundary.
+        #
+        # The fix is an explicit JSON round-trip. 'ConvertTo-Json -InputObject @( ... )' forces
+        # array semantics, so 0 results give '[]', one gives a 1-element array and N give N -
+        # no single-object collapse to special-case. PS 5.1's ConvertTo-Json is used inside the
+        # child, so nothing extra needs installing.
+        if ($AsObject) {
+            $wrapped = "ConvertTo-Json -Depth 4 -Compress -InputObject @( $ScriptBlock )"
+            $json = (& $winPS -NoProfile -Command $wrapped 2>$null) -join ''
+            if ([string]::IsNullOrWhiteSpace($json) -or $json -eq 'null') { return @() }
+            try { return @($json | ConvertFrom-Json) }
+            catch {
+                Write-Log -Level DEBUG -Component CORE -Message "AppX JSON round-trip failed (returning empty): $_"
+                return @()
+            }
+        }
+
+        # Text mode is still correct for callers that only look for a sentinel LINE
+        # (e.g. Remove-AppxPackageCompat's 'APPX_REMOVED'), which is why it is kept.
         return & $winPS -NoProfile -Command $ScriptBlock 2>$null
     }
 
-    # Desktop edition — run directly
+    # Desktop edition — run directly. Objects are native here, so -AsObject only normalises
+    # the result to an array so both editions hand callers the same shape.
+    if ($AsObject) { return @(& ([scriptblock]::Create($ScriptBlock))) }
     return & ([scriptblock]::Create($ScriptBlock))
 }
 
@@ -1260,11 +1384,13 @@ function Get-AppxPackageCompat {
     $cmd += ' -ErrorAction SilentlyContinue'
     $cmd += ' | Select-Object Name, Version, Publisher, PackageFullName'
 
-    $raw = Invoke-AppxInWinPS -ScriptBlock $cmd
+    # -AsObject is REQUIRED: without it this receives console TEXT and every property below
+    # is $null, which made the AppX bloatware source detect nothing. See Invoke-AppxInWinPS.
+    $raw = Invoke-AppxInWinPS -ScriptBlock $cmd -AsObject
     if (-not $raw) { return @() }
 
     # Normalise into plain hashtables (deserialized objects lose methods)
-    @($raw) | ForEach-Object {
+    @($raw) | Where-Object { $_.Name } | ForEach-Object {
         @{
             Name            = $_.Name
             Version         = "$($_.Version)"
@@ -1304,18 +1430,86 @@ function Remove-AppxPackageCompat {
     # (worse) setting its $removed flag, which SKIPPED the winget-by-exact-Id layer that would
     # actually have removed them. Verifying in-process also avoids a second powershell.exe launch
     # per package.
+    # ── VERIFY ON INSTALL STATE, NOT ON PRESENCE ─────────────────────────────────────────
+    # The previous check was `if (Get-AppxPackage -AllUsers | Where PackageFullName -eq X)`.
+    # That is wrong: `Get-AppxPackage -AllUsers` also lists packages that are merely STAGED on
+    # the machine (present on disk, registered to nobody). A successful all-users removal of an
+    # in-box app normally leaves exactly that staged remnant behind, so the package was still
+    # "found" and every removal was reported as a FAILURE - 27 of 27 on a real run - while the
+    # apps had actually gone for the user. Layer 1 then recorded 'AppX(failed)' and the whole
+    # layered strategy ran on a false premise.
+    #
+    # A package is only still installed if some user's PackageUserInformation says 'Installed'.
+    #
+    # Also fixed here:
+    #   * speed - it used to run `Get-AppxPackage -AllUsers` (a FULL enumeration) twice per
+    #     package, which is why each removal took ~17s on the test VM. Removal now targets
+    #     -Package directly and verification queries by -Name.
+    #   * blindness - the child ran with SilentlyContinue and 2>$null, so the real reason a
+    #     removal failed was discarded. The error text is now returned and logged.
+    #   * a per-user fallback for SIDs that survive the -AllUsers attempt.
     $allUsersArg = if ($AllUsers) { ' -AllUsers' } else { '' }
     $cmd = @"
 `$ErrorActionPreference = 'SilentlyContinue'
-Get-AppxPackage -AllUsers | Where-Object { `$_.PackageFullName -eq '$PackageFullName' } | Remove-AppxPackage$allUsersArg
-`$still = Get-AppxPackage -AllUsers | Where-Object { `$_.PackageFullName -eq '$PackageFullName' }
-if (`$still) { 'APPX_PRESENT' } else { 'APPX_REMOVED' }
+`$pfn  = '$PackageFullName'
+`$name = `$pfn.Split('_')[0]
+`$err  = ''
+
+# Returns @{ Ok = <did the query itself succeed>; Sids = <users with InstallState 'Installed'> }.
+# Ok is NOT the same as "no sids": Get-AppxPackage -AllUsers throws Access Denied when not
+# elevated, which yields zero sids and would otherwise be read as "successfully removed".
+# A verification that cannot see the machine must never certify a removal.
+function Get-InstalledSids {
+    param(`$Pfn, `$Name)
+    `$sids = @()
+    try { `$pkgs = @(Get-AppxPackage -AllUsers -Name `$Name -ErrorAction Stop) }
+    catch { return @{ Ok = `$false; Sids = @() } }
+    foreach (`$p in `$pkgs) {
+        if (`$p.PackageFullName -ne `$Pfn) { continue }
+        foreach (`$u in @(`$p.PackageUserInformation)) {
+            if ("`$(`$u.InstallState)" -eq 'Installed') { `$sids += "`$(`$u.UserSecurityId.Sid)" }
+        }
+    }
+    return @{ Ok = `$true; Sids = `$sids }
+}
+
+try { Remove-AppxPackage -Package `$pfn$allUsersArg -ErrorAction Stop }
+catch { `$err = (`$_.Exception.Message -replace '[\r\n]+', ' ') }
+
+# Per-user fallback: -AllUsers is refused for some in-box packages, but the same package can
+# still be removed profile by profile.
+`$mid = Get-InstalledSids -Pfn `$pfn -Name `$name
+if (`$mid.Ok) {
+    foreach (`$sid in `$mid.Sids) {
+        try { Remove-AppxPackage -Package `$pfn -User `$sid -ErrorAction Stop }
+        catch { if (-not `$err) { `$err = (`$_.Exception.Message -replace '[\r\n]+', ' ') } }
+    }
+}
+
+`$final = Get-InstalledSids -Pfn `$pfn -Name `$name
+if (-not `$final.Ok) {
+    if (-not `$err) { `$err = 'verification query failed (elevation required?)' }
+    "APPX_PRESENT|`$err"
+}
+elseif (`$final.Sids.Count -gt 0) { "APPX_PRESENT|`$err" }
+else { "APPX_REMOVED|`$err" }
 "@
 
-    $out = Invoke-AppxInWinPS -ScriptBlock $cmd
-    # Absent output means the child process died before printing a sentinel - treat as failure
+    $out = @(Invoke-AppxInWinPS -ScriptBlock $cmd)
+    $sentinel = $out | Where-Object { $_ -is [string] -and $_ -match '^APPX_(REMOVED|PRESENT)\|' } | Select-Object -First 1
+
+    # Absent sentinel means the child process died before printing one - treat as failure
     # rather than success, so callers fall through to their next removal layer.
-    return ([bool](@($out) -contains 'APPX_REMOVED'))
+    if (-not $sentinel) {
+        Write-Log -Level DEBUG -Component CORE -Message "AppX removal produced no sentinel for $PackageFullName (child process failed)"
+        return $false
+    }
+
+    $reason = ($sentinel -split '\|', 2)[1]
+    if ($reason) {
+        Write-Log -Level DEBUG -Component CORE -Message "AppX removal reported: $PackageFullName - $reason"
+    }
+    return ([bool]($sentinel -like 'APPX_REMOVED*'))
 }
 
 <#
@@ -1336,13 +1530,20 @@ function Get-AppxProvisionedPackageCompat {
     # so this path silently produced nothing and every call fell through to DISM below.
     try {
         $cmd = 'Get-AppxProvisionedPackage -Online -ErrorAction Stop | Select-Object PackageName, DisplayName'
-        $raw = Invoke-AppxInWinPS -ScriptBlock $cmd
-        if ($raw) {
-            @($raw) | ForEach-Object {
-                $result.Add(@{ PackageName = $_.PackageName; DisplayName = $_.DisplayName })
+        # -AsObject is REQUIRED (see Invoke-AppxInWinPS). Without it $raw held console TEXT,
+        # so every record below was added with a $null PackageName AND - because $raw was
+        # non-empty - the function RETURNED EARLY, starving the working DISM fallback below.
+        # That is why the Provisioned source also detected nothing.
+        $raw = Invoke-AppxInWinPS -ScriptBlock $cmd -AsObject
+        $usable = @($raw) | Where-Object { $_.PackageName }
+        if ($usable.Count -gt 0) {
+            foreach ($p in $usable) {
+                $result.Add(@{ PackageName = $p.PackageName; DisplayName = $p.DisplayName })
             }
             return $result.ToArray()
         }
+        # Fall through to DISM when the PS path yields nothing USABLE, not merely nothing at
+        # all - a non-empty-but-unusable result must not count as success.
     }
     catch { Write-Verbose "AppX PowerShell method failed: $_" }
 

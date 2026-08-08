@@ -46,6 +46,38 @@ function ConvertTo-HtmlText {
 
 <#
 .SYNOPSIS
+    Renders one ExtraData key/value row, formatting the value for a human. INTERNAL.
+.DESCRIPTION
+    Collections used to render as 'System.Object[]' and booleans as 'True'/'False'.
+    Arrays become a comma list (capped, with a "+N more" tail so nothing is silently
+    truncated) and booleans become Yes/No.
+.OUTPUTS
+    [string] a single .ex-row div.
+#>
+function Format-ExtraRow {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)] [string]$Key,
+        [Parameter()] [AllowNull()] $Value
+    )
+
+    $text = if ($null -eq $Value) { '' }
+    elseif ($Value -is [bool]) { if ($Value) { 'Yes' } else { 'No' } }
+    elseif ($Value -is [string]) { $Value }
+    elseif ($Value -is [System.Collections.IEnumerable]) {
+        $items = @($Value)
+        if ($items.Count -eq 0) { 'none' }
+        elseif ($items.Count -le 6) { ($items -join ', ') }
+        else { (($items | Select-Object -First 6) -join ', ') + " (+$($items.Count - 6) more)" }
+    }
+    else { "$Value" }
+
+    return "<div class='ex-row'><span class='k'>$(ConvertTo-HtmlText $Key)</span><span class='v'>$(ConvertTo-HtmlText $text)</span></div>"
+}
+
+<#
+.SYNOPSIS
     Loads system-inventory.json (produced by SystemConfigurationAudit) if present.
 .OUTPUTS
     [pscustomobject] or $null.
@@ -663,11 +695,25 @@ function Build-ModuleCard {
     $msg = ConvertTo-HtmlText $Result.Message
     $msgRow = if ($msg) { "<div class='r'><span class='k'>Note</span><span class='v'>$msg</span></div>" } else { '' }
 
+    # ExtraData rows. Nested values used to be DISCARDED outright
+    # (`Where-Object { $_.Value -isnot [hashtable] }`), so a module that grouped its extras -
+    # the natural way to report per-category counts - would have them vanish from the report
+    # with no trace. Flatten one level as "Parent / Child" instead, and render collections as
+    # a comma list rather than "System.Object[]".
     $extraHtml = ''
     if ($Result.ExtraData -and $Result.ExtraData.Count -gt 0) {
-        $exRows = ($Result.ExtraData.GetEnumerator() | Where-Object { $_.Value -isnot [hashtable] } | ForEach-Object {
-                "<div class='ex-row'><span class='k'>$(ConvertTo-HtmlText $_.Key)</span><span class='v'>$(ConvertTo-HtmlText $_.Value)</span></div>"
-            }) -join ''
+        $exPairs = [System.Collections.Generic.List[string]]::new()
+        foreach ($kv in $Result.ExtraData.GetEnumerator()) {
+            if ($kv.Value -is [System.Collections.IDictionary]) {
+                foreach ($sub in $kv.Value.GetEnumerator()) {
+                    $exPairs.Add((Format-ExtraRow -Key "$($kv.Key) / $($sub.Key)" -Value $sub.Value))
+                }
+            }
+            else {
+                $exPairs.Add((Format-ExtraRow -Key $kv.Key -Value $kv.Value))
+            }
+        }
+        $exRows = ($exPairs -join '')
         if ($exRows) { $extraHtml = "<div class='extra'>$exRows</div>" }
     }
 
@@ -681,7 +727,13 @@ function Build-ModuleCard {
             if ($pairKey -ne $moduleName) { $diffData = Get-DiffList -ModuleName $pairKey }
         }
         if ($diffData -and $diffData.Count -gt 0) {
-            $maxItems = [Math]::Min($diffData.Count, 25)
+            # 25 was far too low for the pair that needs detail most: SystemConfiguration
+            # routinely queues 300-400 CIS items, so a compliance reader saw 25 and
+            # "(+356 more)" - the bulk of the evidence hidden. The list already lives inside a
+            # collapsed <details> with its own scroll container, so rendering more costs
+            # nothing visually and only a little file size. The "+N more" disclosure stays, so
+            # the cap is never silent.
+            $maxItems = [Math]::Min($diffData.Count, 200)
             $itemRows = ($diffData[0..($maxItems - 1)] | ForEach-Object {
                     $itemName = ConvertTo-HtmlText ($_.Name ?? $_.name ?? 'Item')
                     $curSt = ConvertTo-HtmlText ($_.CurrentState ?? '')
@@ -691,7 +743,11 @@ function Build-ModuleCard {
                     $detailText = if ($desc) { $desc } elseif ($curSt -and $desSt) { "$curSt &#8594; $desSt" } else { $itemType }
                     "<div class='item'><span class='item-name'>$itemName</span><span class='item-detail'>$detailText</span></div>"
                 }) -join ''
-            $moreText = if ($diffData.Count -gt 25) { " <span class='more'>(+$($diffData.Count - 25) more)</span>" } else { '' }
+            # Must be derived from $maxItems, not a second hard-coded number: when the cap was
+            # raised these drifted apart and the header claimed "+225 more" while only 50 rows
+            # were actually withheld.
+            $hidden = $diffData.Count - $maxItems
+            $moreText = if ($hidden -gt 0) { " <span class='more'>(+$hidden more)</span>" } else { '' }
             $detailHtml = @"
 <details class="mod-details">
   <summary>$($diffData.Count) item(s) detailed$moreText</summary>
