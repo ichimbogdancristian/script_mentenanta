@@ -127,11 +127,28 @@ function Initialize-LogFile {
 function Set-LogLevel {
     [CmdletBinding()]
     param([string]$Console, [string]$File)
-    if ($Console -and $script:LevelRank.ContainsKey($Console.ToString().ToUpper())) {
-        $script:LogConsoleRank = $script:LevelRank[$Console.ToString().ToUpper()]
-    }
-    if ($File -and $script:LevelRank.ContainsKey($File.ToString().ToUpper())) {
-        $script:LogFileRank = $script:LevelRank[$File.ToString().ToUpper()]
+
+    # A supplied-but-unrecognised level used to be discarded in SILENCE, so a typo in
+    # main-config.json's logging block ("TRACE", "Verbose", or a stray trailing space) looked
+    # like it had been applied while the thresholds never moved. maintenance.log is the primary
+    # - often only - diagnostic for an unattended run, so a logging setting that quietly does
+    # nothing is worth saying out loud. Values are also trimmed now, so " WARN " works.
+    #
+    # An ABSENT value still means "keep the current threshold" and is not a warning: both
+    # callers (Initialize-LogFile's defaults, and the orchestrator passing $Config.logging.*)
+    # legitimately pass nothing when the config block is missing.
+    foreach ($spec in @(@{ Name = 'Console'; Value = $Console }, @{ Name = 'File'; Value = $File })) {
+        if (-not $spec.Value) { continue }
+        $key = $spec.Value.ToString().Trim().ToUpper()
+        if ($script:LevelRank.ContainsKey($key)) {
+            if ($spec.Name -eq 'Console') { $script:LogConsoleRank = $script:LevelRank[$key] }
+            else { $script:LogFileRank = $script:LevelRank[$key] }
+        }
+        else {
+            $valid = ($script:LevelRank.Keys | Sort-Object { $script:LevelRank[$_] }, { $_ }) -join ', '
+            Write-Log -Level WARN -Component CORE -Message `
+                "Ignoring unknown $($spec.Name) log level '$($spec.Value)' - keeping the current threshold. Valid levels: $valid"
+        }
     }
 }
 
@@ -305,22 +322,36 @@ function Get-ExceptionCategory {
 
     $exception = $ErrorRecord.Exception
     $exceptionType = $exception.GetType().Name
+
+    # Match on the FULL type name, not the short one.
+    #
+    # The Network patterns below are namespace-qualified ('Net.WebException'), but .Name is
+    # unqualified ('WebException'), so matching on .Name made the Network branch UNREACHABLE:
+    # its only satisfiable alternative was 'TimeoutException', which the Timeout branch above
+    # already claims. A System.Net.WebException therefore fell through to 'Unknown'/'Medium'
+    # with the generic "Check error details and logs" suggestion - on a system whose entire
+    # first stage depends on reaching GitHub.
+    #
+    # FullName contains the short name as a substring, so every other branch keeps matching
+    # exactly as before; only Network changes behaviour. SocketException is added because
+    # 'System.Net.Sockets.SocketException' matched none of the original alternatives either.
+    $typeForMatch = $exception.GetType().FullName
     $message = $exception.Message
 
     # Categorize by exception type
-    $category = if ($exceptionType -match 'UnauthorizedAccess|AccessDenied|SecurityException') {
+    $category = if ($typeForMatch -match 'UnauthorizedAccess|AccessDenied|SecurityException') {
         'Permission'
     }
-    elseif ($exceptionType -match 'TimeoutException|OperationCanceledException') {
+    elseif ($typeForMatch -match 'TimeoutException|OperationCanceledException') {
         'Timeout'
     }
-    elseif ($exceptionType -match 'IOException|FileNotFound|DirectoryNotFound') {
+    elseif ($typeForMatch -match 'IOException|FileNotFound|DirectoryNotFound') {
         'IO'
     }
-    elseif ($exceptionType -match 'Net.Http|Net.WebException|TimeoutException') {
+    elseif ($typeForMatch -match 'Net\.Http|Net\.WebException|Net\.Sockets|SocketException') {
         'Network'
     }
-    elseif ($exceptionType -match 'ArgumentException|ArgumentNullException|InvalidOperation') {
+    elseif ($typeForMatch -match 'ArgumentException|ArgumentNullException|InvalidOperation') {
         'Invalid'
     }
     else {
@@ -536,6 +567,39 @@ function Get-TempPath {
 
 <#
 .SYNOPSIS
+    Shape-agnostic "does this item carry that field?" test. INTERNAL - not exported.
+.DESCRIPTION
+    Items reach Compare-ListDiff in two different shapes and the guards have to work for both:
+
+      * baseline items come from Get-BaselineList, i.e. ConvertFrom-Json -AsHashtable, which
+        returns OrderedHashtable (verified) - an IDictionary;
+      * scan items are usually hand-built [pscustomobject].
+
+    '.PSObject.Properties[...]' only works for the SECOND shape. On a hashtable it enumerates
+    the CLR members (Count / Keys / Values / IsReadOnly / ...), never the JSON keys, so a guard
+    written that way silently evaluated to $null for real config data and the 'Changed'
+    strategy returned an EMPTY diff - the pair would then be reported by Stage 2 as
+    "system already in desired state". This is the same failure mode CLAUDE.md documents for
+    the bloatware protection list; it survived here because every 'Changed' unit test passed
+    [pscustomobject] inputs, which take the working branch.
+.OUTPUTS
+    [bool]
+#>
+function Test-ItemHasField {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter()] [AllowNull()] $Item,
+        [Parameter(Mandatory)] [string]$Field
+    )
+
+    if ($null -eq $Item) { return $false }
+    if ($Item -is [System.Collections.IDictionary]) { return $Item.Contains($Field) }
+    return $null -ne $Item.PSObject.Properties[$Field]
+}
+
+<#
+.SYNOPSIS
     Produces a diff list by comparing Type1 scan results against a baseline.
 .DESCRIPTION
     Strategies:
@@ -601,7 +665,7 @@ function Compare-ListDiff {
                     ($_.$MatchProperty -and $_.$MatchProperty.Equals($bName, [System.StringComparison]::OrdinalIgnoreCase))
                 } | Select-Object -First 1
 
-                if ($found -and $found.PSObject.Properties['CurrentState'] -and $baseItem.PSObject.Properties['desiredValue']) {
+                if ($found -and (Test-ItemHasField -Item $found -Field 'CurrentState') -and (Test-ItemHasField -Item $baseItem -Field 'desiredValue')) {
                     if ($found.CurrentState -ne $baseItem.desiredValue) {
                         $diff.Add(@{
                                 Name         = $bName
@@ -613,7 +677,7 @@ function Compare-ListDiff {
                 }
                 elseif (-not $found) {
                     # Item is missing - assume it needs to be set to desired value
-                    if ($baseItem.PSObject.Properties['desiredValue']) {
+                    if (Test-ItemHasField -Item $baseItem -Field 'desiredValue') {
                         $diff.Add(@{
                                 Name         = $bName
                                 CurrentState = $null

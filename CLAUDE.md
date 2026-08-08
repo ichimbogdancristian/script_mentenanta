@@ -617,12 +617,31 @@ turn the two non-registry areas off. Both default to enforcing.
   its result to influence Stage 5.
 - **`DiffKey` is the contract** between a pair and must match on both sides and in `$ModulePairs`;
   it is the filename stem under `temp_files/diff/<DiffKey>-diff.json`.
-- **Never increment a counter inside `| ForEach-Object { }`.** The pipeline scriptblock gets its
-  own scope, so `$n++` there updates a throwaway copy and the outer variable stays at 0. This has
-  already caused two silent bugs (the audit's per-section item counts, and the power-plan GUID
-  lookup that always fell through to its hard-coded default). Use a `foreach` loop when you must
-  assign outward, or derive the value from the finished collection afterwards. Mutating a
-  `List[T]` with `.Add()` from inside `ForEach-Object` is fine — that mutates the same object.
+- **Assigning outward from a pipeline scriptblock: know which constructs actually break it.**
+  A plain `| ForEach-Object { }` does **not** isolate writes — `$n++` and `$arr += $x` inside one
+  *do* update the enclosing variable. Verified directly on PS 7.6 in all the shapes this repo
+  uses: at script level, inside a function, and nested inside a `foreach` (the exact shape at
+  `SystemConfigurationAudit.psm1:134-149`, which is correct and must not be "fixed").
+
+  | Construct | Outer variable updated? |
+  |---|---|
+  | `$n = 0; 1..3 \| ForEach-Object { $n++ }` | ✅ yes — `$n` is 3 |
+  | `$a = @(); 1..3 \| ForEach-Object { $a += $_ }` | ✅ yes — Count 3 |
+  | same, inside a function or nested in `foreach` | ✅ yes |
+  | **`ForEach-Object -Parallel`** | ❌ **no** — separate runspace, needs `$using:` |
+  | `Start-Job` / `Start-ThreadJob` / `Invoke-Command` | ❌ no — separate runspace/process |
+
+  So the real rule is: **only `-Parallel`, jobs and remoting isolate scope**, and this project
+  uses none of them (grep confirms zero occurrences). If you add one, capture with `$using:` and
+  collect results from the pipeline output rather than mutating an outer variable.
+
+  This entry previously stated the opposite — that a plain `ForEach-Object` "gets its own scope,
+  so `$n++` updates a throwaway copy" — and attributed two past silent bugs to it. That mechanism
+  is not real for the non-parallel form, so the attribution cannot be right; whatever caused those
+  two bugs, it was not this. Watch instead for the failure modes that genuinely look like it:
+  `$_` being rebound by a *nested* pipeline, and reading a variable before the pipeline that
+  fills it has run. Mutating a `List[T]` with `.Add()` from inside `ForEach-Object` is fine and
+  always was.
 
 ### Core modules
 There are three modules under `modules/core/`. [Maintenance.psm1](modules/core/Maintenance.psm1)

@@ -17,13 +17,52 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
 }
 
+<#
+.SYNOPSIS
+    Normalises a KB reference to the canonical 'KB<digits>' form.
+.DESCRIPTION
+    Callers pass the BARE digit run captured from an update title (`'KB(\d+)'` -> '5001234'),
+    while Win32_QuickFixEngineering.HotFixID is always 'KB5001234'. Comparing those two with
+    -match was a REGEX SUBSTRING test, not equality:
+
+        'KB5001234'  -match '5001234'  -> True    (intended)
+        'KB15001234' -match '5001234'  -> True    (WRONG - a different, longer KB)
+
+    So an unrelated installed update whose number merely CONTAINS the wanted digit run
+    satisfied the pre-check, and the genuinely missing update was logged
+    "Already installed, skipping" and counted as processed - a missing patch reported as
+    applied, silently, until someone diffed the machine against Windows Update by hand.
+
+    Registry DisplayName matching (Layer 2) is worse still: it is free text such as
+    'Security Update for Microsoft Windows (KB5001234)', so a bare digit run can match
+    anywhere inside any product name. That layer therefore uses a word-bounded pattern
+    around the canonical id rather than an exact compare.
+.OUTPUTS
+    [string] 'KB<digits>', or '' when no digit run could be found.
+#>
+function ConvertTo-CanonicalKB {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter()] [AllowNull()] [AllowEmptyString()] [string]$KBNumber)
+
+    if ([string]::IsNullOrWhiteSpace($KBNumber)) { return '' }
+    if ($KBNumber -match '(\d+)') { return "KB$($Matches[1])" }
+    return ''
+}
+
 function Test-UpdateAlreadyInstalled {
     param([string]$KBNumber)
+
+    # Exact id for HotFixID, word-bounded pattern for free-text DisplayName.
+    # See ConvertTo-CanonicalKB for why -match against the bare digits was wrong.
+    $kbId = ConvertTo-CanonicalKB -KBNumber $KBNumber
+    if (-not $kbId) { return $false }
+    $kbPattern = "\b$([regex]::Escape($kbId))\b"
 
     # Layer 1: Try Get-CimInstance Win32_QuickFixEngineering (installed updates)
     try {
         $installed = Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction SilentlyContinue |
-            Where-Object { $_.HotFixID -match $KBNumber }
+            Where-Object { $_.HotFixID -eq $kbId }
         if ($installed) {
             return $true
         }
@@ -35,7 +74,7 @@ function Test-UpdateAlreadyInstalled {
     # Layer 2: Try registry HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall
     try {
         $regKey = Get-ChildItem -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
-            Where-Object { $_.GetValue('DisplayName') -match $KBNumber }
+            Where-Object { $_.GetValue('DisplayName') -match $kbPattern }
         if ($regKey) {
             return $true
         }
@@ -50,6 +89,13 @@ function Test-UpdateAlreadyInstalled {
 function Test-UpdateIsInstalled {
     param([string]$KBNumber)
 
+    # Same canonicalisation as the pre-check above. A substring match HERE is the more
+    # dangerous of the two: it would accept an unrelated installed KB as proof that THIS
+    # update landed, turning a failed install into a logged success.
+    $kbId = ConvertTo-CanonicalKB -KBNumber $KBNumber
+    if (-not $kbId) { return $false }
+    $kbPattern = "\b$([regex]::Escape($kbId))\b"
+
     $waitTime = 5
     Write-Log -Level DEBUG -Component WINUPDATE -Message "Verifying update installation... (waiting ${waitTime}s)"
     Start-Sleep -Seconds $waitTime
@@ -57,7 +103,7 @@ function Test-UpdateIsInstalled {
     # Try Layer 1: Quick Fix Engineering
     try {
         $installed = Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction SilentlyContinue |
-            Where-Object { $_.HotFixID -match $KBNumber }
+            Where-Object { $_.HotFixID -eq $kbId }
         if ($installed) {
             Write-Log -Level DEBUG -Component WINUPDATE -Message "✓ Verification Layer 1 success: Found in Quick Fix Engineering"
             return $true
@@ -70,7 +116,7 @@ function Test-UpdateIsInstalled {
     # Try Layer 2: Registry
     try {
         $regKey = Get-ChildItem -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' -ErrorAction SilentlyContinue |
-            Where-Object { $_.GetValue('DisplayName') -match $KBNumber }
+            Where-Object { $_.GetValue('DisplayName') -match $kbPattern }
         if ($regKey) {
             Write-Log -Level DEBUG -Component WINUPDATE -Message "✓ Verification Layer 2 success: Found in registry"
             return $true

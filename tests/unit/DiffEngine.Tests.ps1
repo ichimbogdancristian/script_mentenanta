@@ -157,3 +157,58 @@ Describe 'Compare-ListDiff' {
         }
     }
 }
+
+Describe 'Compare-ListDiff - Changed strategy with hashtable inputs' {
+    <#
+        Regression guard. Get-BaselineList returns OrderedHashtable (ConvertFrom-Json
+        -AsHashtable), NOT [pscustomobject] - so hashtables are the shape real config data
+        actually arrives in.
+
+        The guards used to be written as `$baseItem.PSObject.Properties['desiredValue']`,
+        which works only for [pscustomobject]. On a hashtable .PSObject.Properties enumerates
+        the CLR members (Count / Keys / Values / IsReadOnly / ...), never the JSON keys, so the
+        guard was always $null and the Changed strategy returned an EMPTY diff for every real
+        baseline - which Stage 2 then reports as "system already in desired state".
+
+        Every pre-existing Changed test above uses [pscustomobject], which takes the working
+        branch, so the defect was invisible. These tests pin the hashtable shape specifically.
+    #>
+
+    It 'emits an item when a hashtable baseline differs from a hashtable scan' {
+        $r = @(Compare-ListDiff -ScannedItems @(@{ Name = 'S'; CurrentState = 0 }) `
+                -BaselineItems @(@{ Name = 'S'; desiredValue = 1 }) -Strategy 'Changed')
+        $r.Count | Should -Be 1
+        $r[0].CurrentState | Should -Be 0
+        $r[0].DesiredState | Should -Be 1
+    }
+
+    It 'emits nothing when a hashtable baseline is already compliant' {
+        $r = @(Compare-ListDiff -ScannedItems @(@{ Name = 'S'; CurrentState = 1 }) `
+                -BaselineItems @(@{ Name = 'S'; desiredValue = 1 }) -Strategy 'Changed')
+        $r.Count | Should -Be 0
+    }
+
+    It 'treats a hashtable baseline entry absent from the scan as needing the desired value' {
+        $r = @(Compare-ListDiff -ScannedItems @(@{ Name = 'Other'; CurrentState = 1 }) `
+                -BaselineItems @(@{ Name = 'NotScanned'; desiredValue = 1 }) -Strategy 'Changed')
+        $r.Count | Should -Be 1
+        $r[0].CurrentState | Should -BeNullOrEmpty
+        $r[0].DesiredState | Should -Be 1
+    }
+
+    It 'handles a mixed pair (pscustomobject scan, hashtable baseline)' {
+        $r = @(Compare-ListDiff -ScannedItems @([pscustomobject]@{ Name = 'S'; CurrentState = 0 }) `
+                -BaselineItems @(@{ Name = 'S'; desiredValue = 1 }) -Strategy 'Changed')
+        $r.Count | Should -Be 1
+    }
+
+    It 'works against a real OrderedHashtable produced by ConvertFrom-Json -AsHashtable' {
+        $baseline = '[{"name":"A","desiredValue":1},{"name":"B","desiredValue":2}]' |
+            ConvertFrom-Json -AsHashtable
+        $baseline[0] -is [System.Collections.IDictionary] | Should -BeTrue
+        $r = @(Compare-ListDiff -ScannedItems @(@{ Name = 'A'; CurrentState = 99 }) `
+                -BaselineItems $baseline -Strategy 'Changed' -MatchProperty 'name')
+        # A differs (99 vs 1); B was never scanned, so it also needs its desired value.
+        $r.Count | Should -Be 2
+    }
+}
