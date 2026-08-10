@@ -49,6 +49,14 @@ function Compare-RegistryBaselineWithFallback {
         foreach ($entry in $Entries) {
             if (-not $entry.path -or -not $entry.name) { continue }
 
+            # 'apply': false must be honoured HERE too, not just in Layer 1. Compare-RegistryBaseline
+            # skips excluded entries, but this fallback re-implements the compare from scratch and
+            # originally did not - so every deliberate CIS deviation (BitLocker TPM+PIN, the logon
+            # banner, the SMB/network-sharing exclusions) would come back the moment Layer 1 threw.
+            # Same semantics as the core helper: absent or true = enforce, only explicit false skips.
+            $applyRaw = $entry.apply ?? $entry.Apply
+            if ($null -ne $applyRaw -and -not [bool]$applyRaw) { continue }
+
             $regPath = $entry.path -replace 'HKEY_LOCAL_MACHINE\\', 'HKLM\'
             $regPath = $regPath -replace 'HKEY_CURRENT_USER\\', 'HKCU\'
 
