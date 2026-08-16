@@ -4,7 +4,9 @@
 .DESCRIPTION Single read-only pass over the whole machine. Produces one diff whose items are
              tagged with a ConfigType discriminator that SystemConfiguration (Type2) switches on:
                ConfigType = 'restorepoint'  restore point create / prune   (Action = create|remove)
-               ConfigType = 'security'      Defender, firewall, security registry, Sysmon
+               ConfigType = 'security'      Defender, firewall, security registry, secpolicy,
+                                            audit policy  (NOT Sysmon - see the removal note in
+                                            Get-SecurityConfigurationDiff)
                ConfigType = 'telemetry'     privacy services/registry/scheduled tasks
                ConfigType = 'optimization'  services, power plan, startup, visual fx, background
 
@@ -652,12 +654,27 @@ function Get-SecurityConfigurationDiff {
             Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Advanced audit policy skipped (config: skipAuditPolicy)'
         }
 
-        # Sysmon presence check (installed via SystemConfiguration Type2 with sysmonconfig.xml)
-        $sysmonSvc = Get-Service -Name 'Sysmon', 'Sysmon64' -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $sysmonSvc) {
-            $items.Add(@{ ConfigType = 'security'; Type = 'sysmon'; Name = 'Sysmon'; CurrentState = 'NotInstalled'; DesiredState = 'Installed' })
-            Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Sysmon not installed - queued for install'
-        }
+        # SYSMON IS NO LONGER OWNED BY THIS PROJECT (2026-08-16).
+        #
+        # There used to be a presence check here that queued Type = 'sysmon' whenever the
+        # service was absent, and SystemConfiguration then installed Sysmon via winget and
+        # applied config/sysmon/sysmonconfig.xml. That was removed because it could not work
+        # and was fighting the SOC deployment for ownership:
+        #
+        #  1. IT COULD NOT INSTALL UNATTENDED. The install path required winget, and winget is
+        #     documented by Microsoft as unsupported under NT AUTHORITY\SYSTEM - which is
+        #     exactly the context of the monthly scheduled task. See the same note in CLAUDE.md
+        #     under SoftwareManagement.
+        #  2. ITS CONFIG WAS ALREADY DEAD IN PRACTICE. The check only fired when the SERVICE
+        #     was absent - there was no config-drift comparison - so once anything else had
+        #     installed Sysmon, this project never touched it again and sysmonconfig.xml was
+        #     never applied. Where the order was reversed, the SOC deployment re-applied its
+        #     own config with -c and overwrote ours anyway. Either way ours lost.
+        #
+        # Sysmon is now installed and configured solely by Deploy-WazuhAgentIntegrations.ps1,
+        # which fetches its config over HTTPS and whose install path works under SYSTEM. Do not
+        # re-add a Sysmon item here: two installers converging on one service with no drift
+        # detection is what this removal fixes.
     }
     # NO comma-wrap. `return , $arr` emits the array as ONE pipeline element, so a caller
     # writing @(Get-...) gets a 1-element array CONTAINING the array instead of the items -

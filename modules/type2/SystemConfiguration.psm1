@@ -4,7 +4,7 @@
 .DESCRIPTION Applies all system-state changes identified by SystemConfigurationAudit.
              Dispatches each diff item on its ConfigType then Type:
                restorepoint -> create | remove   (Action discriminator)
-               security     -> registry | defender | firewall | sysmon
+               security     -> registry | defender | firewall | secpolicy | auditpolicy
                telemetry    -> service | registry | scheduledtask
                optimization -> service | powerplan | startup | visualfx | background
 
@@ -14,8 +14,10 @@
              last (it is destructive and irreversible). See that function for the full
              rationale.
 
-             Sysmon is installed via winget (Microsoft.Sysinternals.Sysmon) and configured
-             with config/sysmon/sysmonconfig.xml.
+             SYSMON IS NOT HANDLED HERE any more (2026-08-16). It was installed via winget
+             and configured with config/sysmon/sysmonconfig.xml; both the install path and
+             the config were unreachable in practice. Deploy-WazuhAgentIntegrations.ps1 now
+             owns Sysmon end to end. See the removal note in SystemConfigurationAudit.psm1.
 .NOTES       Module Type: Type2 | DiffKey: SystemConfiguration | Version: 7.0 (Consolidated)
 #>
 
@@ -109,92 +111,6 @@ function Restore-RegistryValue {
         Write-Log -Level ERROR -Component CONFIG -Message "Rollback FAILED for $($Backup.Path)\$($Backup.Name): $_"
         return $false
     }
-}
-
-<#
-.SYNOPSIS
-    Installs Sysinternals Sysmon via winget and applies the bundled sysmonconfig.xml.
-.DESCRIPTION
-    Idempotent: if the Sysmon service already exists the config is re-applied (-c) rather
-    than reinstalled (-i). Resolves the Sysmon binary from PATH or the winget install
-    location. Config file: config/sysmon/sysmonconfig.xml under the project root.
-.OUTPUTS
-    [bool] $true on success.
-#>
-function Install-SysmonWithConfig {
-    [CmdletBinding()]
-    [OutputType([bool])]
-    param()
-
-    $configPath = Join-Path $env:MAINT_CONFIG 'sysmon\sysmonconfig.xml'
-    if (-not (Test-Path $configPath)) {
-        Write-Log -Level WARN -Component CONFIG -Message "Sysmon config not found: $configPath - skipping Sysmon"
-        return $false
-    }
-
-    # Install the package if the service is not already present
-    $sysmonSvc = Get-Service -Name 'Sysmon', 'Sysmon64' -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $sysmonSvc) {
-        if (-not (Test-CommandAvailable 'winget')) {
-            Write-Log -Level WARN -Component CONFIG -Message 'winget unavailable - cannot install Sysmon'
-            return $false
-        }
-        Write-Log -Level INFO -Component CONFIG -Message 'Installing Sysmon via winget (Microsoft.Sysinternals.Sysmon)'
-        $exit = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) -ArgumentList @(
-            'install', '--id', 'Microsoft.Sysinternals.Sysmon', '--source', 'winget', '--silent',
-            '--disable-interactivity', '--accept-package-agreements', '--accept-source-agreements', '--scope', 'machine')
-        if ($exit -notin 0, -1978335135, -1978335189) {
-            Write-Log -Level WARN -Component CONFIG -Message "winget Sysmon install returned exit $exit"
-        }
-    }
-
-    # Resolve the REAL Sysmon binary (prefer the 64-bit build). We MUST avoid the winget
-    # "Links" shim (…\WinGet\Links\sysmon.exe): it is a 32-bit App-Execution-Alias reparse
-    # point, and launching it with redirected stdio fail-fast crashes with 0xC0000409
-    # (-1073740791) - exactly the failure seen before. Get-Command is skipped for the same
-    # reason (the Links dir is on PATH, so it resolves to the crashing shim).
-    $sysmonExe = $null
-    # 1) If Sysmon is already installed as a service, its binary lives directly in %windir%.
-    foreach ($name in 'Sysmon64.exe', 'Sysmon.exe') {
-        $p = Join-Path $env:windir $name
-        if (Test-Path $p) { $sysmonExe = $p; break }
-    }
-    # 2) Otherwise use the real winget package binary (NOT the Links shim). winget portable
-    #    packages extract the actual executables under WinGet\Packages\...; prefer Sysmon64.exe.
-    if (-not $sysmonExe) {
-        $pkgRoots = @(
-            (Join-Path $env:ProgramFiles 'WinGet\Packages'),
-            (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages')
-        ) | Where-Object { $_ -and (Test-Path $_) }
-        foreach ($name in 'Sysmon64.exe', 'Sysmon.exe') {
-            foreach ($root in $pkgRoots) {
-                $found = Get-ChildItem -Path $root -Filter $name -Recurse -ErrorAction SilentlyContinue |
-                    Where-Object { $_.FullName -notmatch '\\Links\\' } | Select-Object -First 1
-                if ($found) { $sysmonExe = $found.FullName; break }
-            }
-            if ($sysmonExe) { break }
-        }
-    }
-    if (-not $sysmonExe) {
-        Write-Log -Level WARN -Component CONFIG -Message 'Sysmon executable not found after install (real binary, not the Links shim)'
-        return $false
-    }
-    Write-Log -Level INFO -Component CONFIG -Message "Using Sysmon binary: $sysmonExe"
-
-    # Apply config: -i installs+configures a fresh Sysmon; -c updates config on an existing
-    # install. -accepteula on both is harmless if already accepted and stops a first-run EULA
-    # prompt blocking an unattended run. The config path is quoted in case it contains spaces
-    # (Invoke-ExternalPackageCommand joins args with a bare space and does not quote them).
-    $sysmonSvc = Get-Service -Name 'Sysmon', 'Sysmon64' -ErrorAction SilentlyContinue | Select-Object -First 1
-    $quotedConfig = '"' + $configPath + '"'
-    $applyArgs = if ($sysmonSvc) { @('-accepteula', '-c', $quotedConfig) } else { @('-accepteula', '-i', $quotedConfig) }
-    $exit = Invoke-ExternalPackageCommand -FilePath $sysmonExe -ArgumentList $applyArgs
-    if ($exit -eq 0) {
-        Write-Log -Level SUCCESS -Component CONFIG -Message "Sysmon configured with $configPath"
-        return $true
-    }
-    Write-Log -Level WARN -Component CONFIG -Message "Sysmon config apply returned exit $exit"
-    return $false
 }
 
 <#
@@ -548,7 +464,12 @@ function Invoke-ConfigurationItem {
                         Write-Log -Level SUCCESS -Component CONFIG -Message "Firewall.$fwProfile -> Enabled=$enabled"
                         $result.Changed = $true
                     }
-                    'sysmon' { $result.Changed = Install-SysmonWithConfig }
+                    # NOTE: there is deliberately no 'sysmon' branch any more - Sysmon moved out
+                    # of this project entirely (2026-08-16). See the removal note in
+                    # SystemConfigurationAudit.psm1's Get-SecurityConfigurationDiff. A stale
+                    # diff file from an older run could still carry Type = 'sysmon'; it falls
+                    # through to the default branch below and is reported as unknown, which is
+                    # the correct outcome - nothing here should install Sysmon.
                     # CIS 1.1/1.2 - local password & account-lockout policy via secedit.
                     'secpolicy' {
                         $result.Changed = Invoke-SecurityPolicyChangeItem -Item $item -Component 'CONFIG'

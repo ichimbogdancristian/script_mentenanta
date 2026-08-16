@@ -157,21 +157,21 @@
       "Spooler",
       "wercplsupport",
       "RasAuto",
-      "SessionEnv",
-      "TermService",
-      "UmRdpService",
       "RpcLocator",
       "SSDPSRV",
       "upnphost",
       "Wecsvc",
       "icssvc",
       "WpnService",
-      "PushToInstall",
-      "WinRM"
+      "PushToInstall"
     ],
     "_excludedFromDisable": {
       "_comment": "Unlike the registry block, Compare-ServiceBaseline takes a bare string array and has no 'apply' flag, so a service kept out of ensureDisabled has to be DELETED from the list. Recording it here instead of silently dropping it, same intent as the registry block's 'apply': false + '_excluded'. Re-adding any name below re-disables that service on every run.",
-      "LanmanServer": "The Server service. Disabling it stops this PC serving SMB entirely - user shares AND the administrative shares (C$, ADMIN$) - so a remote device gets 'the network path was not found'. Removed so the machine can host shares."
+      "LanmanServer": "The Server service. Disabling it stops this PC serving SMB entirely - user shares AND the administrative shares (C$, ADMIN$) - so a remote device gets 'the network path was not found'. Removed so the machine can host shares.",
+      "WinRM": "REMOTE MANAGEMENT (2026-08-16). This machine is administered with Ansible over WinRM. Disabling the service severed that on the next monthly run, every month, with nothing to notice it - the host simply stopped answering. Kept enabled together with the 18.10.90.1 AllowRemoteShellAccess exclusion, which is the other half of the same door: the service running with WinRS refused is still a closed door.",
+      "TermService": "REMOTE DESKTOP (2026-08-16). Disabled together with SessionEnv and UmRdpService this removed RDP entirely. Paired with the WinRM disable above, a headless or remote host had NO remaining way back in after the Stage 5 reboot - the two together turned a hardening pass into a lockout. RDP is not needed by Ansible, but it is the fallback path when WinRM is the thing that broke.",
+      "SessionEnv": "Remote Desktop Configuration - see TermService above. Disabling it breaks RDP session setup even when TermService itself is running.",
+      "UmRdpService": "Remote Desktop UserMode Port Redirector - see TermService above. Kept so drive/clipboard redirection works on the RDP fallback path."
     }
   },
   "registry": [
@@ -371,6 +371,8 @@
       "cis": "2.3.17.1",
       "path": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
       "name": "FilterAdministratorToken",
+      "apply": false,
+      "_excluded": "Ansible automation account (2026-08-16). The built-in RID 500 account is normally EXEMPT from remote UAC token filtering, which is exactly why it is the account this estate uses for WinRM automation - it receives a full elevated token over the network where an ordinary local admin receives a filtered one. Admin Approval Mode removes that exemption, and LocalAccountTokenFilterPolicy is deliberately excluded too, so nothing grants it back: the result is an account that authenticates successfully and then silently cannot do privileged work - the most confusing possible failure. Excluded rather than setting LocalAccountTokenFilterPolicy=1 because this is the narrower deviation: it restores the full token for RID 500 ALONE and leaves every other local admin still filtered over the network.",
       "type": "DWord",
       "desiredValue": 1,
       "description": "UAC Admin Approval Mode for Built-in Admin"
@@ -1898,6 +1900,8 @@
       "cis": "18.10.87.2",
       "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\Transcription",
       "name": "EnableTranscripting",
+      "apply": false,
+      "_excluded": "Owned by Deploy-WazuhAgentIntegrations.ps1 (2026-08-16). Enforcing this here turned transcription on WITHOUT also setting OutputDirectory and WITHOUT any retention, so transcripts landed in the Windows default location and nothing ever deleted them - unbounded growth on every managed machine, the same failure the SOC deployment's own 4.7 changelog was written about. The SOC deployment enables the identical policy AND points OutputDirectory at <OSSEC>\\logs\\PowerShellTranscripts AND registers a 90-day cleanup task, so transcription still ends up ON with a defined home and a retention policy - just from the one place that owns all three halves. Do not re-enable here without also setting OutputDirectory and shipping a cleanup task.",
       "type": "DWord",
       "desiredValue": 1,
       "description": "Enable PowerShell transcription"
@@ -1922,6 +1926,8 @@
       "cis": "18.10.90.1",
       "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\WinRM\\Service\\WinRS",
       "name": "AllowRemoteShellAccess",
+      "apply": false,
+      "_excluded": "Remote management (2026-08-16). This is the other half of the WinRM service exclusion in the services block: setting it to 0 refuses WinRS shells, so Ansible authenticates and then cannot open a shell to run anything. Leaving the service enabled while enforcing this rule would have looked like the door was open and still failed every task. Excluded together with the WinRM/TermService/SessionEnv/UmRdpService entries under services._excludedFromDisable.",
       "type": "DWord",
       "desiredValue": 0,
       "description": "Disable Remote Shell Access"
