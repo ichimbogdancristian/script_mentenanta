@@ -162,6 +162,37 @@ verified in the current code:
 | Network + GitHub reachable | `EXIT /B 3`, run does nothing | Hard: only `script.bat` persists, so there is no local copy to fall back to |
 | PowerShell 7 | `EXIT /B 1` | Hard: the orchestrator is `#Requires -Version 7.0` |
 | winget | `WARN`, run continues | Soft: only degrades SoftwareManagement/Sysmon |
+| Client SKU (ProductType 1) | member server runs with reductions; **domain controller refuses** | See "Windows Server" below |
+
+### Windows Server
+
+The project targets Windows 10/11 clients and its baselines are the CIS **Workstation**
+benchmark. It *runs* on Windows Server, but the SKU is detected in two independent places and
+several things are deliberately turned off. `Get-OSContext` exposes `ProductType`, `IsServer`,
+`IsDomainController`, `InstallationType` and `IsServerCore`, all from the one
+`Win32_OperatingSystem` query it already made plus one registry read.
+
+**The build number cannot substitute for the SKU, and assuming it can was a real landmine.**
+Windows Server 2025 is build 26100, i.e. over the 22000 threshold that means "Windows 11"
+everywhere else in this project. `IsWindows11` deliberately keeps its literal build-threshold
+meaning — callers that mean "is a client" must test `-not $ctx.IsServer`.
+
+| Area | On Server | Why |
+|---|---|---|
+| Restore point | **skipped** | `root/default:SystemRestore` is client-only. Previously queued unconditionally, so it failed every run *and* left the CIS/secedit/auditpol changes with no rollback target |
+| OS lifecycle auto-advance | **skipped** | `os-lifecycle.json` models the client Hx cadence only. Server 2025 resolved to "consumer Win11 24H2, EOS 2026-10-13" and from 2026-10-14 would have written a `TargetReleaseVersion` policy pinning a server to a client feature version |
+| winget Method 1 | skipped | App Installer is never preinstalled on Server, so there is nothing to re-register |
+| winget Method 3 | dependency pre-install added | The `.msixbundle` is not self-contained; VCLibs/UI.Xaml are absent on Server, so a bare `Add-AppxPackage` fails `0x80073CF3` |
+| All winget methods (Server **Core**) | skipped outright | No MSIX/AppX runtime exists there |
+| Domain controller | **run refuses** | The secedit password/lockout pass is overridden by the Default Domain Policy (silently ineffective), and auditpol alters the domain's audit record. Override: `server.allowDomainController` |
+
+`server.allowServerSku` (default `true`) and `server.allowDomainController` (default `false`)
+in `main-config.json` gate this, checked once in the orchestrator **before Stage 0**.
+
+Not handled automatically, and worth deciding per host: `essential-apps.json` installs desktop
+software (Chrome, Firefox, LibreOffice, WinRAR, Java) — set `modules.skipSoftwareManagement` on
+a server; and on a **domain-joined** machine 265 of the 300 registry baseline entries target
+`\Policies\` keys that Group Policy owns and rewrites on refresh, so they will churn.
 
 **What may be left behind.** On a clean run: `script.bat` + the HTML report, nothing else
 (`update.zip` is deleted after extraction, and `maintenance.log` is *moved into* the
@@ -319,8 +350,9 @@ log is always closed via `Close-LogFile` in `finally`), then:
    changes, and it then re-hardens Defender/firewall before the rest of the run — then
    SoftwareManagement → WindowsUpdates → **DiskCleanup last**, so it sweeps up residue the
    earlier actions created). If no diffs, no changes are made. Note SystemConfiguration's diff
-   is never empty in practice (it always queues a restore point), so it effectively runs every
-   time.
+   is never empty in practice **on a client** (it always queues a restore point), so it
+   effectively runs every time. On a server the restore point is skipped, so that pair can
+   legitimately be skipped by Stage 2 when nothing else differs.
 4. **Stage 4 – Report:** generates the HTML report embedding `maintenance.log` (read live — the
    log is a direct-write, auto-flushed stream opened with `FileShare.ReadWrite`, so the report
    reads it while it is still being written), then copies it to the launcher folder.
@@ -376,8 +408,11 @@ their work in a deliberate order, not the order items happen to appear:
   discard the very rollback targets a failed run would need. `Sort-Object -Stable` keeps the
   audit's within-phase ordering.
 - The audit queues the restore point `create` item **unconditionally** (unless
-  `skipRestorePointManagement`), which is also what guarantees this pair's diff is never empty,
-  so Stage 2 always schedules its Type2 and the safety net is taken every run.
+  `skipRestorePointManagement`, **or the machine is a server** — System Restore does not exist
+  on Server SKUs, see "Windows Server" above), which is also what guarantees this pair's diff is
+  never empty, so on a client Stage 2 always schedules its Type2 and the safety net is taken
+  every run. On a server that guarantee does not hold: an already-compliant server produces an
+  empty diff and Stage 2 skips the pair, which is correct — there is genuinely nothing to do.
 
 **CIS coverage: three different mechanisms, not one.** `security-baseline.json` is a CIS
 benchmark baseline, and CIS rules do **not** all live in the registry. The file has three

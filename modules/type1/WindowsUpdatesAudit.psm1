@@ -93,6 +93,26 @@ function Get-PendingUpdatesMultiSource {
 
     LTSC / IoT Enterprise LTSC editions follow a completely different multi-year servicing
     model and are intentionally excluded (Applicable = $false) rather than guessed at.
+
+    WINDOWS SERVER IS EXCLUDED FOR THE SAME REASON, and the exclusion is load-bearing rather
+    than tidy-minded. os-lifecycle.json models the client Hx feature-version cadence only;
+    Server has its own 5+5 fixed-lifecycle model that is not in the catalog. Without the
+    guard below, Windows Server 2025 mis-resolves in three compounding steps:
+
+      1. Its build is 26100, so OSContext.IsWindows11 is $true and it takes the windows11
+         branch;
+      2. Its EditionID is ServerStandard/ServerDatacenter, which matches neither
+         'EnterpriseS' (the LTSC skip) nor 'Enterprise|Education|IoTEnterprise' (the tier
+         test), so it is classed as a CONSUMER edition;
+      3. Its DisplayVersion is 24H2, which the catalog does list - with a consumer
+         endOfService of 2026-10-13.
+
+    On 2026-10-14 that combination makes NeedsFeatureAdvance $true on a server and, with
+    autoAdvanceEolFeatureVersion defaulting to true, writes TargetReleaseVersion = 25H2
+    into HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate - pinning a server's Windows
+    Update to a client feature version that does not exist for it. Server 2019 (1809) and
+    2022 (21H2) avoid this only because their DisplayVersion happens to have no catalog row;
+    that is luck, not a guard, and it expires the moment someone adds those rows.
 .OUTPUTS
     [hashtable] Applicable, MajorVersion, DisplayVersion, EditionTier, IsSupported,
     EndOfServiceDate, EsuAvailable, EsuEndDate, EsuNote, LatestSupportedVersion,
@@ -119,6 +139,15 @@ function Get-WindowsLifecycleStatus {
     }
 
     try {
+        # Windows Server: not modeled by os-lifecycle.json at all - see the .DESCRIPTION
+        # above for the exact three-step mis-resolution this prevents on Server 2025.
+        # Checked FIRST, before any registry read, so no server can reach the catalog.
+        if ($OSContext.IsServer) {
+            Write-Log -Level DEBUG -Component WU-AUDIT -Message "Windows Server detected ($($OSContext.Caption)) - client feature-version lifecycle check not applicable"
+            $result.Guidance = 'Windows Server follows a fixed 5+5 servicing lifecycle that this client-oriented catalog does not model. Servicing status was not evaluated; regular update detection via the Windows Update COM API is unaffected.'
+            return $result
+        }
+
         $cvKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
         $displayVersion = (Get-ItemProperty -Path $cvKey -Name 'DisplayVersion' -ErrorAction SilentlyContinue).DisplayVersion
         $editionId = (Get-ItemProperty -Path $cvKey -Name 'EditionID' -ErrorAction SilentlyContinue).EditionID
@@ -274,6 +303,12 @@ function Invoke-WindowsUpdatesAudit {
         if ($lifecycle.Applicable) {
             $extra.OSSupportStatus = if ($lifecycle.IsSupported) { 'Supported' } else { 'Past end of service' }
             if ($lifecycle.EndOfServiceDate) { $extra.EndOfServiceDate = $lifecycle.EndOfServiceDate }
+            if ($lifecycle.Guidance) { $extra.Guidance = $lifecycle.Guidance }
+        }
+        elseif ($osCtx.IsServer) {
+            # Say so explicitly rather than letting the section silently vanish: "not
+            # evaluated" and "evaluated, all good" must not look identical in the report.
+            $extra.OSSupportStatus = 'Not evaluated (Windows Server)'
             if ($lifecycle.Guidance) { $extra.Guidance = $lifecycle.Guidance }
         }
 

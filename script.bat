@@ -469,6 +469,39 @@ REM Windows version detection
 FOR /F "tokens=*" %%i IN ('powershell -Command "try { (Get-CimInstance Win32_OperatingSystem).Version } catch { (Get-WmiObject Win32_OperatingSystem).Version }"') DO SET OS_VERSION=%%i
 CALL :LOG_MESSAGE "Windows version: %OS_VERSION%" "INFO" "LAUNCHER"
 
+REM ---------------------------------------------------------------------------------
+REM SKU detection (client vs server, Desktop Experience vs Server Core).
+REM
+REM The build number CANNOT answer this and guessing from it is actively wrong: Windows
+REM Server 2025 is build 26100, i.e. above the 22000 threshold this project elsewhere uses
+REM to mean "Windows 11". The launcher needs the real answer for one reason only - to stop
+REM attempting winget installation methods that are guaranteed to fail on a server - but
+REM the values are exported so the orchestrator can log the same verdict the launcher saw.
+REM (MaintenanceOrchestrator.ps1's Get-OSContext derives all of this independently from its
+REM own CIM query, so a stale or missing value here can never mislead it; these vars are
+REM for the launcher's own branching and for diagnostics.)
+REM
+REM ProductType: 1 = workstation, 2 = domain controller, 3 = member server. Anything we
+REM cannot read falls back to 1, which only ever costs a futile winget attempt.
+REM ---------------------------------------------------------------------------------
+FOR /F "tokens=*" %%i IN ('powershell -NoProfile -ExecutionPolicy Bypass -Command "try { (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).ProductType } catch { 1 }" 2^>nul') DO SET "MAINT_PRODUCT_TYPE=%%i"
+IF NOT DEFINED MAINT_PRODUCT_TYPE SET "MAINT_PRODUCT_TYPE=1"
+
+FOR /F "tokens=*" %%i IN ('powershell -NoProfile -ExecutionPolicy Bypass -Command "try { (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name InstallationType -ErrorAction Stop).InstallationType } catch { 'Client' }" 2^>nul') DO SET "MAINT_INSTALL_TYPE=%%i"
+IF NOT DEFINED MAINT_INSTALL_TYPE SET "MAINT_INSTALL_TYPE=Client"
+
+SET "IS_SERVER=NO"
+IF "%MAINT_PRODUCT_TYPE%"=="2" SET "IS_SERVER=YES"
+IF "%MAINT_PRODUCT_TYPE%"=="3" SET "IS_SERVER=YES"
+
+SET "IS_SERVER_CORE=NO"
+IF /I "%MAINT_INSTALL_TYPE%"=="Server Core" SET "IS_SERVER_CORE=YES"
+
+CALL :LOG_MESSAGE "OS SKU: ProductType=%MAINT_PRODUCT_TYPE% InstallationType=%MAINT_INSTALL_TYPE% (Server: %IS_SERVER%, Server Core: %IS_SERVER_CORE%)" "INFO" "LAUNCHER"
+IF "%MAINT_PRODUCT_TYPE%"=="2" (
+    CALL :LOG_MESSAGE "DOMAIN CONTROLLER detected. The orchestrator refuses to run on a DC unless server.allowDomainController is true in main-config.json - the CIS Workstation baseline's secedit password/lockout pass is overridden by the Default Domain Policy there, and its auditpol changes alter the domain's audit record." "WARN" "LAUNCHER"
+)
+
 REM PowerShell version check
 FOR /F "tokens=*" %%i IN ('powershell -Command "$PSVersionTable.PSVersion.Major" 2^>nul') DO SET PS_VERSION=%%i
     IF "%PS_VERSION%"=="" SET PS_VERSION=0
@@ -772,25 +805,55 @@ CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
         )
     )
     
+    REM -------------------------------------------------------------------------
+    REM SERVER CORE: winget is not installable, full stop. There is no MSIX/AppX
+    REM runtime on Server Core, so ALL THREE methods below are guaranteed to fail -
+    REM Method 1 has no preinstalled package to re-register, Method 2's
+    REM Repair-WinGetPackageManager has no runtime to deploy into, and Method 3's
+    REM Add-AppxPackage does not exist. Attempting them costs three process launches,
+    REM two network round-trips and three WARN lines every single unattended run, all
+    REM to reach the same conclusion. Winget is a SOFT dependency (see the requirement
+    REM tiers in CLAUDE.md), so declining to try is the correct outcome, not a failure:
+    REM only SoftwareManagement degrades, and the rest of the run is unaffected.
+    REM -------------------------------------------------------------------------
+    IF "%WINGET_AVAILABLE%"=="NO" IF "%IS_SERVER_CORE%"=="YES" (
+        CALL :LOG_MESSAGE "Winget is not available and cannot be installed on Server Core (no MSIX/AppX runtime) - skipping all installation methods. SoftwareManagement will degrade; every other module is unaffected." "INFO" "LAUNCHER"
+    )
+
     REM Install winget if not available
-    IF "%WINGET_AVAILABLE%"=="NO" (
+    IF "%WINGET_AVAILABLE%"=="NO" IF NOT "%IS_SERVER_CORE%"=="YES" (
         CALL :LOG_MESSAGE "Winget not found. Attempting to install winget..." "INFO" "LAUNCHER"
-        
+
         REM Method 1: Try installing App Installer via PowerShell (if allowed)
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "try { if (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue) { $appInstaller = Get-AppxPackage -Name 'Microsoft.DesktopAppInstaller' -ErrorAction SilentlyContinue; if (-not $appInstaller) { Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction Stop; Write-Host 'APPINSTALLER_REGISTERED' } else { Write-Host 'APPINSTALLER_EXISTS' } } else { Write-Host 'APPX_NOT_SUPPORTED' } } catch { Write-Host 'APPINSTALLER_FAILED'; exit 1 }" >nul 2>&1
-        IF !ERRORLEVEL! EQU 0 (
-            CALL :LOG_MESSAGE "App Installer registration attempted" "INFO" "LAUNCHER"
-            TIMEOUT /T 5 >nul 2>&1
+        REM CLIENT ONLY. This method re-registers an App Installer package that is already
+        REM present but unregistered for the current user. No Windows Server SKU ships App
+        REM Installer preinstalled, so on a server there is nothing to re-register and this
+        REM is a guaranteed failure - skipped rather than run for a WARN line.
+        IF "!IS_SERVER!"=="YES" (
+            CALL :LOG_MESSAGE "Skipping Method 1 (App Installer re-registration): not preinstalled on Windows Server, so there is no package to register" "INFO" "LAUNCHER"
         ) ELSE (
-            CALL :LOG_MESSAGE "App Installer registration failed" "WARN" "LAUNCHER"
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { if (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue) { $appInstaller = Get-AppxPackage -Name 'Microsoft.DesktopAppInstaller' -ErrorAction SilentlyContinue; if (-not $appInstaller) { Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction Stop; Write-Host 'APPINSTALLER_REGISTERED' } else { Write-Host 'APPINSTALLER_EXISTS' } } else { Write-Host 'APPX_NOT_SUPPORTED' } } catch { Write-Host 'APPINSTALLER_FAILED'; exit 1 }" >nul 2>&1
+            IF !ERRORLEVEL! EQU 0 (
+                CALL :LOG_MESSAGE "App Installer registration attempted" "INFO" "LAUNCHER"
+                TIMEOUT /T 5 >nul 2>&1
+            ) ELSE (
+                CALL :LOG_MESSAGE "App Installer registration failed" "WARN" "LAUNCHER"
+            )
         )
-        
+
         REM Check if Method 1 succeeded before trying Method 2
         winget --version >nul 2>&1
         IF !ERRORLEVEL! NEQ 0 (
             REM Method 2: Try PowerShell Gallery Microsoft.WinGet.Client module (official method)
             CALL :LOG_MESSAGE "Attempting winget installation via PowerShell Gallery (Microsoft.WinGet.Client)..." "INFO" "LAUNCHER"
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Installing NuGet provider...'; Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Write-Host 'Installing Microsoft.WinGet.Client module...'; Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser | Out-Null; Write-Host 'Running Repair-WinGetPackageManager...'; Import-Module Microsoft.WinGet.Client -Force; Repair-WinGetPackageManager -AllUsers; Write-Host 'WINGET_PSMODULE_SUCCESS' } catch { Write-Host 'WINGET_PSMODULE_FAILED'; Write-Host $_.Exception.Message; exit 1 }"
+            REM The `-bor 3072` is TLS 1.2 and it is REQUIRED, not defensive. This runs under
+            REM Windows PowerShell 5.1, whose default SecurityProtocol on older/hardened builds
+            REM (notably Server 2016/2019 without SchUseStrongCrypto) does not include TLS 1.2 -
+            REM and PSGallery has been TLS-1.2-only for years. Without it Install-PackageProvider
+            REM fails with a generic "unable to download from URI", which reads like a network
+            REM outage rather than a protocol mismatch. The Chocolatey bootstrap further down
+            REM has always set this; Method 2 was the odd one out.
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; Write-Host 'Installing NuGet provider...'; Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Write-Host 'Installing Microsoft.WinGet.Client module...'; Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser | Out-Null; Write-Host 'Running Repair-WinGetPackageManager...'; Import-Module Microsoft.WinGet.Client -Force; Repair-WinGetPackageManager -AllUsers; Write-Host 'WINGET_PSMODULE_SUCCESS' } catch { Write-Host 'WINGET_PSMODULE_FAILED'; Write-Host $_.Exception.Message; exit 1 }"
             IF !ERRORLEVEL! EQU 0 (
                 CALL :LOG_MESSAGE "PowerShell Gallery method completed - verifying winget availability..." "INFO" "LAUNCHER"
                 TIMEOUT /T 5 >nul 2>&1
@@ -829,7 +892,37 @@ CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
             REM Method 3: Download and install App Installer MSIX manually with fallback URLs
             CALL :LOG_MESSAGE "Attempting manual App Installer download with fallback URLs..." "INFO" "LAUNCHER"
             DEL /Q "%WORKING_DIR%AppInstaller.msixbundle" >nul 2>&1
-            
+
+            REM ---------------------------------------------------------------------
+            REM SERVER ONLY: install App Installer's framework dependencies FIRST.
+            REM
+            REM This is the difference between Method 3 working and not working on a
+            REM server, not an optimisation. The .msixbundle is not self-contained: it
+            REM declares framework dependencies on Microsoft.VCLibs.140.00.UWPDesktop and
+            REM Microsoft.UI.Xaml. On a client those are already present (the inbox Store
+            REM apps pull them in), which is exactly why installing the bare bundle works
+            REM there and why this gap was invisible. A Windows Server install has no
+            REM inbox Store apps and therefore neither framework, so Add-AppxPackage of
+            REM the bundle alone fails with 0x80073CF3 (dependency not found) - reported
+            REM here only as the generic "MSIX installation failed".
+            REM
+            REM The dependencies ship as an official asset of the same winget-cli release
+            REM ("...Dependencies.zip", x64/*.appx inside), so they are fetched from the
+            REM same source as the bundle rather than from a third-party mirror. Entirely
+            REM best-effort: a failure here just leaves Method 3 to fail as it does today.
+            REM ---------------------------------------------------------------------
+            IF "!IS_SERVER!"=="YES" (
+                CALL :LOG_MESSAGE "Windows Server: installing App Installer framework dependencies (VCLibs / UI.Xaml) before the MSIX bundle - they are not preinstalled on Server and the bundle cannot install without them" "INFO" "LAUNCHER"
+                powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; $headers=@{'User-Agent'='WinMaintLauncher'}; $rel=Invoke-RestMethod -Headers $headers -Uri 'https://api.github.com/repos/microsoft/winget-cli/releases/latest' -TimeoutSec 30; $dep=$rel.assets | Where-Object { $_.name -match 'Dependencies\.zip$' } | Select-Object -First 1; if(-not $dep){ Write-Host 'DEPS_ASSET_NOT_FOUND'; exit 2 }; $zip='%WORKING_DIR%winget-deps.zip'; $dir='%WORKING_DIR%winget-deps'; Invoke-WebRequest -Headers $headers -Uri $dep.browser_download_url -OutFile $zip -UseBasicParsing -TimeoutSec 120; if(Test-Path $dir){ Remove-Item $dir -Recurse -Force }; Expand-Archive -Path $zip -DestinationPath $dir -Force; $arch = if([Environment]::Is64BitOperatingSystem){'x64'}else{'x86'}; $pkgs=@(Get-ChildItem -Path $dir -Recurse -Filter *.appx | Where-Object { $_.FullName -match ('\\' + $arch + '\\') }); if(-not $pkgs){ Write-Host 'DEPS_NONE_FOR_ARCH'; exit 3 }; foreach($p in $pkgs){ try { Add-AppxPackage -Path $p.FullName -ErrorAction Stop; Write-Host ('DEP_OK ' + $p.Name) } catch { Write-Host ('DEP_SKIP ' + $p.Name) } }; Write-Host 'DEPS_DONE' } catch { Write-Host 'DEPS_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
+                IF !ERRORLEVEL! EQU 0 (
+                    CALL :LOG_MESSAGE "App Installer framework dependencies installed" "SUCCESS" "LAUNCHER"
+                ) ELSE (
+                    CALL :LOG_MESSAGE "Could not install App Installer framework dependencies - the MSIX bundle install below will most likely fail with 0x80073CF3 on this SKU" "WARN" "LAUNCHER"
+                )
+                DEL /Q "%WORKING_DIR%winget-deps.zip" >nul 2>&1
+                RMDIR /S /Q "%WORKING_DIR%winget-deps" >nul 2>&1
+            )
+
             REM Try primary URL (Microsoft official shortlink)
             powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; Write-Host 'Trying primary URL (Microsoft official)...'; $url='https://aka.ms/getwinget'; Invoke-WebRequest -Uri $url -OutFile '%WORKING_DIR%AppInstaller.msixbundle' -UseBasicParsing -TimeoutSec 30; Write-Host 'PRIMARY_MSIX_DOWNLOADED' } catch { Write-Host 'PRIMARY_MSIX_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
             IF !ERRORLEVEL! NEQ 0 (
@@ -888,8 +981,22 @@ CALL :LOG_MESSAGE "Checking winget availability..." "INFO" "LAUNCHER"
             )
         )
         
-        IF "%WINGET_AVAILABLE%"=="NO" (
-            CALL :LOG_MESSAGE "All winget installation methods failed" "WARN" "LAUNCHER"
+    REM DELAYED EXPANSION IS REQUIRED HERE. This check sits INSIDE the big
+    REM `IF "%WINGET_AVAILABLE%"=="NO" (...)` block, and every SET that flips the variable to
+    REM YES is inside that same block. With %WINGET_AVAILABLE% the whole block is expanded
+    REM once when cmd.exe parses it, so this read always saw the pre-block value "NO" and the
+    REM failure line below fired on EVERY run - including runs where winget had just been
+    REM installed successfully seconds earlier. !WINGET_AVAILABLE! reads it at execution time.
+        IF "!WINGET_AVAILABLE!"=="NO" (
+            REM On a server this is an expected outcome, not a fault: winget is officially
+            REM a Windows client component. Logging it at WARN parity with a genuine client
+            REM failure trains the reader to ignore the line on the one SKU where it means
+            REM something. Winget stays a SOFT dependency either way - the run continues.
+            IF "!IS_SERVER!"=="YES" (
+                CALL :LOG_MESSAGE "Winget could not be installed on this Windows Server SKU - expected, as winget is a Windows client component. SoftwareManagement degrades; every other module is unaffected." "INFO" "LAUNCHER"
+            ) ELSE (
+                CALL :LOG_MESSAGE "All winget installation methods failed" "WARN" "LAUNCHER"
+            )
         )
     )
 
@@ -930,7 +1037,7 @@ IF "!WINGET_AVAILABLE!"=="YES" (
     CALL :LOG_MESSAGE "winget version before self-update attempt: !WINGET_VERSION_BEFORE!" "DEBUG" "LAUNCHER"
 
     CALL :LOG_MESSAGE "Attempting to update winget (App Installer) via Repair-WinGetPackageManager..." "INFO" "LAUNCHER"
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; if (-not (Get-Module -ListAvailable -Name Microsoft.WinGet.Client)) { Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser | Out-Null }; Import-Module Microsoft.WinGet.Client -Force; Repair-WinGetPackageManager -AllUsers -Force -Latest; Write-Host 'WINGET_REPAIR_DONE' } catch { Write-Host 'WINGET_REPAIR_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $ProgressPreference='SilentlyContinue'; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; if (-not (Get-Module -ListAvailable -Name Microsoft.WinGet.Client)) { Install-PackageProvider -Name NuGet -Force -Scope CurrentUser | Out-Null; Install-Module -Name Microsoft.WinGet.Client -Force -Repository PSGallery -Scope CurrentUser | Out-Null }; Import-Module Microsoft.WinGet.Client -Force; Repair-WinGetPackageManager -AllUsers -Force -Latest; Write-Host 'WINGET_REPAIR_DONE' } catch { Write-Host 'WINGET_REPAIR_FAILED'; Write-Host $_.Exception.Message; exit 1 }" >nul 2>&1
     SET "WINGET_REPAIR_RC=!ERRORLEVEL!"
 
     CALL :REFRESH_PATH_FROM_REGISTRY

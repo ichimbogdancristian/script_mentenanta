@@ -9,12 +9,14 @@
             "WMPNetworkSvc",
             "MapsBroker",
             "lfsvc",
-            "NetTcpPortSharing",
             "Fax"
         ],
         "_notes": {
             "RemoteRegistry": "Moved to security-baseline.json services.ensureDisabled",
             "Fax": "Optional Windows feature; may not be installed on all systems"
+        },
+        "_excludedFromDisable": {
+            "NetTcpPortSharing": "SERVER WORKLOAD (2026-08-16). Removed from the disable list. The other entries here are genuine client-side telemetry/consumer services; this one is the WCF net.tcp port sharing service, and disabling it breaks any application that hosts a net.tcp endpoint - which on a member server is a line-of-business app going down on the Stage 5 reboot, with the cause buried in a monthly maintenance run nobody is watching. It is inert on a machine with no such app, so keeping it enabled costs a client nothing, whereas disabling it costs a server an outage. Same rationale, and same _excludedFromDisable shape, as the WinRM/TermService/LanmanServer entries in security-baseline.json."
         }
     },
     "registry": {

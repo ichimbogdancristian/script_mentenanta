@@ -7,6 +7,11 @@
       "rebootOnlyWhenRequired": true
     }
   },
+  "server": {
+    "_comment": "Windows Server SKU gate, checked ONCE by the orchestrator immediately after OS detection and before Stage 0. allowDomainController defaults to FALSE and is a refusal, not a warning: this project applies the CIS Workstation benchmark, and on a DC the secedit password/lockout pass is overridden by the Default Domain Policy (so it silently does nothing) while the auditpol changes land on the machine whose Security log IS the domain's audit record. allowServerSku defaults to true - a member server still gets real value from Windows Update, disk cleanup, DISM component cleanup and the registry half of the security baseline; set it false to refuse those too. Neither flag changes what the SKU itself makes impossible: System Restore does not exist on Server (so the restore point is skipped and the run proceeds WITHOUT a rollback target), the client feature-version lifecycle catalog is not applied, and Server Core has no MSIX runtime for winget. On a member server, review modules.skipSoftwareManagement before the first run - essential-apps.json installs desktop software (Chrome, Firefox, LibreOffice, WinRAR, Java) that is rarely wanted on a server.",
+    "allowServerSku": true,
+    "allowDomainController": false
+  },
   "modules": {
     "_comment": "skipSoftwareManagement/skipSystemConfiguration/skipDiskCleanup/skipWindowsUpdates gate a whole Type1+Type2 pair (checked by the orchestrator in Stage 2). skipSystemHealth and skipRestorePointManagement gate SUB-FEATURES of the SystemConfiguration pair (checked inside SystemConfigurationAudit): they turn off the health report and the restore point create/prune respectively, without disabling the rest of the configuration work. NOTE: skipRestorePointManagement true removes this run's rollback safety net AND can leave the SystemConfiguration diff empty, in which case Stage 3 skips the pair entirely.",
     "skipSoftwareManagement": false,

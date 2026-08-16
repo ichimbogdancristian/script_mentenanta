@@ -401,8 +401,32 @@ function Close-LogFile {
 <#
 .SYNOPSIS
     Returns a structured OS context object.
+.DESCRIPTION
+    Everything here comes from ONE Win32_OperatingSystem query plus one registry read, so
+    adding the SKU fields below costs nothing extra - ProductType is a property of the same
+    CIM object the build number already comes from.
+
+    THE SKU FIELDS ARE NOT COSMETIC. Build number alone cannot tell a client from a server,
+    and three parts of this project draw the wrong conclusion when it guesses:
+
+      * Windows Server 2025 is build 26100, i.e. >= 22000, so the IsWindows11 test below is
+        $true for it. Left unqualified that routes a SERVER into the Windows 11 lifecycle
+        branch, whose auto-advance writes a TargetReleaseVersion feature-update policy that
+        has no meaning on Server (see Get-WindowsLifecycleStatus). Server 2019/2022 escape
+        only by accident - their DisplayVersion has no catalog entry.
+      * System Restore does not exist on any Server SKU: the root/default:SystemRestore WMI
+        class is client-only. SystemConfigurationAudit queues a restore point UNCONDITIONALLY
+        on the strength of that class existing.
+      * Server Core has no AppX/MSIX runtime at all, so winget cannot be installed there and
+        the whole bloatware layer is inapplicable.
+
+    IsWindows11 keeps its literal build-threshold meaning and is NOT redefined to exclude
+    servers - callers that genuinely mean "has the Win11-era shell" still want it. Callers
+    that mean "is a client OS" must test -not $ctx.IsServer. Both are provided so neither
+    has to be inferred from the other.
 .OUTPUTS
-    hashtable with keys: IsWindows11, BuildNumber, MajorVersion, DisplayText,
+    hashtable with keys: IsWindows11, BuildNumber, MajorVersion, DisplayText, Caption,
+    ProductType, IsServer, IsDomainController, InstallationType, IsServerCore,
     Features (hashtable of available OS features)
 #>
 function Get-OSContext {
@@ -418,22 +442,60 @@ function Get-OSContext {
         # Windows 11 starts at build 22000
         $isWin11 = $build -ge 22000
 
+        # Win32_OperatingSystem.ProductType: 1 = Work Station, 2 = Domain Controller,
+        # 3 = Server. Anything we cannot read is treated as 1, so an unreadable value
+        # degrades to "client" - the conservative direction, since every server-specific
+        # branch added for this is a SKIP of work that is merely useless on a server.
+        $productType = 1
+        if ($null -ne $os.ProductType) { $productType = [int]$os.ProductType }
+        $isDC = ($productType -eq 2)
+        $isServer = ($productType -eq 2 -or $productType -eq 3)
+
+        # InstallationType distinguishes 'Server Core' (no AppX runtime, no shell) from
+        # 'Server' (Desktop Experience). Absent/unreadable on some SKUs, hence the default.
+        $installationType = 'Client'
+        try {
+            $it = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' `
+                    -Name 'InstallationType' -ErrorAction Stop).InstallationType
+            if ($it) { $installationType = [string]$it }
+        }
+        catch {
+            # Fall back to the ProductType verdict rather than claiming Client on a server.
+            if ($isServer) { $installationType = 'Server' }
+        }
+        $isServerCore = ($installationType -match 'Core')
+
+        # Caption already reads "Microsoft Windows Server 2022 Standard" etc., so on a server
+        # it is strictly more informative than the Win10/Win11 label the build number implies.
+        $displayText = if ($isServer) {
+            "$caption (build $build)$(if ($isServerCore) { ' [Server Core]' })"
+        }
+        elseif ($isWin11) { "Windows 11 (build $build)" }
+        else { "Windows 10 (build $build)" }
+
         $ctx = @{
-            IsWindows11  = $isWin11
-            BuildNumber  = $build
-            MajorVersion = if ($isWin11) { 11 } else { 10 }
-            Caption      = $caption
-            DisplayText  = if ($isWin11) { "Windows 11 (build $build)" } else { "Windows 10 (build $build)" }
-            Features     = @{
-                AndroidApps   = $build -ge 22000
-                SnapLayouts   = $build -ge 22000
-                DirectStorage = $build -ge 22000
-                TPM2Required  = $build -ge 22000
-                WinGet        = $build -ge 19041
+            IsWindows11        = $isWin11
+            BuildNumber        = $build
+            MajorVersion       = if ($isWin11) { 11 } else { 10 }
+            Caption            = $caption
+            ProductType        = $productType
+            IsServer           = $isServer
+            IsDomainController = $isDC
+            InstallationType   = $installationType
+            IsServerCore       = $isServerCore
+            DisplayText        = $displayText
+            Features           = @{
+                AndroidApps   = $build -ge 22000 -and -not $isServer
+                SnapLayouts   = $build -ge 22000 -and -not $isServer
+                DirectStorage = $build -ge 22000 -and -not $isServer
+                TPM2Required  = $build -ge 22000 -and -not $isServer
+                # Server Core has no AppX/MSIX runtime, so App Installer cannot be
+                # registered there by any of script.bat's three winget methods.
+                WinGet        = $build -ge 19041 -and -not $isServerCore
             }
         }
 
-        Write-Log -Level INFO -Component CORE -Message "OS detected: $($ctx.DisplayText)"
+        Write-Log -Level INFO -Component CORE -Message "OS detected: $($ctx.DisplayText) (ProductType $productType, InstallationType '$installationType')"
         return $ctx
     }
     catch {
@@ -441,6 +503,8 @@ function Get-OSContext {
         return @{
             IsWindows11 = $false; BuildNumber = 19041
             MajorVersion = 10; Caption = 'Windows 10'
+            ProductType = 1; IsServer = $false; IsDomainController = $false
+            InstallationType = 'Client'; IsServerCore = $false
             DisplayText = 'Windows 10 (detection failed)'
             Features = @{ WinGet = $true }
         }

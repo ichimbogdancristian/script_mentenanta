@@ -992,7 +992,25 @@ function Invoke-SystemConfigurationAudit {
         if (-not $osCtx) { $osCtx = Get-OSContext }
 
         $config = Get-MainConfig
-        $skipRestorePoint = [bool]($config.modules.skipRestorePointManagement)
+        # System Restore is a CLIENT-ONLY feature: the root/default:SystemRestore WMI class
+        # that New-SystemRestorePoint drives does not exist on any Windows Server SKU. Left
+        # unguarded, the audit queues the create item unconditionally and Type2 then fails it
+        # on every single monthly run - while the rest of the module goes on to apply a
+        # 300-entry CIS registry baseline plus secedit and auditpol changes with NO rollback
+        # target at all. Skipping it here makes that honest: the run reports "no restore point
+        # on this SKU" instead of a recurring failure that hides the missing safety net.
+        #
+        # CONSEQUENCE, deliberately accepted: the create item is what normally guarantees this
+        # pair's diff is never empty (see Get-RestorePointConfigurationDiff), so on a server an
+        # already-compliant machine now produces an empty diff and Stage 2 skips the pair
+        # entirely. That is the correct outcome - there is genuinely nothing to do - and it is
+        # NOT the same as the skipRestorePointManagement hazard on a client, where the safety
+        # net is being given up for changes that are still going to be applied.
+        $osIsServer = [bool]$osCtx.IsServer
+        $skipRestorePoint = [bool]($config.modules.skipRestorePointManagement) -or $osIsServer
+        if ($osIsServer -and -not $config.modules.skipRestorePointManagement) {
+            Write-Log -Level INFO -Component CONFIG-AUDIT -Message "Restore point management skipped: System Restore is not available on Windows Server ($($osCtx.Caption))"
+        }
         $skipHealth = [bool]($config.modules.skipSystemHealth)
         # Sub-feature switches for the two policy areas that change how users log in.
         $skipPasswordPolicy = [bool]($config.modules.systemConfiguration.skipPasswordPolicy)

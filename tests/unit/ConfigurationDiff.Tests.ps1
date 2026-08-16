@@ -33,7 +33,6 @@ Describe 'Get-SecurityConfigurationDiff' {
 
         It 'returns an empty array for an empty baseline' {
             InModuleScope SystemConfigurationAudit {
-                Mock Get-Service { [pscustomobject]@{ Name = 'Sysmon64' } }
                 $r = @(Get-SecurityConfigurationDiff -Baseline @{} -SkipPasswordPolicy $true -SkipAuditPolicy $true)
                 $r.Count | Should -Be 0
             }
@@ -43,7 +42,6 @@ Describe 'Get-SecurityConfigurationDiff' {
     Context 'discriminator tagging' {
         It "tags registry-sourced items ConfigType 'security'" {
             InModuleScope SystemConfigurationAudit {
-                Mock Get-Service { [pscustomobject]@{ Name = 'Sysmon64' } }
                 Mock Compare-RegistryBaselineWithFallback {
                     @(@{ Type = 'registry'; Name = 'SomeValue'; CurrentState = 0; DesiredState = 1 })
                 }
@@ -56,7 +54,6 @@ Describe 'Get-SecurityConfigurationDiff' {
 
         It "tags securityPolicy items ConfigType 'security'" {
             InModuleScope SystemConfigurationAudit {
-                Mock Get-Service { [pscustomobject]@{ Name = 'Sysmon64' } }
                 Mock Compare-SecurityPolicyBaseline { @(@{ Type = 'secpolicy'; Name = 'LockoutBadCount' }) }
                 $r = @(Get-SecurityConfigurationDiff -Baseline @{ securityPolicy = @{ LockoutBadCount = 5 } } `
                         -SkipPasswordPolicy $false -SkipAuditPolicy $true)
@@ -68,7 +65,6 @@ Describe 'Get-SecurityConfigurationDiff' {
 
         It "tags auditPolicy items ConfigType 'security'" {
             InModuleScope SystemConfigurationAudit {
-                Mock Get-Service { [pscustomobject]@{ Name = 'Sysmon64' } }
                 Mock Compare-AuditPolicyBaseline { @(@{ Type = 'auditpolicy'; Name = 'Audit: Logon' }) }
                 $r = @(Get-SecurityConfigurationDiff -Baseline @{ auditPolicy = @(@{ subcategory = 'Logon' }) } `
                         -SkipPasswordPolicy $true -SkipAuditPolicy $false)
@@ -81,7 +77,6 @@ Describe 'Get-SecurityConfigurationDiff' {
     Context 'skip flags' {
         It 'does not consult the password policy when SkipPasswordPolicy is set' {
             InModuleScope SystemConfigurationAudit {
-                Mock Get-Service { [pscustomobject]@{ Name = 'Sysmon64' } }
                 Mock Compare-SecurityPolicyBaseline { @(@{ Type = 'secpolicy'; Name = 'X' }) }
                 $r = @(Get-SecurityConfigurationDiff -Baseline @{ securityPolicy = @{ LockoutBadCount = 5 } } `
                         -SkipPasswordPolicy $true -SkipAuditPolicy $true)
@@ -92,7 +87,6 @@ Describe 'Get-SecurityConfigurationDiff' {
 
         It 'does not consult the audit policy when SkipAuditPolicy is set' {
             InModuleScope SystemConfigurationAudit {
-                Mock Get-Service { [pscustomobject]@{ Name = 'Sysmon64' } }
                 Mock Compare-AuditPolicyBaseline { @(@{ Type = 'auditpolicy'; Name = 'X' }) }
                 $r = @(Get-SecurityConfigurationDiff -Baseline @{ auditPolicy = @(@{ subcategory = 'Logon' }) } `
                         -SkipPasswordPolicy $true -SkipAuditPolicy $true)
@@ -102,22 +96,18 @@ Describe 'Get-SecurityConfigurationDiff' {
         }
     }
 
-    Context 'Sysmon presence' {
-        It 'queues a Sysmon install when the service is absent' {
+    Context 'Sysmon is no longer this project''s concern' {
+        # The audit used to queue Type = 'sysmon' whenever the Sysmon service was absent. That
+        # was removed on 2026-08-16 - Deploy-WazuhAgentIntegrations.ps1 owns Sysmon end to end
+        # now. This guards against it being reintroduced by a merge: two installers converging
+        # on one service, with no drift detection, is the exact failure the removal fixed.
+        It 'never queues a Sysmon item, even when no Sysmon service exists' {
             InModuleScope SystemConfigurationAudit {
                 Mock Get-Service { $null }
                 $r = @(Get-SecurityConfigurationDiff -Baseline @{} -SkipPasswordPolicy $true -SkipAuditPolicy $true)
-                $r.Count | Should -Be 1
-                $r[0].Type | Should -Be 'sysmon'
-                $r[0].ConfigType | Should -Be 'security'
-            }
-        }
-
-        It 'queues nothing when the Sysmon service is present' {
-            InModuleScope SystemConfigurationAudit {
-                Mock Get-Service { [pscustomobject]@{ Name = 'Sysmon64' } }
-                @(Get-SecurityConfigurationDiff -Baseline @{} -SkipPasswordPolicy $true -SkipAuditPolicy $true).Count |
-                    Should -Be 0
+                $r.Count | Should -Be 0
+                @($r | Where-Object { $_.Type -eq 'sysmon' }).Count |
+                    Should -Be 0 -Because 'Sysmon moved to Deploy-WazuhAgentIntegrations.ps1'
             }
         }
     }
@@ -132,17 +122,25 @@ Describe 'Get-SecurityConfigurationDiff' {
         # Get-DiffList gets away with the comma only because ITS callers use plain assignment.
         It 'yields the ITEMS, not a nested array, when wrapped in @()' {
             InModuleScope SystemConfigurationAudit {
-                Mock Get-Service { $null }   # yields exactly one item (the Sysmon queue)
-                $r = @(Get-SecurityConfigurationDiff -Baseline @{} -SkipPasswordPolicy $true -SkipAuditPolicy $true)
+                # Needs a baseline producing EXACTLY ONE item: the bug this guards against only
+                # shows at count 1, where 'return , $arr' still has .Count -eq 1 but whose [0] is
+                # a hashtable[] rather than a hashtable. This used to lean on the Sysmon presence
+                # check as its single-item source; Sysmon left the audit on 2026-08-16, so it mocks
+                # the registry comparison instead. Same guarantee, no dead dependency.
+                Mock Compare-RegistryBaselineWithFallback {
+                    @(@{ Type = 'registry'; Name = 'OnlyItem'; CurrentState = 0; DesiredState = 1 })
+                }
+                $r = @(Get-SecurityConfigurationDiff `
+                        -Baseline @{ registry = @(@{ path = 'HKLM:\X'; name = 'OnlyItem' }) } `
+                        -SkipPasswordPolicy $true -SkipAuditPolicy $true)
                 $r.Count | Should -Be 1
                 $r[0] | Should -BeOfType [hashtable] -Because 'a nested array here would break $diff.Add()'
-                $r[0].Type | Should -Be 'sysmon'
+                $r[0].Type | Should -Be 'registry'
             }
         }
 
         It 'yields zero items - not one empty array - when there is nothing to do' {
             InModuleScope SystemConfigurationAudit {
-                Mock Get-Service { [pscustomobject]@{ Name = 'Sysmon64' } }
                 @(Get-SecurityConfigurationDiff -Baseline $null -SkipPasswordPolicy $true -SkipAuditPolicy $true).Count |
                     Should -Be 0
                 @(Get-TelemetryConfigurationDiff -Baseline $null).Count | Should -Be 0

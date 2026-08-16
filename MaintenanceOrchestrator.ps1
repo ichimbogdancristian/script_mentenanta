@@ -175,6 +175,41 @@ try {
 
     Write-Log -Level SUCCESS -Component ORCH -Message "OS: $($global:OSContext.DisplayText)"
 
+    # ── SKU GATE ──────────────────────────────────────────────────────────────────
+    # This project's baselines are the CIS *Workstation* benchmark plus a client-shaped
+    # bloatware/essential-apps list. Most of that is merely inert on a server, but two
+    # classes of it are not, so the SKU is checked once, here, before any module runs.
+    #
+    # DOMAIN CONTROLLER (ProductType 2) defaults to a REFUSAL, not a warning. On a DC the
+    # local SAM account policy this project writes via secedit is not the effective policy
+    # at all - password and lockout rules come from the Default Domain Policy - so the
+    # CIS 1.1/1.2 pass is silently ineffective while auditpol changes land on a machine
+    # whose Security log is the domain's audit record. A half-applied workstation benchmark
+    # on a DC is the single worst outcome available here, and unlike every other degradation
+    # in this project it cannot be made safe by skipping one feature.
+    #
+    # MEMBER SERVER (ProductType 3) defaults to ALLOWED but announces exactly what the SKU
+    # turns off, because a silent skip is indistinguishable from a silent failure in the
+    # report. Note the run remains genuinely useful there: Windows Update, disk cleanup,
+    # DISM component cleanup and the registry half of the security baseline all apply.
+    $ServerCfg = $Config.server
+    if ($global:OSContext.IsDomainController -and -not ($ServerCfg -and $ServerCfg.allowDomainController -eq $true)) {
+        Write-Log -Level ERROR -Component ORCH -Message "Refusing to run on a domain controller ($($global:OSContext.Caption)). This project applies the CIS Workstation benchmark; on a DC the secedit password/lockout pass is overridden by the Default Domain Policy and the auditpol changes alter the domain's audit record. Set server.allowDomainController = true in main-config.json to override."
+        Write-Host ""
+        Write-Host "  ✖  Domain controller detected - refusing to run." -ForegroundColor Red
+        Write-Host "     Override with server.allowDomainController = true in config/settings/main-config.json" -ForegroundColor DarkGray
+        return
+    }
+    if ($global:OSContext.IsServer -and $ServerCfg -and $ServerCfg.allowServerSku -eq $false) {
+        Write-Log -Level ERROR -Component ORCH -Message "Refusing to run on a server SKU ($($global:OSContext.Caption)) because server.allowServerSku is false in main-config.json."
+        Write-Host ""
+        Write-Host "  ✖  Server SKU detected and server.allowServerSku is false - refusing to run." -ForegroundColor Red
+        return
+    }
+    if ($global:OSContext.IsServer) {
+        Write-Log -Level WARN -Component ORCH -Message "Windows Server detected ($($global:OSContext.InstallationType)). Auto-skipped for this SKU: System Restore (client-only WMI class), client feature-version lifecycle advance (not modeled for Server)$(if ($global:OSContext.IsServerCore) { ', AppX/winget layers (no MSIX runtime on Server Core)' }). Review modules.skipSoftwareManagement - essential-apps.json installs desktop software."
+    }
+
     #endregion
 
     #region ─── STAGE 0: PREFLIGHT ────────────────────────────────────────────────
