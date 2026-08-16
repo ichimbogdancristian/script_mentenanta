@@ -907,7 +907,8 @@ function Get-RestorePointConfigurationDiff {
     param(
         [Parameter()] [bool]$SkipRestorePoint,
         [Parameter()] [int]$MinimumToKeep = 5,
-        [Parameter()] [int]$AllocationGB = 10
+        [Parameter()] [int]$AllocationGB = 10,
+        [Parameter()] [string]$SkipReason = 'config: skipRestorePointManagement'
     )
     $items = [System.Collections.Generic.List[hashtable]]::new()
     $restorePoints = @()
@@ -918,7 +919,13 @@ function Get-RestorePointConfigurationDiff {
     # safety net for every other change in this run, and it also guarantees this
     # pair's diff is never empty, so Stage 2 always schedules Type2.
     if ($SkipRestorePoint) {
-        Write-Log -Level INFO -Component CONFIG-AUDIT -Message 'Restore point management skipped (config: skipRestorePointManagement)'
+        # SkipReason, not a hardcoded string: there are now two independent reasons to skip,
+        # and a Server 2025 run logged BOTH the correct one and this one back to back -
+        #   "skipped: System Restore is not available on Windows Server (...)"
+        #   "skipped (config: skipRestorePointManagement)"
+        # - the second of which was simply false, since that flag was left at its default.
+        # A log that names the wrong cause is worse than one that says nothing.
+        Write-Log -Level INFO -Component CONFIG-AUDIT -Message "Restore point management skipped ($SkipReason)"
     }
     else {
         try {
@@ -1008,9 +1015,12 @@ function Invoke-SystemConfigurationAudit {
         # net is being given up for changes that are still going to be applied.
         $osIsServer = [bool]$osCtx.IsServer
         $skipRestorePoint = [bool]($config.modules.skipRestorePointManagement) -or $osIsServer
-        if ($osIsServer -and -not $config.modules.skipRestorePointManagement) {
-            Write-Log -Level INFO -Component CONFIG-AUDIT -Message "Restore point management skipped: System Restore is not available on Windows Server ($($osCtx.Caption))"
-        }
+        # Reason is threaded through rather than logged here, so exactly ONE line is emitted
+        # and it names the cause that actually applied. Config wins the attribution when both
+        # are true, because that is the one the operator chose.
+        $skipReason = if ($config.modules.skipRestorePointManagement) { 'config: skipRestorePointManagement' }
+        elseif ($osIsServer) { "System Restore is not available on Windows Server - $($osCtx.Caption)" }
+        else { '' }
         $skipHealth = [bool]($config.modules.skipSystemHealth)
         # Sub-feature switches for the two policy areas that change how users log in.
         $skipPasswordPolicy = [bool]($config.modules.systemConfiguration.skipPasswordPolicy)
@@ -1031,7 +1041,7 @@ function Invoke-SystemConfigurationAudit {
         # ═══ A1. RESTORE POINTS ══════════════════════════════════════════════
         # ═══ A1. RESTORE POINTS ══════════════════════════════════════════════
         $rpAudit = Get-RestorePointConfigurationDiff -SkipRestorePoint $skipRestorePoint `
-            -MinimumToKeep $minToKeep -AllocationGB $allocationGB
+            -MinimumToKeep $minToKeep -AllocationGB $allocationGB -SkipReason $skipReason
         foreach ($item in @($rpAudit.Items)) { $diff.Add($item) }
         $restorePoints = @($rpAudit.RestorePoints)
         $rpToRemove = $rpAudit.ToRemove

@@ -713,6 +713,101 @@ function Get-BloatwareFromAllSources {
     return $detected.Values
 }
 
+<#
+.SYNOPSIS
+    Reports whether a REAL Microsoft Office desktop suite (Word or Excel) is installed.
+.DESCRIPTION
+    This gates the LibreOffice entry in essential-apps.json, whose whole point is "install a
+    free office suite unless the paid one is already here".
+
+    WHY THIS IS NOT A NAME MATCH. It used to be:
+
+        $installedNames -match 'microsoft.*(office|word|excel|outlook)'
+
+    where $installedNames comes from Get-InstalledApp, which enumerates the registry uninstall
+    keys AND AppX packages by short name. On a stock Windows 11 that regex is satisfied by
+    preinstalled Store STUBS that are not Office and cannot open a document:
+
+        Microsoft.MicrosoftOfficeHub     -> 'microsoft.microsoftofficehub'   matches ...office
+        Microsoft.OutlookForWindows      -> 'microsoft.outlookforwindows'    matches ...outlook
+        Microsoft.Office.OneNote / .Sway / .Lens / .Todo.List                matches ...office
+
+    So LibreOffice was skipped on every clean Windows 11 machine, forever, and the log line
+    said "MS Office detected" - which reads like a correct decision rather than a bug.
+
+    The contradiction is total: all six of those packages are in THIS PROJECT'S OWN
+    bloatware-detection.json as removable bloat. A single run would remove
+    Microsoft.MicrosoftOfficeHub as bloatware in Stage 3 while the Stage 1 audit had already
+    cited its presence as proof that Office was installed.
+
+    WHAT IT CHECKS INSTEAD - two authoritative, stub-immune signals, either of which is
+    sufficient. Word OR Excel, not both: a Word-only install is still Office.
+
+      1. Click-to-Run configuration (Microsoft 365 / Office 2016+). InstallationPath must
+         also EXIST ON DISK, because the key survives a failed or partial uninstall.
+      2. App Paths for WINWORD.EXE / EXCEL.EXE, whose default value must point at a file that
+         exists. Real Office registers these; no Store stub does.
+
+    App Paths is also read per-user via Get-PerUserRegistryRoot, since under the monthly task
+    HKCU is the LocalSystem hive and would miss a per-user Office install entirely.
+.OUTPUTS
+    [hashtable] Installed ([bool]) and Evidence ([string], why - or why not, for the log).
+#>
+function Test-MicrosoftOfficeInstalled {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param()
+
+    $result = @{ Installed = $false; Evidence = 'no Word/Excel installation found' }
+
+    # ── 1. Click-to-Run (M365 / Office 2016+) ────────────────────────────────
+    foreach ($c2r in @(
+            'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Office\ClickToRun\Configuration')) {
+        try {
+            $cfg = Get-ItemProperty -Path $c2r -ErrorAction Stop
+            $path = $cfg.InstallationPath
+            if ($path -and (Test-Path -LiteralPath $path -ErrorAction SilentlyContinue)) {
+                $ids = if ($cfg.ProductReleaseIds) { " ($($cfg.ProductReleaseIds))" } else { '' }
+                return @{ Installed = $true; Evidence = "Click-to-Run install at '$path'$ids" }
+            }
+        }
+        catch { continue }
+    }
+
+    # ── 2. App Paths for the actual executables ──────────────────────────────
+    $appPathRoots = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths',
+        'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths'
+    )
+    try {
+        foreach ($userRoot in @(Get-PerUserRegistryRoot)) {
+            $appPathRoots += "$userRoot\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"
+        }
+    }
+    catch {
+        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "Per-user App Paths roots unavailable: $_"
+    }
+
+    foreach ($root in $appPathRoots) {
+        foreach ($exe in 'WINWORD.EXE', 'EXCEL.EXE') {
+            try {
+                $key = Join-Path $root $exe
+                $prop = Get-ItemProperty -Path $key -ErrorAction Stop
+                # The default value holds the full path. Verify it, so a stale App Paths key
+                # left behind by an uninstall does not count as an installation.
+                $exePath = $prop.'(default)'
+                if ($exePath -and (Test-Path -LiteralPath $exePath -ErrorAction SilentlyContinue)) {
+                    return @{ Installed = $true; Evidence = "$exe registered at '$exePath'" }
+                }
+            }
+            catch { continue }
+        }
+    }
+
+    return $result
+}
+
 function Invoke-SoftwareManagementAudit {
     [CmdletBinding()]
     [OutputType([hashtable])]
@@ -880,14 +975,20 @@ function Invoke-SoftwareManagementAudit {
                 $baselineApps = @($essential)
                 $installedNames = $installedApps | ForEach-Object { $_.Name.ToLowerInvariant() } | Where-Object { $_ }
                 $hasWinget = Test-CommandAvailable 'winget'
-                $hasMsOffice = [bool]($installedNames | Where-Object { $_ -match 'microsoft.*(office|word|excel|outlook)' })
+                # Deliberately NOT a name match against $installedNames - see
+                # Test-MicrosoftOfficeInstalled for why that skipped LibreOffice on every
+                # clean Windows 11 machine. Computed once, outside the loop, as before.
+                $officeCheck = Test-MicrosoftOfficeInstalled
 
                 foreach ($app in $baselineApps) {
                     $appNameLow = if ($app.name) { $app.name.ToLowerInvariant() } else { continue }
 
-                    if ($appNameLow -match 'libreoffice' -and $hasMsOffice) {
-                        Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'LibreOffice skipped - MS Office detected'
-                        continue
+                    if ($appNameLow -match 'libreoffice') {
+                        if ($officeCheck.Installed) {
+                            Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message "LibreOffice skipped - Microsoft Office detected: $($officeCheck.Evidence)"
+                            continue
+                        }
+                        Write-Log -Level DEBUG -Component SOFTWARE-AUDIT -Message "LibreOffice not gated - $($officeCheck.Evidence)"
                     }
 
                     # Precise check first: an exact winget --id match is authoritative when

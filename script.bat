@@ -27,8 +27,25 @@ IF "%COMPONENT%"=="" SET "COMPONENT=LAUNCHER"
 REM Unified format: [TIME] [COMPONENT] [LEVEL] MESSAGE
 SET "LOG_ENTRY=[%LOG_TIME%] [%COMPONENT%] [%LEVEL%] %~1"
 
-ECHO %LOG_ENTRY%
-IF EXIST "%LOG_FILE%" ECHO %LOG_ENTRY% >> "%LOG_FILE%" 2>nul
+REM DELAYED EXPANSION IS MANDATORY ON BOTH ECHOes, AND THE `(` AFTER ECHO IS NOT A TYPO.
+REM
+REM %~1 strips the caller's quotes, so any shell metacharacter in a log MESSAGE ends up
+REM unquoted in LOG_ENTRY. With %LOG_ENTRY% the value is substituted BEFORE cmd.exe parses
+REM the line, so those characters are then parsed as operators. A message containing "->"
+REM - e.g. "winget updated: v1.28.240 -> v1.29.280" - had its ">" taken as a redirect: the
+REM line silently vanished from console AND log, and cmd created a junk file named after the
+REM text that followed. Observed live on a Server 2025 run, which logged only
+REM "winget updated: v1.28.240 -" and then stopped.
+REM
+REM !LOG_ENTRY! substitutes AFTER parsing, so >, <, &, | and ^ in a message are literal.
+REM ECHO( is the standard idiom that also survives an empty value and a message that is
+REM literally "off" (plain `ECHO %VAR%` with an empty VAR prints "ECHO is on.").
+REM
+REM The space before >> on the file line is deliberate: without it, a message ending in a
+REM digit would make cmd read "<digit>>>" as a stream-N redirect. It is why every logged
+REM line carries one trailing space - that is pre-existing, and load-bearing.
+ECHO(!LOG_ENTRY!
+IF EXIST "%LOG_FILE%" ECHO(!LOG_ENTRY! >> "%LOG_FILE%" 2>nul
 EXIT /B
 
 :REFRESH_PATH_FROM_REGISTRY
@@ -155,18 +172,30 @@ SET "ORIGINAL_SCRIPT_DIR=%SCRIPT_DIR%"
 CALL :LOG_MESSAGE "Original script directory stored: %ORIGINAL_SCRIPT_DIR%" "DEBUG" "LAUNCHER"
 
 REM Robust Script Path Detection for Scheduled Tasks (use the exact running script path)
+REM
+REM Each log line below reads the variable the SET on the line ABOVE it just wrote, inside the
+REM SAME parenthesised block. cmd.exe expands %VAR% when it PARSES the whole block, i.e. before
+REM any line in it runs, so %SCHEDULED_TASK_SCRIPT_PATH% here resolved to the value from line
+REM 175 - the empty string. A Server 2025 run logged exactly that:
+REM   "Scheduled tasks will use current script path: "   (nothing after the colon)
+REM !VAR! reads at execution time and shows the real path.
+REM
+REM ONLY THE LOG LINES WERE WRONG. The two consumers that matter - the /TR of the ONLOGON task
+REM and of the monthly task - sit in DIFFERENT blocks that cmd parses later, by which time
+REM these SETs have executed, so both tasks have always been registered with the correct path.
+REM Do not "fix" those to !VAR! as well without re-reading this: %VAR% is correct there.
 SET "SCHEDULED_TASK_SCRIPT_PATH="
 IF EXIST "%SCRIPT_PATH%" (
     SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
-    CALL :LOG_MESSAGE "Scheduled tasks will use current script path: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+    CALL :LOG_MESSAGE "Scheduled tasks will use current script path: !SCHEDULED_TASK_SCRIPT_PATH!" "DEBUG" "LAUNCHER"
 )
 IF NOT DEFINED SCHEDULED_TASK_SCRIPT_PATH IF EXIST "%SCRIPT_DIR%script.bat" (
     SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_DIR%script.bat"
-    CALL :LOG_MESSAGE "Scheduled tasks will use directory script path: %SCHEDULED_TASK_SCRIPT_PATH%" "DEBUG" "LAUNCHER"
+    CALL :LOG_MESSAGE "Scheduled tasks will use directory script path: !SCHEDULED_TASK_SCRIPT_PATH!" "DEBUG" "LAUNCHER"
 )
 IF NOT DEFINED SCHEDULED_TASK_SCRIPT_PATH (
     SET "SCHEDULED_TASK_SCRIPT_PATH=%SCRIPT_PATH%"
-    CALL :LOG_MESSAGE "Using fallback script path for scheduled tasks: %SCHEDULED_TASK_SCRIPT_PATH%" "WARN" "LAUNCHER"
+    CALL :LOG_MESSAGE "Using fallback script path for scheduled tasks: !SCHEDULED_TASK_SCRIPT_PATH!" "WARN" "LAUNCHER"
 )
 
 REM Detect if running from a network location
@@ -428,7 +457,7 @@ IF !ERRORLEVEL! EQU 0 (
 
 IF "!TASK_NEEDS_CREATE!"=="NO" (
     CALL :LOG_MESSAGE "Monthly scheduled task exists and is unattended-ready: %TASK_NAME%" "SUCCESS" "LAUNCHER"
-    FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /R /C:"Task To Run" /C:"Next Run Time"') DO (
+    FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST /V ^| findstr /R /C:"Task To Run" /C:"Next Run Time"') DO (
         CALL :LOG_MESSAGE "Monthly task detail: %%i" "INFO" "LAUNCHER"
     )
 ) ELSE (
@@ -451,7 +480,7 @@ IF "!TASK_NEEDS_CREATE!"=="NO" (
         /F >nul 2>&1
     IF !ERRORLEVEL! EQU 0 (
         CALL :LOG_MESSAGE "Monthly scheduled task registered successfully" "SUCCESS" "LAUNCHER"
-        FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /R /C:"Task To Run" /C:"Next Run Time"') DO (
+        FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST /V ^| findstr /R /C:"Task To Run" /C:"Next Run Time"') DO (
             CALL :LOG_MESSAGE "Monthly task detail: %%i" "INFO" "LAUNCHER"
         )
     ) ELSE (
@@ -1330,16 +1359,21 @@ REM Package Manager Dependencies
 CALL :LOG_MESSAGE "Verifying package managers..." "INFO" "LAUNCHER"
 
 REM Winget
+REM !WINGET_VERSION!, not %WINGET_VERSION%: the FOR/SET on the line above and this read are in
+REM the same parenthesised block, which cmd expands at parse time - so %VAR% showed the value
+REM from BEFORE the block ran (empty). A Server 2025 run logged "Winget available: " with no
+REM version even though winget was present and working at v1.28.240. Same fix as the
+REM SCHEDULED_TASK_SCRIPT_PATH log lines near the top of this file.
 winget --version >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     FOR /F "tokens=*" %%i IN ('winget --version 2^>nul') DO SET WINGET_VERSION=%%i
-    CALL :LOG_MESSAGE "Winget available: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
+    CALL :LOG_MESSAGE "Winget available: !WINGET_VERSION!" "SUCCESS" "LAUNCHER"
 ) ELSE (
     REM Check typical location for App Execution Aliases
     IF EXIST "%LocalAppData%\Microsoft\WindowsApps\winget.exe" (
         FOR /F "tokens=*" %%i IN ('"%LocalAppData%\Microsoft\WindowsApps\winget.exe" --version 2^>nul') DO SET WINGET_VERSION=%%i
         IF DEFINED WINGET_VERSION (
-            CALL :LOG_MESSAGE "Winget available via WindowsApps path: %WINGET_VERSION%" "SUCCESS" "LAUNCHER"
+            CALL :LOG_MESSAGE "Winget available via WindowsApps path: !WINGET_VERSION!" "SUCCESS" "LAUNCHER"
         ) ELSE (
             CALL :LOG_MESSAGE "Winget appears installed but not yet ready (App Execution Alias may require session refresh)" "INFO" "LAUNCHER"
         )
@@ -1352,7 +1386,8 @@ REM Chocolatey
 choco --version >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     FOR /F "tokens=*" %%i IN ('choco --version 2^>nul') DO SET CHOCO_VERSION=%%i
-    CALL :LOG_MESSAGE "Chocolatey available: %CHOCO_VERSION%" "SUCCESS" "LAUNCHER"
+    REM !CHOCO_VERSION! - same same-block parse-time expansion issue as WINGET_VERSION above.
+    CALL :LOG_MESSAGE "Chocolatey available: !CHOCO_VERSION!" "SUCCESS" "LAUNCHER"
 ) ELSE (
     CALL :LOG_MESSAGE "Chocolatey not available - will be installed if needed" "INFO" "LAUNCHER"
 )
@@ -1371,7 +1406,7 @@ REM Report monthly task status only (creation handled earlier)
 schtasks /Query /TN "%TASK_NAME%" >nul 2>&1
 IF !ERRORLEVEL! EQU 0 (
     CALL :LOG_MESSAGE "Monthly scheduled task present: %TASK_NAME%" "SUCCESS" "LAUNCHER"
-    FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST ^| findstr /R /C:"Task To Run" /C:"Next Run Time"') DO (
+    FOR /F "tokens=*" %%i IN ('schtasks /Query /TN "%TASK_NAME%" /FO LIST /V ^| findstr /R /C:"Task To Run" /C:"Next Run Time"') DO (
         CALL :LOG_MESSAGE "Monthly task detail: %%i" "INFO" "LAUNCHER"
     )
 ) ELSE (

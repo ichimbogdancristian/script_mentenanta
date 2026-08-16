@@ -258,10 +258,35 @@ try {
             $ProgressPreference = 'SilentlyContinue'
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-            $null = Install-PackageProvider -Name NuGet -Force -Scope AllUsers -ErrorAction Stop
-            Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
-            Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -Repository PSGallery `
-                -AllowClobber -ErrorAction Stop
+            # PSResourceGet FIRST, because the legacy path below has a hard dependency this
+            # host may not be able to satisfy. Install-PackageProvider -Name NuGet bootstraps
+            # a binary provider from an external Microsoft CDN; on a freshly imaged Windows
+            # Server 2025 that failed with
+            #   "No match was found for the specified search criteria for the provider 'NuGet'.
+            #    The package provider requires 'PackageManagement' and 'Provider' tags."
+            # which reads like a bad package name but is really "the provider bootstrap did not
+            # come back". PowerShell 7.4+ ships Microsoft.PowerShell.PSResourceGet, which talks
+            # to the gallery's NuGet v3 API directly and needs no provider bootstrap at all -
+            # so on the exact hosts where the old path breaks, this one simply works.
+            $installed = $false
+            if (Get-Command Install-PSResource -ErrorAction SilentlyContinue) {
+                try {
+                    Install-PSResource -Name PSWindowsUpdate -Scope AllUsers -Repository PSGallery `
+                        -TrustRepository -Reinstall -ErrorAction Stop
+                    $installed = $true
+                    Write-Log -Level DEBUG -Component PREFLIGHT -Message 'PSWindowsUpdate installed via PSResourceGet'
+                }
+                catch {
+                    Write-Log -Level DEBUG -Component PREFLIGHT -Message "PSResourceGet install failed, falling back to PowerShellGet: $($_.Exception.Message)"
+                }
+            }
+
+            if (-not $installed) {
+                $null = Install-PackageProvider -Name NuGet -Force -Scope AllUsers -ErrorAction Stop
+                Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue
+                Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -Repository PSGallery `
+                    -AllowClobber -ErrorAction Stop
+            }
 
             if (Get-Module -ListAvailable -Name PSWindowsUpdate) {
                 Write-Log -Level SUCCESS -Component PREFLIGHT -Message 'PSWindowsUpdate module installed'

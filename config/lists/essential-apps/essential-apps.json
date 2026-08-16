@@ -42,7 +42,7 @@
     "choco": "libreoffice",
     "timeout": 900,
     "category": "Office",
-    "description": "Free and open-source office suite (installed only if Microsoft Office not detected)"
+    "description": "Free and open-source office suite. Skipped only when a real Microsoft Office desktop install is found - Click-to-Run config, or App Paths for WINWORD.EXE/EXCEL.EXE pointing at a file that exists. Store stubs (Office Hub, new Outlook, UWP OneNote) deliberately do NOT count; they used to, which skipped this install on every clean Windows 11 machine."
   },
   {
     "name": "Adobe Acrobat Reader",
