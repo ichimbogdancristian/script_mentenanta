@@ -179,27 +179,57 @@ function Get-WindowsDefenderIncidents {
     $incidents = @()
     $thirtyDaysAgo = (Get-Date).AddDays(-30)
 
+    # ONLY malware-detection events. This used to take EVERY event in the Defender
+    # Operational log, which is overwhelmingly routine housekeeping - 5007 configuration
+    # changed, 1150/1151 health reports, 2000/2010 signature and platform updates. A clean,
+    # healthy Windows 11 machine therefore reported "170 incidents in last 30 days", and the
+    # report's Defender table filled with rows whose Threat column read
+    #     HKLM\SOFTWARE\Microsoft\Windows Defender\ServiceStartStates = 0x1
+    # at severity Unknown with path N/A. That is not a cosmetic problem: the one number an
+    # operator scans this section for was pure noise, so a real detection sitting among 170
+    # false ones would never have been noticed.
+    #
+    #   1006 engine found malware      1007 action taken        1008 action failed
+    #   1015 suspicious behaviour      1116 malware detected    1117 action taken
+    #   1118 remediation failed        1119 critical remediation error
+    $detectionIds = 1006, 1007, 1008, 1015, 1116, 1117, 1118, 1119
+
     try {
-        # Query Windows Defender detection events from Event Viewer
+        $idClause = ($detectionIds | ForEach-Object { "EventID=$_" }) -join ' or '
         $defenderEvents = Get-WinEvent -LogName 'Microsoft-Windows-Windows Defender/Operational' `
-            -FilterXPath "*[System[TimeCreated[@SystemTime >= '$($thirtyDaysAgo.ToUniversalTime().ToString('o'))']]]" `
+            -FilterXPath "*[System[($idClause) and TimeCreated[@SystemTime >= '$($thirtyDaysAgo.ToUniversalTime().ToString('o'))']]]" `
             -ErrorAction SilentlyContinue -MaxEvents 500
 
         if ($defenderEvents) {
             $defenderEvents | ForEach-Object {
-                $eventData = $_.Properties
+                # Read the payload by NAME, not by positional index. The old code used
+                # Properties[2]/[3]/[4]/[7], whose meaning differs per event id - which is why
+                # a 5007 config event surfaced a registry string as a "threat name". Named
+                # lookup via the event XML is stable across ids and versions.
+                $named = @{}
+                try {
+                    $xml = [xml]$_.ToXml()
+                    foreach ($d in @($xml.Event.EventData.Data)) {
+                        if ($d.Name) { $named[$d.Name] = [string]$d.'#text' }
+                    }
+                }
+                catch {
+                    Write-Log -Level DEBUG -Component CONFIG-AUDIT -Message "Could not parse Defender event $($_.Id) XML: $_"
+                }
+
+                $sevRaw = $named['Severity Name']
                 $incidents += @{
                     Timestamp     = $_.TimeCreated
                     EventID       = $_.Id
-                    ThreatName    = if ($eventData[2]) { $eventData[2].Value } else { 'Unknown' }
-                    Severity      = switch ($eventData[3]) {
-                        { $_ -match 'Critical|High' } { 'High' }
-                        { $_ -match 'Medium' } { 'Medium' }
-                        { $_ -match 'Low|Informational' } { 'Low' }
+                    ThreatName    = if ($named['Threat Name']) { $named['Threat Name'] } else { 'Unknown' }
+                    Severity      = switch -Regex ($sevRaw) {
+                        'Severe|Critical|High' { 'High'; break }
+                        'Moderate|Medium' { 'Medium'; break }
+                        'Low|Informational' { 'Low'; break }
                         default { 'Unknown' }
                     }
-                    DetectionPath = if ($eventData[7]) { $eventData[7].Value } else { 'N/A' }
-                    Action        = if ($eventData[4]) { $eventData[4].Value } else { 'Unknown' }
+                    DetectionPath = if ($named['Path']) { $named['Path'] } else { 'N/A' }
+                    Action        = if ($named['Action Name']) { $named['Action Name'] } else { 'Unknown' }
                 }
             }
         }

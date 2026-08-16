@@ -138,6 +138,23 @@ function ConvertFrom-MaintenanceLog {
     if (-not $Path -or -not (Test-Path $Path)) { return , $entries }
 
     $rx = [regex]'^\[(?<ts>[^\]]+)\]\s\[(?<cmp>[^\]]+)\]\s\[(?<lvl>[^\]]+)\]\s?(?<msg>.*)$'
+
+    # A line only counts as STRUCTURED if its level is one this report knows how to render.
+    # Build-LogConsole derives the filter chips and the distribution bar from a FIXED level
+    # list, and every row is filtered by matching data-level against an active chip - so a
+    # row carrying any other level matches no chip and becomes permanently invisible, with
+    # no way for the reader to reach it and no hint that it exists.
+    #
+    # That is not hypothetical. script.bat logged
+    #     Launching: \"C:\Program Files\PowerShell\7\pwsh.exe\" ...
+    # and cmd.exe, which has no backslash escape, tokenised that \" as a real quote - so the
+    # level/component arguments shifted and the line reached the log as
+    #     [ts] [DEBUG] [Files\PowerShell\7\pwsh.exe\] Launching: \"C:\Program
+    # The launcher side is fixed, but the report must not depend on that: an unknown level
+    # now degrades to RAW, which keeps the ENTIRE original line visible under the RAW chip
+    # instead of silently dropping it. It also guarantees data-level is always one of seven
+    # safe tokens, so a stray backslash or quote can never break the CSS class or attribute.
+    $knownLevels = @{ FATAL = $true; ERROR = $true; WARN = $true; SUCCESS = $true; INFO = $true; DEBUG = $true }
     $fs = $null; $sr = $null
     try {
         $fs = [System.IO.FileStream]::new($Path, [System.IO.FileMode]::Open,
@@ -145,7 +162,7 @@ function ConvertFrom-MaintenanceLog {
         $sr = [System.IO.StreamReader]::new($fs, [System.Text.Encoding]::UTF8)
         while ($null -ne ($line = $sr.ReadLine())) {
             $m = $rx.Match($line)
-            if ($m.Success) {
+            if ($m.Success -and $knownLevels.ContainsKey($m.Groups['lvl'].Value.ToUpper())) {
                 $ts = $m.Groups['ts'].Value
                 # Short time portion (HH:mm:ss) for the compact console column.
                 $short = if ($ts -match '(\d{2}:\d{2}:\d{2})') { $Matches[1] } else { $ts }
@@ -703,9 +720,15 @@ function Build-ModuleCard {
     $extraHtml = ''
     if ($Result.ExtraData -and $Result.ExtraData.Count -gt 0) {
         $exPairs = [System.Collections.Generic.List[string]]::new()
-        foreach ($kv in $Result.ExtraData.GetEnumerator()) {
+        # Sorted, not raw enumeration order. ExtraData is a plain hashtable, whose order is
+        # unspecified and varies between runs, so the same module's card listed the same keys
+        # in a different sequence every time - e.g. SecurityItems, HasInventory,
+        # RestorePointItems, TotalDefenderExclusions, OptimizationItems ... which reads as
+        # scrambled and makes two reports impossible to diff by eye. Nested keys sort under
+        # their flattened "Parent / Child" name so a group stays contiguous.
+        foreach ($kv in ($Result.ExtraData.GetEnumerator() | Sort-Object -Property Key)) {
             if ($kv.Value -is [System.Collections.IDictionary]) {
-                foreach ($sub in $kv.Value.GetEnumerator()) {
+                foreach ($sub in ($kv.Value.GetEnumerator() | Sort-Object -Property Key)) {
                     $exPairs.Add((Format-ExtraRow -Key "$($kv.Key) / $($sub.Key)" -Value $sub.Value))
                 }
             }
@@ -932,11 +955,16 @@ function Build-SystemHealthSection {
                 $sc = if ($sev -eq 'High') { 'sev-high' } elseif ($sev -eq 'Medium') { 'sev-med' } else { 'sev-low' }
                 "<div class='trow u4'><span>$threat</span><span class='sev $sc'>$sev</span><span class='muted'>$path</span><span class='muted'>$ts</span></div>"
             }) -join ''
+        # This card was the ONLY one of the four truncating tables with no "+N more"
+        # footer, so a run with 170 incidents showed 20 rows and silently dropped 150 -
+        # the header count and the visible rows disagreed with nothing to explain the gap.
+        $more = if (@($healthData.DefenderIncidents).Count -gt 20) { "<div class='tmore'>+$(@($healthData.DefenderIncidents).Count - 20) more</div>" } else { '' }
         $defHtml = @"
 <div class="card">
   <div class="card-hd"><span class="card-ttl">&#128737; Defender Incidents (30 days)</span><span class="card-sub">$(@($healthData.DefenderIncidents).Count)</span></div>
   <div class="thead u4"><span>Threat</span><span>Severity</span><span>Path</span><span>Time</span></div>
   <div class="tbody u4">$rows</div>
+  $more
 </div>
 "@
     }

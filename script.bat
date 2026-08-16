@@ -1809,7 +1809,18 @@ IF "%AUTO_NONINTERACTIVE%"=="YES" (
 
     REM Write all remaining launcher messages BEFORE START so the bootstrap log
     REM is complete by the time the orchestrator reads and deletes it.
-    CALL :LOG_MESSAGE "Launching: \"%PS_EXECUTABLE%\" !PS_ARGS!" "DEBUG" "LAUNCHER"
+    REM NO \" ESCAPES IN A LOG MESSAGE. cmd.exe has no backslash escape - a backslash is just
+    REM a path character - so \" is parsed as an ordinary closing quote. This line used to read
+    REM     "Launching: \"%PS_EXECUTABLE%\" !PS_ARGS!"
+    REM which cmd tokenised as several arguments instead of one, shifting %~2/%~3 (the LEVEL and
+    REM COMPONENT that :LOG_MESSAGE reads) onto fragments of the executable path. The line
+    REM reached maintenance.log as
+    REM     [ts] [DEBUG] [Files\PowerShell\7\pwsh.exe\] Launching: \"C:\Program
+    REM - wrong component, a nonsense level, and the message truncated at the first space. The
+    REM report then could not render it at all, because its log console filters rows by matching
+    REM the level against a known set. Logged unquoted: the path is still legible and the
+    REM argument boundaries stay intact.
+    CALL :LOG_MESSAGE "Launching: %PS_EXECUTABLE% !PS_ARGS!" "DEBUG" "LAUNCHER"
     CALL :LOG_MESSAGE "PowerShell 7+ window launching - batch launcher exiting" "SUCCESS" "LAUNCHER"
     CALL :LOG_MESSAGE "All further operations will run in the dedicated PowerShell window" "INFO" "LAUNCHER"
     CALL :LOG_MESSAGE "=== END OF LAUNCHER LOG ===" "INFO" "LAUNCHER"

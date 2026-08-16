@@ -156,8 +156,17 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,-ap
 .thead{background:var(--card2);font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700;border-bottom:1px solid var(--border)}
 .trow{border-bottom:1px solid rgba(255,255,255,.03);font-size:12px}
 .trow:last-child{border-bottom:none}
-.u3,.thead.u3{grid-template-columns:1.2fr 1.6fr 1fr}
-.u4,.thead.u4{grid-template-columns:.5fr 1.6fr .7fr 1fr}
+/* The column count is carried by .u3/.u4 on the header, the tbody AND each row.
+   .tbody.u3 > .trow is NOT redundant with .u3: .tbody is a scroll container, not a
+   grid, so grid-template-columns set on it applies to nothing. Rows must carry the
+   template themselves. Build-RestorePointSection and the health tables emit
+   `class='trow u4'` and rendered correctly; Build-SystemInventorySection emits a bare
+   `class='trow'`, which inherits display:grid from the rule above with NO template -
+   so every cell landed in one implicit column and the Local Users and Restore Points
+   cards rendered as a vertical stack, misaligned under their own headers.
+   Descending from .tbody fixes those and any future row that forgets the modifier. */
+.u3,.thead.u3,.tbody.u3>.trow{grid-template-columns:1.2fr 1.6fr 1fr}
+.u4,.thead.u4,.tbody.u4>.trow{grid-template-columns:.5fr 1.6fr .7fr 1fr}
 .tbody{max-height:380px;overflow-y:auto}
 .tmore{padding:8px 16px;text-align:center;color:var(--muted);font-size:11px;background:var(--card2)}
 .user-name{font-weight:700}
@@ -241,9 +250,12 @@ body[data-theme="light"] .lvl-chip .cnt{background:rgba(0,0,0,.08)}
   .log-toolbar{flex-direction:column;align-items:stretch}
   .log-controls{width:100%}
   .log-search{min-width:0;flex:1}
-  .u3,.thead.u3{grid-template-columns:1fr 1.4fr}
-  .u4,.thead.u4{grid-template-columns:.5fr 1.4fr 1fr}
-  .u3>*:last-child,.thead.u3>*:last-child,.u4>*:nth-child(3),.thead.u4>*:nth-child(3){display:none}
+  /* Same .tbody>.trow addition as the desktop rules - without it the narrow layout
+     drops a column from the header while the rows keep their own (wrong) template. */
+  .u3,.thead.u3,.tbody.u3>.trow{grid-template-columns:1fr 1.4fr}
+  .u4,.thead.u4,.tbody.u4>.trow{grid-template-columns:.5fr 1.4fr 1fr}
+  .u3>*:last-child,.thead.u3>*:last-child,.u4>*:nth-child(3),.thead.u4>*:nth-child(3),
+  .tbody.u3>.trow>*:last-child,.tbody.u4>.trow>*:nth-child(3){display:none}
 }
 @media (max-width:640px){
   .wrap{padding:14px}
