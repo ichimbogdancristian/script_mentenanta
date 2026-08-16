@@ -204,7 +204,7 @@
       "path": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
       "name": "DisableCAD",
       "apply": false,
-      "_excluded": "Logon usability: DisableCAD = 0 REQUIRES the Ctrl+Alt+Del secure attention sequence before the logon prompt appears. On the standalone machines this project targets that is a per-logon annoyance with no attacker it actually stops, and it cannot be sent at all from most remote-console/KVM and VM clients without a special menu action. Windows' own default on a non-domain machine is DisableCAD = 1 (not required), so leaving this unenforced keeps the stock behaviour. 2.3.7.2 DontDisplayLastUserName stays enforced - it hides the last user name but does not add the CAD prompt.",
+      "_excluded": "Logon usability: DisableCAD = 0 REQUIRES the Ctrl+Alt+Del secure attention sequence before the logon prompt appears. On the standalone machines this project targets that is a per-logon annoyance with no attacker it actually stops, and it cannot be sent at all from most remote-console/KVM and VM clients without a special menu action. Windows' own default on a non-domain machine is DisableCAD = 1 (not required), so leaving this unenforced keeps the stock behaviour. 2.3.7.2 DontDisplayLastUserName is now excluded as well, for its own logon-usability reason - see that entry.",
       "type": "DWord",
       "desiredValue": 0,
       "description": "Require CTRL+ALT+DEL for logon"
@@ -213,6 +213,8 @@
       "cis": "2.3.7.2",
       "path": "HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
       "name": "DontDisplayLastUserName",
+      "apply": false,
+      "_excluded": "Logon usability: hiding the last signed-in user means every logon requires typing the full user name as well as the password, and on a Microsoft account that is the full email address. On the standalone, usually single-user machines this project targets that is a per-logon cost against an attacker who already needs physical access to the logon screen, and it makes an unattended box materially harder to get back into. Excluded together with 18.9.28.1 and 18.9.28.3, which impose the same friction on the same screen.",
       "type": "DWord",
       "desiredValue": 1,
       "description": "Do not display last signed-in user"
@@ -1171,6 +1173,8 @@
       "cis": "18.9.28.1",
       "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
       "name": "BlockUserFromShowingAccountDetailsOnSignin",
+      "apply": false,
+      "_excluded": "Same logon-screen usability trade-off as 2.3.7.2: this suppresses the account details (typically the Microsoft-account email address) shown on the sign-in screen, so the user must recall and type the full account name unaided. Excluded alongside 2.3.7.2 DontDisplayLastUserName and 18.9.28.3 DontEnumerateConnectedUsers so the sign-in screen keeps Windows' stock behaviour.",
       "type": "DWord",
       "desiredValue": 1,
       "description": "Block account details on sign-in"
@@ -1187,6 +1191,8 @@
       "cis": "18.9.28.3",
       "path": "HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\System",
       "name": "DontEnumerateConnectedUsers",
+      "apply": false,
+      "_excluded": "Written for domain-joined fleets, where suppressing the enumerated user list on the sign-in screen limits account harvesting. The standalone machines this project targets get none of that benefit and all of the friction - the same 'type the full user name' cost as 2.3.7.2 and 18.9.28.1. Excluded alongside them.",
       "type": "DWord",
       "desiredValue": 1,
       "description": "Do not enumerate connected users on domain PCs"

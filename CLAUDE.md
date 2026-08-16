@@ -415,6 +415,13 @@ service equivalents. Gotchas worth keeping:
 | 18.10.9.2.15–18 BitLocker TPM+PIN | not applied | A pre-boot PIN halts the machine after the Stage 5 reboot — it ends unattended operation and can strand a headless box. |
 | LAPS, Hardened UNC Paths | not applied | Domain-only; no-ops or harmful on the standalone machines this targets. |
 | `RequirePrivateStoreOnly`, `legalnoticetext`, `DenyDeviceIDs` (Thunderbolt) | not applied | Organisation-specific; break the Store, add a logon banner, or kill USB-C docks. |
+| 2.3.7.1 `DisableCAD = 0` | not applied | Requires the Ctrl+Alt+Del secure attention sequence before the logon prompt. Cannot be sent from most remote-console/KVM and VM clients without a special menu action, and Windows' own non-domain default is already `1`. |
+| 2.3.7.2 `DontDisplayLastUserName`, 18.9.28.1 `BlockUserFromShowingAccountDetailsOnSignin`, 18.9.28.3 `DontEnumerateConnectedUsers` | not applied | All three blank the logon screen's user identity, so every logon needs the full user name typed — the full email address on a Microsoft account. On the standalone, usually single-user machines this targets that is per-logon friction against an attacker who already has physical access to the screen, and it makes an unattended box harder to recover. 18.9.28.3 is domain-oriented besides. |
+
+**These are enforced by `"apply": false` in `security-baseline.json`, not by absence** — see the `apply` note in
+[Maintenance.psm1](modules/core/Maintenance.psm1) (`absent/true = enforce; only an explicit false skips`), and note
+that every excluded entry must carry a non-empty `_excluded` rationale or the contract tests fail. Setting
+`apply: false` stops future enforcement but does **not** revert a machine a previous run already changed.
 
 `modules.systemConfiguration.skipPasswordPolicy` / `skipAuditPolicy` in `main-config.json`
 turn the two non-registry areas off. Both default to enforcing.
