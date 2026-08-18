@@ -1805,57 +1805,163 @@ function Get-InstalledApp {
 
 <#
 .SYNOPSIS
-    Returns winget upgrade list as an array of hashtables.
-    Returns empty array if winget is not available.
+    Parses the fixed-width table(s) printed by `winget upgrade` into upgrade rows.
+.DESCRIPTION
+    winget has no machine-readable output for 'upgrade' (no --output/-o option exists as of
+    mid-2026), so the table has to be parsed. Three details this has to get right:
+
+    1. PROGRESS SPINNER. winget draws progress by overwriting one physical line with carriage
+       returns, so a single logical line can arrive with several spinner frames glued to the
+       front of it. Only the text after the LAST carriage return was ever on screen, so that
+       is the only real content. Normalising this first matters more than it looks: the
+       contaminated line is usually the HEADER, and the header is what every data row's
+       column count is validated against.
+
+    2. MULTIPLE TABLES. `winget upgrade` prints a second table under "The following packages
+       have an upgrade available, but require explicit targeting for upgrade:", with its OWN
+       header row. Those rows are wanted - they are exactly the packages that need an explicit
+       `winget upgrade --id`, which is what Type2 does. The header is therefore detected by
+       LOOKAHEAD (a line immediately followed by a '----' divider), not by remembering the
+       previous line: a remember-the-previous-line parser never re-captures the second header,
+       so it emits that header as though it were a data row (verified - it produced a bogus
+       package literally named "Name" with Id "Id").
+
+    3. COLUMN COUNT. Too few columns means a wrapped/misaligned row; too many means the
+       '\s{2,}' split caught a double space inside a Name field rather than a real column
+       boundary. Same rule as ConvertFrom-WingetListTable.
+
+    Rows whose Version column reads 'Unknown' (which is the whole point of --include-unknown)
+    are KEPT, and flagged via VersionUnknown so callers can report them accurately. They are
+    not dropped: the requirement is to attempt every package winget reports as upgradable, and
+    these are the ones most likely to need Type2's full fallback ladder.
+.OUTPUTS
+    [hashtable[]] Name, Id, CurrentVersion, AvailableVersion, VersionUnknown, Source.
+#>
+function ConvertFrom-WingetUpgradeTable {
+    [CmdletBinding()]
+    [OutputType([hashtable[]])]
+    param([Parameter()] [AllowEmptyCollection()] [string[]]$Lines = @())
+
+    $rows = [System.Collections.Generic.List[hashtable]]::new()
+
+    # See note 1 above - strip spinner overwrites before any parsing decision is made.
+    $norm = foreach ($l in $Lines) { if ($null -eq $l) { '' } else { ($l -split "`r")[-1] } }
+    $arr = @($norm)
+
+    $inTable = $false
+    $headerCols = 0
+
+    for ($i = 0; $i -lt $arr.Count; $i++) {
+        $line = $arr[$i]
+        $next = if ($i + 1 -lt $arr.Count) { $arr[$i + 1] } else { $null }
+
+        # See note 2 above - lookahead header detection, so every table re-captures its own
+        # header and no header is ever mistaken for data.
+        if ($null -ne $next -and $next -match '^\s*-{3,}\s*$') {
+            $headerCols = @($line.Trim() -split '\s{2,}').Count
+            $inTable = $true
+            $i++    # consume the divider as well
+            continue
+        }
+
+        if (-not $inTable) { continue }
+
+        # A blank line ends the table; the "N upgrades available." summary that follows is
+        # not data (it also fails the column-count test, but ending the table is the honest
+        # reading of the output rather than relying on that).
+        if ($line -match '^\s*$') { $inTable = $false; $headerCols = 0; continue }
+
+        $cols = @($line.Trim() -split '\s{2,}')
+        if ($cols.Count -lt 4) { continue }
+        if ($headerCols -gt 0 -and $cols.Count -gt $headerCols) { continue }
+
+        $name = $cols[0].Trim()
+        if (-not $name) { continue }
+
+        $current = $cols[2].Trim()
+        $rows.Add(@{
+                Name             = $name
+                Id               = $cols[1].Trim()
+                CurrentVersion   = $current
+                AvailableVersion = $cols[3].Trim()
+                VersionUnknown   = ($current -eq '' -or $current -eq 'Unknown')
+                Source           = 'Winget'
+            })
+    }
+
+    # `,` (array-wrap) is REQUIRED - same trap as ConvertFrom-WingetListTable/Get-DiffList.
+    # Without it a one-row table hands the caller a BARE HASHTABLE whose .Count reports the
+    # KEY count (6) instead of 1. NOTE the corollary for callers: because the wrap survives
+    # the return, `@(ConvertFrom-WingetUpgradeTable ...)` collapses to Count 1 for ANY input.
+    # Assign the result directly (it is always a real array, never $null) or enumerate it
+    # with foreach - do not wrap it in @().
+    return , $rows.ToArray()
+}
+
+<#
+.SYNOPSIS
+    Returns the packages `winget upgrade` reports as upgradable, as an array of hashtables.
+.DESCRIPTION
+    Returns an empty array when winget is unavailable or the query fails - a failing upgrade
+    audit must never fail the run.
+
+    THE FLAGS ARE LOAD-BEARING. This query used to run as a bare
+    `& $wingetExe upgrade --include-unknown`, and it was the ONLY winget invocation in the
+    project that passed neither --accept-source-agreements nor --disable-interactivity - its
+    sibling, the `winget list` call in SoftwareManagementAudit.psm1, has always passed both.
+    On a machine that has not yet accepted the source terms (i.e. the freshly installed
+    machine this project exists for) winget prints the msstore source-agreement prompt
+    INSTEAD of a table. The parser then finds no '----' divider and returns zero rows, so the
+    audit logged "0 upgrade" with no error whatsoever, nothing was queued, and the whole
+    upgrade feature was silently inert. Nothing in the output made that visible.
+    Worse, a bare call inherits this process's stdin, so that prompt could sit and wait for
+    a keypress.
+
+    It is also routed through the timeout-guarded Invoke-CapturedCommand rather than a bare
+    call operator, per the operating contract: no package-manager call may be able to hang an
+    unattended run. This was the last external package command in the project still invoked
+    without one.
+.OUTPUTS
+    [hashtable[]] see ConvertFrom-WingetUpgradeTable. Assign directly; do not wrap in @().
 #>
 function Get-WingetUpgrade {
     [CmdletBinding()]
     [OutputType([object[]])]
-    param()
+    param([int]$TimeoutSeconds = 300)
 
-    if (-not (Test-CommandAvailable 'winget')) { return @() }
+    if (-not (Test-CommandAvailable 'winget')) { return , @() }
 
     try {
         $wingetExe = Resolve-WingetPath
-        $raw = & $wingetExe upgrade --include-unknown 2>&1 | Where-Object { $_ -is [string] }
-        $result = [System.Collections.Generic.List[hashtable]]::new()
+        $capture = Invoke-CapturedCommand -FilePath $wingetExe -TimeoutSeconds $TimeoutSeconds -ArgumentList @(
+            'upgrade', '--include-unknown', '--accept-source-agreements', '--disable-interactivity'
+        )
 
-        # winget has no machine-readable output for this command (confirmed against current
-        # winget CLI docs - no --output/-o option exists for 'upgrade' or 'list' as of mid-2026),
-        # so the fixed-width table has to be parsed. Capture the HEADER row's column count (the
-        # line immediately before the '----' divider) and require each data row's split to fall
-        # within [4, headerCols] - too few means a wrapped/misaligned row, too many means the
-        # split caught a double-space inside a single field (e.g. a name like "App  Name") rather
-        # than a real column boundary.
-        $inTable = $false
-        $headerCols = 0
-        $prevLine = $null
-        foreach ($line in $raw) {
-            if ($line -match '^-+') {
-                $inTable = $true
-                if ($prevLine) { $headerCols = @($prevLine -split '\s{2,}').Count }
-                continue
-            }
-            if (-not $inTable) { $prevLine = $line; continue }
-            if ($line -match '^\s*$') { continue }
-
-            $parts = @($line -split '\s{2,}')
-            if ($parts.Count -ge 4 -and ($headerCols -eq 0 -or $parts.Count -le $headerCols) -and $parts[0].Trim()) {
-                $wingetItem = @{
-                    Name             = $parts[0].Trim()
-                    Id               = $parts[1].Trim()
-                    CurrentVersion   = $parts[2].Trim()
-                    AvailableVersion = $parts[3].Trim()
-                    Source           = 'Winget'
-                }
-                $result.Add($wingetItem)
-            }
+        if ($capture.TimedOut) {
+            Write-Log -Level WARN -Component CORE `
+                -Message "winget upgrade query timed out after ${TimeoutSeconds}s - no upgrades audited this run"
+            return , @()
         }
-        return $result.ToArray()
+
+        $rows = ConvertFrom-WingetUpgradeTable -Lines @($capture.StdOut -split '\r?\n')
+
+        if ($rows.Count -eq 0 -and $capture.ExitCode -ne 0) {
+            # Surface WHY nothing was found. The silent-zero-rows case described above is
+            # precisely the failure this logging exists to make visible.
+            $detail = @($capture.StdErr, $capture.StdOut) | Where-Object { $_ -and $_.Trim() } | Select-Object -First 1
+            if ($detail) {
+                $detail = $detail.Trim()
+                if ($detail.Length -gt 300) { $detail = $detail.Substring(0, 300) + '...' }
+            }
+            Write-Log -Level WARN -Component CORE `
+                -Message "winget upgrade exited $($capture.ExitCode) with no parsable table: $detail"
+        }
+
+        return , $rows
     }
     catch {
         Write-Log -Level WARN -Component CORE -Message "winget upgrade query failed: $_"
-        return @()
+        return , @()
     }
 }
 
@@ -2558,6 +2664,7 @@ Export-ModuleMember -Function @(
     'Test-CbsRebootPending',
     'Get-InstalledApp',
     'Get-WingetUpgrade',
+    'ConvertFrom-WingetUpgradeTable',
     'Test-CommandAvailable',
     'Resolve-WingetPath',
     'Get-RegistryValue',

@@ -1,0 +1,14 @@
+Name                           Id                                    Version        Available      Source
+--------------------------------------------------------------------------------------------------------
+Mozilla Firefox                Mozilla.Firefox                       140.0.4        141.0.2        winget
+7-Zip                          7zip.7zip                             24.09          25.01          winget
+Adobe Acrobat Reader (64-bit)  Adobe.Acrobat.Reader.64-bit           25.001.20521   25.001.20698   winget
+Notepad++                      Notepad++.Notepad++                   8.7.1          8.8.6          winget
+
+4 upgrades available.
+
+The following packages have an upgrade available, but require explicit targeting for upgrade:
+Name                           Id                                    Version        Available      Source
+--------------------------------------------------------------------------------------------------------
+Wazuh Agent                    Wazuh.WazuhAgent                      Unknown        4.9.2          winget
+Microsoft Visual C++ 2015 Red  Microsoft.VCRedist.2015+.x64          14.40.33810    14.44.35211    winget

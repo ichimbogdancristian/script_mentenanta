@@ -14,6 +14,18 @@ if (-not (Get-Command 'Write-Log' -ErrorAction SilentlyContinue)) {
     Import-Module $_corePath -Force -Global -WarningAction SilentlyContinue
 }
 
+# winget exit codes that mean "this selector did not resolve to exactly one installed
+# package" - a MATCHING failure, not an installation failure. Phase 3's fallback ladder
+# (--id -> --name -> positional query) continues only on these, because they are the only
+# codes for which trying a different match path can produce a different outcome. Any other
+# non-zero code means winget resolved the package and the operation itself failed; retrying
+# there re-runs the same installer and, on an unattended run, spends the whole per-item
+# timeout again for each remaining form.
+$script:WingetMatchFailureCodes = @(
+    -1978335212,   # NO_APPLICATIONS_FOUND  - nothing matched the selector
+    -1978335129    # MULTIPLE_APPLICATIONS_FOUND - ambiguous; winget refuses to guess
+)
+
 <#
 .SYNOPSIS
     Reduces any package identifier to the bare AppX package Name.
@@ -635,91 +647,147 @@ function Invoke-SoftwareManagement {
     }
 
     # ─── PHASE 3: UPGRADE ────────────────────────────────────────────────────
+    # Every queued package is ATTEMPTED, through every form that could plausibly bind to it,
+    # and the outcome is then classified honestly:
+    #   processed - something actually upgraded it
+    #   skipped   - nothing that ran ever matched the package (the package manager that
+    #               reported it genuinely cannot act on it), which is not a failure of this run
+    #   failed    - an attempt bound to the package and the operation errored
     foreach ($item in $upgradeItems) {
-        $name = $item.Name ?? "$item"
-        $id = $item.Id ?? $item.WingetId ?? ''
+        $name = [string]($item.Name ?? '')
+        $id = [string]($item.Id ?? $item.WingetId ?? '')
         $source = $item.Source ?? 'winget'
         $current = $item.CurrentVersion ?? 'unknown'
         $available = $item.AvailableVersion ?? 'latest'
-        try {
-            Write-Log -Level INFO -Component SOFTWARE -Message "Upgrading $name ($current -> $available)"
-            $upgraded = $false
-            $notWingetManaged = $false
+        $label = if ($name) { $name } else { $id }
 
-            if ($source -eq 'winget' -and $id -and $hasWinget) {
-                $wingetArgs = @('upgrade', '--id', $id, '--silent', '--accept-package-agreements',
+        # Same per-item timeout treatment Phase 2 already gives installs (see the LibreOffice
+        # note there). Phase 3 never had it, so every upgrade silently used
+        # Invoke-ExternalPackageCommand's 600s default - and an upgrade is an uninstall +
+        # reinstall, i.e. strictly slower than the install that already needed 900s.
+        $timeoutArgs = @{}
+        $declaredTimeout = [int]($item.TimeoutSeconds ?? 0)
+        if ($declaredTimeout -gt 0) { $timeoutArgs['TimeoutSeconds'] = $declaredTimeout }
+
+        try {
+            Write-Log -Level INFO -Component SOFTWARE -Message "Upgrading $label ($current -> $available)"
+            $upgraded = $false
+            $boundToPackage = $false
+            $attempts = [System.Collections.Generic.List[string]]::new()
+
+            if ($source -eq 'winget' -and $hasWinget -and ($id -or $name)) {
+                $wingetCommon = @('--silent', '--accept-package-agreements',
                     '--accept-source-agreements', '--disable-interactivity')
-                $exitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) -ArgumentList $wingetArgs
-                # 0 = upgraded; -1978335189 (UPDATE_NOT_APPLICABLE) = already current, nothing to do.
-                if ($exitCode -in 0, -1978335189) {
-                    Write-Log -Level SUCCESS -Component SOFTWARE -Message "Upgraded (winget): $name"
-                    $upgraded = $true
+
+                # ARGUMENTS CONTAINING SPACES MUST BE QUOTED HERE. Invoke-ExternalPackageCommand
+                # builds its command line with `$ArgumentList -join ' '`, so an unquoted display
+                # Name is torn into separate arguments - verified directly: 'Mozilla Firefox'
+                # arrives at the child process as '--name Mozilla' plus a stray positional
+                # 'Firefox'. winget display Names are usually multi-word, so before this the
+                # --name and positional fallbacks below could essentially never bind, and the
+                # whole fallback ladder was decorative for exactly the packages that needed it.
+                # Ids are quoted too - ARP ids such as 'ARP\Machine\X64\Some App' contain spaces.
+                $quoteArg = { param($v) if ($v -match '\s') { '"' + $v + '"' } else { $v } }
+
+                $forms = [System.Collections.Generic.List[hashtable]]::new()
+                if ($id) {
+                    $forms.Add(@{ Label = '--id'; Args = @('upgrade', '--id', (& $quoteArg $id)) })
                 }
-                # -1978335212 (NO_APPLICATIONS_FOUND) for '--id' does NOT reliably mean "not
-                # managed by winget" - it's a documented winget-cli matching bug where '--id'
-                # uses stricter ARP-correlation logic than the bulk upgrade path, and fails for
-                # some MSI/vendor-installed-but-ARP-correlated packages (Wazuh Agent is a known
-                # example) even though 'winget upgrade' (bare/--all) finds and upgrades the same
-                # package fine (see microsoft/winget-cli#5688, #2686). Retry once with '--name'
-                # before concluding it's genuinely unmanaged - '--name' uses the same looser
-                # match the bulk path relies on, so it succeeds where '--id' incorrectly fails.
-                elseif ($exitCode -eq -1978335212) {
-                    $retryArgs = @('upgrade', '--name', $name, '--silent', '--accept-package-agreements',
-                        '--accept-source-agreements', '--disable-interactivity')
-                    $retryExitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) -ArgumentList $retryArgs
-                    if ($retryExitCode -in 0, -1978335189) {
-                        Write-Log -Level SUCCESS -Component SOFTWARE -Message "Upgraded (winget, by name after --id matching bug): $name"
+                if ($name) {
+                    $forms.Add(@{ Label = '--name'; Args = @('upgrade', '--name', (& $quoteArg $name)) })
+                    $forms.Add(@{ Label = 'query'; Args = @('upgrade', (& $quoteArg $name)) })
+                }
+
+                foreach ($form in $forms) {
+                    $exitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) `
+                        -ArgumentList ($form.Args + $wingetCommon) @timeoutArgs
+
+                    # 0 = upgraded; -1978335189 (UPDATE_NOT_APPLICABLE) = already current.
+                    if ($exitCode -in 0, -1978335189) {
+                        Write-Log -Level SUCCESS -Component SOFTWARE `
+                            -Message "Upgraded (winget $($form.Label)): $label"
                         $upgraded = $true
+                        break
                     }
-                    else {
-                        # Both --id and --name apply winget's strict ARP-correlation match, which
-                        # can fail for the same package that the bare/positional query resolves
-                        # fine (that's how it was found in `winget upgrade --include-unknown` in
-                        # the first place - see Get-WingetUpgrade). The positional query argument
-                        # uses the looser name/moniker/tag search winget uses for `list`/`search`,
-                        # not the correlation index, so it's a genuinely different match path -
-                        # try it before concluding the package is unmanaged.
-                        $queryArgs = @('upgrade', $name, '--silent', '--accept-package-agreements',
-                            '--accept-source-agreements', '--disable-interactivity')
-                        $queryExitCode = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) -ArgumentList $queryArgs
-                        if ($queryExitCode -in 0, -1978335189) {
-                            Write-Log -Level SUCCESS -Component SOFTWARE -Message "Upgraded (winget, by query after --id/--name matching bug): $name"
-                            $upgraded = $true
-                        }
-                        else {
-                            Write-Log -Level INFO -Component SOFTWARE -Message "Not managed by winget (installed outside winget) — skipping upgrade: $name"
-                            $notWingetManaged = $true
-                        }
-                    }
-                }
-                else {
-                    Write-Log -Level WARN -Component SOFTWARE -Message "winget exit $exitCode for $name"
+
+                    $attempts.Add("$($form.Label)=$exitCode")
+
+                    # THE LADDER CONTINUES ONLY ON A *MATCHING* FAILURE. The three forms are
+                    # genuinely different match paths - --id uses winget's strict
+                    # ARP-correlation index and is a documented source of false misses
+                    # (microsoft/winget-cli#5688, #2686; Wazuh Agent is a known example),
+                    # --name uses the looser match the bulk `winget upgrade --all` path relies
+                    # on, and the positional query uses the name/moniker/tag search behind
+                    # `list`/`search` - so when one fails to RESOLVE the package another
+                    # genuinely may succeed.
+                    #
+                    # Any other non-zero code means winget DID resolve the package and the
+                    # operation itself failed. Re-running the ladder there would re-invoke the
+                    # SAME installer through a different selector: no new information, and on
+                    # an unattended run it burns the full per-item timeout again for each
+                    # remaining form (up to 3 x 1800s for one package). So that stops the
+                    # ladder and is reported as the real failure it is.
+                    if ($exitCode -in $script:WingetMatchFailureCodes) { continue }
+                    $boundToPackage = $true
+                    break
                 }
             }
 
-            if (-not $upgraded -and -not $notWingetManaged -and $source -eq 'choco' -and $id -and $hasChoco) {
-                $exitCode = Invoke-ExternalPackageCommand -FilePath 'choco' -ArgumentList @('upgrade', $id, '--yes', '--no-progress')
+            # Chocolatey. Deliberately only for items chocolatey itself reported as outdated:
+            # `choco upgrade` INSTALLS a package that is not present ("... is not installed.
+            # Installing..."), so reusing it as a cross-source fallback for a winget item would
+            # silently ADD software instead of upgrading it. That is why Phase 3 has no
+            # cross-source fallback even though Phase 2's install path does.
+            if (-not $upgraded -and $source -eq 'choco' -and $id -and $hasChoco) {
+                $exitCode = Invoke-ExternalPackageCommand -FilePath 'choco' `
+                    -ArgumentList @('upgrade', $id, '--yes', '--no-progress') @timeoutArgs
                 if ($exitCode -eq 0) {
-                    Write-Log -Level SUCCESS -Component SOFTWARE -Message "Upgraded (choco): $name"
+                    Write-Log -Level SUCCESS -Component SOFTWARE -Message "Upgraded (choco): $label"
                     $upgraded = $true
+                }
+                else {
+                    $attempts.Add("choco=$exitCode")
+                    $boundToPackage = $true
                 }
             }
 
             if ($upgraded) {
                 $processed++
             }
-            elseif ($notWingetManaged) {
+            elseif ($attempts.Count -eq 0) {
+                # No mechanism was even available to try - e.g. the diff names a winget source
+                # on a machine where winget is missing. Not a failure of this package.
+                Write-Log -Level WARN -Component SOFTWARE `
+                    -Message "No available upgrade mechanism for $label (source: $source) - skipping"
+                $skipped++
+            }
+            elseif (-not $boundToPackage) {
+                # Every form that ran failed to RESOLVE the package (no match, or an ambiguous
+                # one winget refuses to guess at), so the reporting package manager cannot act
+                # on it at all. Counting this as a failure is what produced phantom errors and
+                # a Warning/Failed status on runs where nothing was actually wrong. The attempt
+                # codes are logged so an ambiguous match is still diagnosable rather than
+                # disappearing into a generic "skipped".
+                $detail = if ($item.VersionUnknown) {
+                    'installed version undeterminable'
+                }
+                else {
+                    'installed outside the package manager'
+                }
+                Write-Log -Level INFO -Component SOFTWARE `
+                    -Message "Not upgradable by ${source} ($detail; attempts: $($attempts -join ', ')) - skipping: $label"
                 $skipped++
             }
             else {
-                Write-Log -Level WARN -Component SOFTWARE -Message "Could not upgrade: $name"
-                $errors += "No upgrade method succeeded: $name"
+                Write-Log -Level WARN -Component SOFTWARE `
+                    -Message "Could not upgrade $label (attempts: $($attempts -join ', '))"
+                $errors += "No upgrade method succeeded: $label"
                 $failed++
             }
         }
         catch {
-            Write-Log -Level ERROR -Component SOFTWARE -Message "Upgrade failed [$name]: $_"
-            $errors += "[upgrade:$name] $_"
+            Write-Log -Level ERROR -Component SOFTWARE -Message "Upgrade failed [$label]: $_"
+            $errors += "[upgrade:$label] $_"
             $failed++
         }
     }

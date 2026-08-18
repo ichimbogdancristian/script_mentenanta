@@ -1048,24 +1048,49 @@ function Invoke-SoftwareManagementAudit {
             else {
                 $excludePatterns = if ($upgradeCfg.ExcludePatterns) { $upgradeCfg.ExcludePatterns } else { @() }
 
+                # Threaded to Type2 as TimeoutSeconds, exactly like essential-apps.json's
+                # per-app "timeout". Upgrades default HIGHER than installs because an upgrade
+                # of an already-installed suite (LibreOffice, Acrobat Reader) does an uninstall
+                # + reinstall and routinely outruns Invoke-ExternalPackageCommand's 600s
+                # default - at which point the process tree is killed mid-write and the run
+                # reports a failure for something that was merely slow.
+                $upgradeTimeout = [int]($upgradeCfg.UpgradeTimeoutSeconds ?? 1800)
+                if ($upgradeTimeout -le 0) { $upgradeTimeout = 1800 }
+
                 if ((Test-CommandAvailable 'winget') -and $upgradeCfg.EnabledSources -contains 'Winget') {
                     Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'Querying winget for upgrades...'
+                    $unknownVersion = 0
                     foreach ($item in (Get-WingetUpgrade)) {
-                        if (-not $item.Name) { continue }
+                        # Name OR Id is enough. Requiring Name meant a row that parsed with an
+                        # empty Name was dropped silently; requiring only Name while Type2
+                        # gated its whole winget attempt on Id meant a row with a blank Id was
+                        # queued and then counted as a hard FAILURE without a single command
+                        # ever being run for it.
+                        if (-not $item.Name -and -not $item.Id) { continue }
                         $excluded = $false
                         foreach ($pattern in $excludePatterns) {
                             if ($item.Name -like $pattern -or $item.Id -like $pattern) { $excluded = $true; break }
                         }
                         if ($excluded) { continue }
+                        if ($item.VersionUnknown) { $unknownVersion++ }
                         $diff.Add(@{
                                 Action           = 'upgrade'
                                 Name             = $item.Name
                                 Id               = $item.Id
                                 CurrentVersion   = $item.CurrentVersion
                                 AvailableVersion = $item.AvailableVersion
+                                VersionUnknown   = [bool]$item.VersionUnknown
+                                TimeoutSeconds   = $upgradeTimeout
                                 Source           = 'winget'
                             })
                         $upgradeFound++
+                    }
+                    if ($unknownVersion -gt 0) {
+                        # Not a warning: --include-unknown asks for these on purpose and they
+                        # are still attempted. Logged so the report explains why some upgrades
+                        # may end up 'skipped' rather than looking like silent no-ops.
+                        Write-Log -Level INFO -Component SOFTWARE-AUDIT `
+                            -Message "$unknownVersion upgrade candidate(s) have an undeterminable installed version - still queued, may not be winget-manageable"
                     }
                 }
 
@@ -1090,6 +1115,8 @@ function Invoke-SoftwareManagementAudit {
                                     Id               = $row.Name
                                     CurrentVersion   = $row.CurrentVersion
                                     AvailableVersion = $row.AvailableVersion
+                                    VersionUnknown   = $false
+                                    TimeoutSeconds   = $upgradeTimeout
                                     Source           = 'choco'
                                 })
                             $upgradeFound++
