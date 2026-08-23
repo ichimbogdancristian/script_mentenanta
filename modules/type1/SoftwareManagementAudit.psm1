@@ -1057,9 +1057,23 @@ function Invoke-SoftwareManagementAudit {
                 $upgradeTimeout = [int]($upgradeCfg.UpgradeTimeoutSeconds ?? 1800)
                 if ($upgradeTimeout -le 0) { $upgradeTimeout = 1800 }
 
+                # PreferBulkUpgrade - see the _bulk_note in app-upgrade-config.json.
+                # `winget upgrade --all` is the ONLY path that never re-selects a package from
+                # winget's rendered table, so it is the only one that cannot lose a package to
+                # column truncation or to a row the fixed-width parser rejects. It has no
+                # per-package exemption, though, so the audit has to decide here whether it is
+                # usable at all and tell Type2 via the diff.
+                $preferBulk = $true
+                if ($null -ne $upgradeCfg.PreferBulkUpgrade) { $preferBulk = [bool]$upgradeCfg.PreferBulkUpgrade }
+                $bulkTimeout = [int]($upgradeCfg.BulkUpgradeTimeoutSeconds ?? 7200)
+                if ($bulkTimeout -le 0) { $bulkTimeout = 7200 }
+
                 if ((Test-CommandAvailable 'winget') -and $upgradeCfg.EnabledSources -contains 'Winget') {
                     Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'Querying winget for upgrades...'
                     $unknownVersion = 0
+                    $excludedCount = 0
+                    $candidates = [System.Collections.Generic.List[hashtable]]::new()
+
                     foreach ($item in (Get-WingetUpgrade)) {
                         # Name OR Id is enough. Requiring Name meant a row that parsed with an
                         # empty Name was dropped silently; requiring only Name while Type2
@@ -1071,20 +1085,50 @@ function Invoke-SoftwareManagementAudit {
                         foreach ($pattern in $excludePatterns) {
                             if ($item.Name -like $pattern -or $item.Id -like $pattern) { $excluded = $true; break }
                         }
-                        if ($excluded) { continue }
+                        if ($excluded) {
+                            # Counted, not just skipped: the count is what decides whether the
+                            # bulk path is safe below, so it cannot be a silent `continue`.
+                            $excludedCount++
+                            Write-Log -Level DEBUG -Component SOFTWARE-AUDIT `
+                                -Message "Upgrade excluded by config: $($item.Name) [$($item.Id)]"
+                            continue
+                        }
                         if ($item.VersionUnknown) { $unknownVersion++ }
+                        $candidates.Add($item)
+                    }
+
+                    # ALL-OR-NOTHING BY NECESSITY, NOT PREFERENCE. `--all` upgrades everything
+                    # winget can see and offers no way to exempt a package, so a single
+                    # upgradable package matching ExcludePatterns disqualifies the bulk path for
+                    # the whole run and Type2 falls back to per-package targeting. Getting this
+                    # backwards would silently upgrade exactly the packages (Visual Studio, SQL
+                    # Server, Docker, pinned toolchains) the exclusion list exists to protect.
+                    $bulkEligible = $preferBulk -and ($excludedCount -eq 0)
+                    if ($excludedCount -gt 0) {
+                        Write-Log -Level INFO -Component SOFTWARE-AUDIT `
+                            -Message "$excludedCount upgradable package(s) matched ExcludePatterns - bulk 'winget upgrade --all' disabled this run; using per-package targeting"
+                    }
+                    elseif ($bulkEligible -and $candidates.Count -gt 0) {
+                        Write-Log -Level INFO -Component SOFTWARE-AUDIT `
+                            -Message "Nothing upgradable was excluded - Type2 may use bulk 'winget upgrade --all' for $($candidates.Count) package(s)"
+                    }
+
+                    foreach ($item in $candidates) {
                         $diff.Add(@{
-                                Action           = 'upgrade'
-                                Name             = $item.Name
-                                Id               = $item.Id
-                                CurrentVersion   = $item.CurrentVersion
-                                AvailableVersion = $item.AvailableVersion
-                                VersionUnknown   = [bool]$item.VersionUnknown
-                                TimeoutSeconds   = $upgradeTimeout
-                                Source           = 'winget'
+                                Action              = 'upgrade'
+                                Name                = $item.Name
+                                Id                  = $item.Id
+                                CurrentVersion      = $item.CurrentVersion
+                                AvailableVersion    = $item.AvailableVersion
+                                VersionUnknown      = [bool]$item.VersionUnknown
+                                TimeoutSeconds      = $upgradeTimeout
+                                BulkUpgradeEligible = $bulkEligible
+                                BulkTimeoutSeconds  = $bulkTimeout
+                                Source              = 'winget'
                             })
                         $upgradeFound++
                     }
+
                     if ($unknownVersion -gt 0) {
                         # Not a warning: --include-unknown asks for these on purpose and they
                         # are still attempted. Logged so the report explains why some upgrades
@@ -1117,6 +1161,10 @@ function Invoke-SoftwareManagementAudit {
                                     AvailableVersion = $row.AvailableVersion
                                     VersionUnknown   = $false
                                     TimeoutSeconds   = $upgradeTimeout
+                                    # Never bulk-upgradable: `winget upgrade --all` has no
+                                    # bearing on chocolatey packages. Set explicitly so the
+                                    # Type2 eligibility test can never read a missing key.
+                                    BulkUpgradeEligible = $false
                                     Source           = 'choco'
                                 })
                             $upgradeFound++

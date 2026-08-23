@@ -647,13 +647,107 @@ function Invoke-SoftwareManagement {
     }
 
     # ─── PHASE 3: UPGRADE ────────────────────────────────────────────────────
-    # Every queued package is ATTEMPTED, through every form that could plausibly bind to it,
-    # and the outcome is then classified honestly:
+    # Two mechanisms, in order of reliability.
+    #
+    # WHY THE BULK PATH EXISTS AND COMES FIRST. The per-package ladder further down re-selects
+    # each package by Id or Name, which means it depends on identifiers recovered from winget's
+    # RENDERED TABLE. That table is width-fitted: a long Id comes back truncated with an
+    # ellipsis, and a row whose columns collapse into fewer fields is rejected by the parser
+    # outright. Neither is repairable downstream - a truncated Id cannot be handed back to
+    # `winget upgrade --id`, and a dropped row was never queued in the first place.
+    #
+    # `winget upgrade --all` never leaves winget. It upgrades the package objects winget
+    # already resolved internally, so no identifier is ever serialised through text and none of
+    # the above can happen. That is precisely why running it by hand upgrades everything on a
+    # machine where this module reported nothing to do.
+    #
+    # It cannot exempt a package, so it runs only when the audit confirmed that nothing
+    # upgradable matched ExcludePatterns (BulkUpgradeEligible on every winget item). Its result
+    # is VERIFIED by re-enumerating rather than trusted, and anything still listed afterwards
+    # falls through to the per-package ladder.
+    #
+    # Outcome classification for both paths:
     #   processed - something actually upgraded it
     #   skipped   - nothing that ran ever matched the package (the package manager that
     #               reported it genuinely cannot act on it), which is not a failure of this run
     #   failed    - an attempt bound to the package and the operation errored
+
+    # Keys of packages the bulk pass already upgraded. A key, not an object reference: the diff
+    # items come back from JSON as OrderedHashtable and any cast would break reference identity.
+    $bulkDone = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    $wingetUpgradeItems = @($upgradeItems | Where-Object { ($_.Source ?? 'winget') -eq 'winget' })
+    $bulkBlocked = @($wingetUpgradeItems | Where-Object { -not $_.BulkUpgradeEligible }).Count
+
+    if ($hasWinget -and $wingetUpgradeItems.Count -gt 0 -and $bulkBlocked -eq 0) {
+        $bulkTimeout = [int]($wingetUpgradeItems[0].BulkTimeoutSeconds ?? 7200)
+        if ($bulkTimeout -le 0) { $bulkTimeout = 7200 }
+
+        Write-Log -Level INFO -Component SOFTWARE `
+            -Message "Bulk upgrade: 'winget upgrade --all' for $($wingetUpgradeItems.Count) package(s) (timeout ${bulkTimeout}s)"
+
+        $bulkExit = Invoke-ExternalPackageCommand -FilePath (Resolve-WingetPath) -TimeoutSeconds $bulkTimeout `
+            -ArgumentList @('upgrade', '--all', '--include-unknown', '--silent',
+            '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
+        Write-Log -Level INFO -Component SOFTWARE -Message "Bulk upgrade exit code: $bulkExit"
+
+        # VERIFY BY RE-ENUMERATING, NOT BY THE EXIT CODE. `--all` returns non-zero if ANY single
+        # package failed, so the code says nothing about the other twenty - and returns 0 in
+        # cases where individual packages were skipped. Re-querying is the only honest check.
+        #
+        # This deliberately calls Invoke-CapturedCommand rather than Get-WingetUpgrade: it has
+        # to distinguish "the query ran and nothing is left" from "the query itself failed".
+        # Get-WingetUpgrade returns an empty array for both, and reading a failed query as
+        # "everything upgraded" would report success for work that never happened.
+        $verify = Invoke-CapturedCommand -FilePath (Resolve-WingetPath) -TimeoutSeconds 300 `
+            -ArgumentList @('upgrade', '--include-unknown', '--accept-source-agreements', '--disable-interactivity')
+
+        $remaining = if ($verify.TimedOut) { @() }
+        else { ConvertFrom-WingetUpgradeTable -Lines @($verify.StdOut -split '\r?\n') }
+
+        $verifyUsable = (-not $verify.TimedOut) -and ($verify.ExitCode -eq 0 -or $remaining.Count -gt 0)
+
+        if (-not $verifyUsable) {
+            # Claim nothing. Every item stays pending and the ladder re-attempts it, which is
+            # safe because a package that IS already current returns UPDATE_NOT_APPLICABLE and
+            # is counted as success there.
+            Write-Log -Level WARN -Component SOFTWARE `
+                -Message 'Could not verify the bulk upgrade (re-query failed) - re-attempting every queued package individually'
+        }
+        else {
+            # Compare on the same rendered identifiers BOTH lists were built from. Truncation is
+            # deterministic, so two truncated forms of one package still compare equal: a lossy
+            # value is still a valid comparison key even when it is not a valid selector to hand
+            # back to winget.
+            $stillListed = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+            foreach ($r in $remaining) {
+                if ($r.Id) { $null = $stillListed.Add("id:$($r.Id)") }
+                if ($r.Name) { $null = $stillListed.Add("name:$($r.Name)") }
+            }
+
+            foreach ($item in $wingetUpgradeItems) {
+                $bid = [string]($item.Id ?? '')
+                $bnm = [string]($item.Name ?? '')
+                $stillThere = ($bid -and $stillListed.Contains("id:$bid")) -or
+                              ($bnm -and $stillListed.Contains("name:$bnm"))
+                if ($stillThere) { continue }   # not upgraded - leave it to the ladder
+                Write-Log -Level SUCCESS -Component SOFTWARE `
+                    -Message "Upgraded (winget --all): $(if ($bnm) { $bnm } else { $bid })"
+                $processed++
+                $null = $bulkDone.Add("$bid|$bnm")
+            }
+
+            $stragglers = $wingetUpgradeItems.Count - $bulkDone.Count
+            if ($stragglers -gt 0) {
+                Write-Log -Level INFO -Component SOFTWARE `
+                    -Message "$stragglers package(s) still listed after --all - retrying those individually"
+            }
+        }
+    }
+
     foreach ($item in $upgradeItems) {
+        # Already confirmed upgraded by the bulk pass - do not re-attempt or double-count.
+        if ($bulkDone.Contains("$([string]($item.Id ?? ''))|$([string]($item.Name ?? ''))")) { continue }
         $name = [string]($item.Name ?? '')
         $id = [string]($item.Id ?? $item.WingetId ?? '')
         $source = $item.Source ?? 'winget'

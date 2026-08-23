@@ -7,6 +7,9 @@
   "_adobe_note": "A blanket \"Adobe*\" used to be listed here. That silently pinned Adobe Acrobat Reader - which essential-apps.json INSTALLS on every machine - at whatever version it was first installed at, forever. A permanently unpatched PDF reader is one of the most heavily targeted attack surfaces on a Windows desktop, so the blanket directly worked against this project's goal of reducing CVE exposure. It is now replaced by specific Creative Cloud / creative-suite / Acrobat Pro exclusions, which keep the disruptive licensed installers out while letting Reader receive security updates.",
   "_timeout_note": "UpgradeTimeoutSeconds is threaded to Type2 as the diff item's TimeoutSeconds and caps each individual upgrade command. It defaults higher than Invoke-ExternalPackageCommand's 600s because an upgrade of an already-installed suite does an uninstall + reinstall; at 600s LibreOffice/Acrobat had their process tree killed mid-write and were reported as failures for being merely slow.",
   "UpgradeTimeoutSeconds": 1800,
+  "_bulk_note": "PreferBulkUpgrade runs a single `winget upgrade --all` instead of re-selecting each package by name/id. That is the ONLY path that never round-trips through winget's rendered table, so it cannot lose packages to column truncation or to a row the fixed-width parser rejects. It is used only when NO upgradable package matched ExcludePatterns this run, because --all has no way to exempt one. Otherwise the per-package ladder runs. BulkUpgradeTimeoutSeconds covers the whole batch, not one package.",
+  "PreferBulkUpgrade": true,
+  "BulkUpgradeTimeoutSeconds": 7200,
   "EnabledSources": [
     "Winget",
     "Chocolatey"
