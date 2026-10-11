@@ -1967,6 +1967,146 @@ function Get-WingetUpgrade {
 
 <#
 .SYNOPSIS
+    Extracts the package identifiers from the JSON written by `winget export`.
+.DESCRIPTION
+    `winget export` is the only winget command that emits machine-readable output, and the
+    Ids in it are complete - never width-fitted like the `upgrade`/`list` tables. Shape:
+    { "Sources": [ { "Packages": [ { "PackageIdentifier": "..." } ] } ] }.
+    Returns an empty array for empty or malformed input; never throws.
+.OUTPUTS
+    [string[]] Assign directly; do not wrap in @().
+#>
+function ConvertFrom-WingetExportJson {
+    [CmdletBinding()]
+    [OutputType([string[]])]
+    param([Parameter()] [AllowEmptyString()] [AllowNull()] [string]$Json)
+
+    $ids = [System.Collections.Generic.List[string]]::new()
+    if (-not $Json -or -not $Json.Trim()) { return , $ids.ToArray() }
+
+    try { $doc = $Json | ConvertFrom-Json -AsHashtable -ErrorAction Stop }
+    catch { return , $ids.ToArray() }
+
+    foreach ($src in @($doc['Sources'])) {
+        if ($src -isnot [System.Collections.IDictionary]) { continue }
+        foreach ($pkg in @($src['Packages'])) {
+            if ($pkg -isnot [System.Collections.IDictionary]) { continue }
+            $pkgId = [string]$pkg['PackageIdentifier']
+            if ($pkgId) { $ids.Add($pkgId) }
+        }
+    }
+    return , $ids.ToArray()
+}
+
+<#
+.SYNOPSIS
+    Returns the complete winget package Ids of everything installed, via `winget export`.
+.DESCRIPTION
+    Used only to repair Ids that `winget upgrade` printed truncated (see
+    Resolve-WingetTruncatedId). Returns an empty array when winget is unavailable or the
+    export fails - the caller then keeps the truncated Id and Type2's --name/query fallbacks
+    run exactly as before, so a failure here can never lose a package.
+
+    The exit code is deliberately NOT trusted: export warns (and may exit non-zero) for every
+    installed package no source carries, while still writing a complete file for the rest.
+    The file itself is the authority.
+.OUTPUTS
+    [string[]] Assign directly; do not wrap in @().
+#>
+function Get-WingetExportedId {
+    [CmdletBinding()]
+    [OutputType([object[]])]
+    param([int]$TimeoutSeconds = 300)
+
+    if (-not (Test-CommandAvailable 'winget')) { return , @() }
+
+    $dir = if ($env:MAINT_TEMP) { Get-TempPath -Category 'data' } else { [System.IO.Path]::GetTempPath() }
+    $outFile = Join-Path $dir "winget-export-$PID.json"
+
+    try {
+        if (Test-Path -LiteralPath $outFile) { Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue }
+
+        $capture = Invoke-CapturedCommand -FilePath (Resolve-WingetPath) -TimeoutSeconds $TimeoutSeconds -ArgumentList @(
+            'export', '-o', "`"$outFile`"", '--accept-source-agreements', '--disable-interactivity'
+        )
+
+        if ($capture.TimedOut -or -not (Test-Path -LiteralPath $outFile)) {
+            Write-Log -Level WARN -Component CORE `
+                -Message "winget export produced no file (exit $($capture.ExitCode)) - truncated upgrade Ids cannot be repaired this run"
+            return , @()
+        }
+
+        return , (ConvertFrom-WingetExportJson -Json (Get-Content -LiteralPath $outFile -Raw -Encoding UTF8))
+    }
+    catch {
+        Write-Log -Level WARN -Component CORE -Message "winget export failed: $_"
+        return , @()
+    }
+    finally {
+        if (Test-Path -LiteralPath $outFile) { Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+# Trailing truncation marker on a width-fitted winget Id - see Resolve-WingetTruncatedId.
+$script:WingetTruncationMarker = '(?:\.{3}|(?:\?|[^\x21-\x7E])+)$'
+
+<#
+.SYNOPSIS
+    True when a winget Id ends in a truncation marker (see Resolve-WingetTruncatedId).
+#>
+function Test-WingetIdTruncated {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param([Parameter()] [AllowEmptyString()] [AllowNull()] [string]$Id)
+
+    return [bool]($Id -and $Id -match $script:WingetTruncationMarker)
+}
+
+<#
+.SYNOPSIS
+    Repairs a winget Id that the `winget upgrade` table truncated, using the full Id list.
+.DESCRIPTION
+    The upgrade table is width-fitted, so a long Id arrives cut short with an ellipsis
+    (e.g. 'Microsoft.VCRedist.2015+.x6…'). That form cannot be handed back to
+    `winget upgrade --id`, so Type2 would fall through to the looser --name match or skip the
+    package.
+
+    The ellipsis may arrive as U+2026, as '...', as '?' (code page cannot represent it), or as
+    mojibake ('â€¦', 'ΓÇª') depending on the code page the redirected pipe was decoded with -
+    so a trailing '...' or any trailing run of '?' / non-printable-ASCII counts as the marker.
+    Real Ids are printable ASCII and never contain '?'.
+
+    Conservative by design. The Id is returned unchanged when:
+      - it is already a known full Id,
+      - it carries no truncation marker (nothing to repair; never guess at an intact Id),
+      - zero or MORE THAN ONE known Id starts with the truncated stem. An ambiguous prefix is
+        left alone rather than risk upgrading the wrong package.
+.OUTPUTS
+    [string] the full Id, or the input unchanged.
+#>
+function Resolve-WingetTruncatedId {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter()] [AllowEmptyString()] [AllowNull()] [string]$Id,
+        [Parameter()] [AllowEmptyCollection()] [AllowNull()] [string[]]$KnownIds = @()
+    )
+
+    if (-not $Id -or -not $KnownIds -or $KnownIds.Count -eq 0) { return $Id }
+    if ($KnownIds -contains $Id) { return $Id }   # -contains is case-insensitive
+    if (-not (Test-WingetIdTruncated -Id $Id)) { return $Id }
+
+    $stem = $Id -replace $script:WingetTruncationMarker, ''
+    if (-not $stem) { return $Id }
+
+    $hits = @($KnownIds | Where-Object { $_.StartsWith($stem, [System.StringComparison]::OrdinalIgnoreCase) } |
+        Select-Object -Unique)
+    if ($hits.Count -eq 1) { return $hits[0] }
+    return $Id
+}
+
+<#
+.SYNOPSIS
     Checks whether a command is available in the current session.
 #>
 function Test-CommandAvailable {
@@ -2665,6 +2805,10 @@ Export-ModuleMember -Function @(
     'Get-InstalledApp',
     'Get-WingetUpgrade',
     'ConvertFrom-WingetUpgradeTable',
+    'ConvertFrom-WingetExportJson',
+    'Get-WingetExportedId',
+    'Test-WingetIdTruncated',
+    'Resolve-WingetTruncatedId',
     'Test-CommandAvailable',
     'Resolve-WingetPath',
     'Get-RegistryValue',

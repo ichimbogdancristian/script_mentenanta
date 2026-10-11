@@ -1060,7 +1060,34 @@ function Invoke-SoftwareManagementAudit {
                 if ((Test-CommandAvailable 'winget') -and $upgradeCfg.EnabledSources -contains 'Winget') {
                     Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message 'Querying winget for upgrades...'
                     $unknownVersion = 0
-                    foreach ($item in (Get-WingetUpgrade)) {
+                    $upgradeRows = Get-WingetUpgrade
+
+                    # TRUNCATED IDS. The upgrade table is width-fitted, so a long Id arrives cut
+                    # short with an ellipsis and cannot be handed back to `winget upgrade --id`.
+                    # Repair it from `winget export` (complete Ids, JSON) - one extra winget call,
+                    # made ONLY when a truncated Id is actually present. Done before the exclusion
+                    # check so ExcludePatterns also see the full Id. Anything that cannot be
+                    # repaired unambiguously keeps its truncated form, and Type2's --name/query
+                    # fallbacks handle it exactly as before.
+                    $truncated = @($upgradeRows | Where-Object { Test-WingetIdTruncated -Id $_.Id })
+                    if ($truncated.Count -gt 0) {
+                        Write-Log -Level INFO -Component SOFTWARE-AUDIT `
+                            -Message "$($truncated.Count) upgrade Id(s) truncated by winget's table - resolving full Ids via 'winget export'"
+                        $knownIds = Get-WingetExportedId
+                        foreach ($row in $truncated) {
+                            $full = Resolve-WingetTruncatedId -Id $row.Id -KnownIds $knownIds
+                            if ($full -ne $row.Id) {
+                                Write-Log -Level INFO -Component SOFTWARE-AUDIT -Message "Resolved truncated Id '$($row.Id)' -> '$full'"
+                                $row.Id = $full
+                            }
+                            else {
+                                Write-Log -Level WARN -Component SOFTWARE-AUDIT `
+                                    -Message "Could not resolve truncated Id '$($row.Id)' ($($row.Name)) - Type2 will fall back to name matching"
+                            }
+                        }
+                    }
+
+                    foreach ($item in $upgradeRows) {
                         # Name OR Id is enough. Requiring Name meant a row that parsed with an
                         # empty Name was dropped silently; requiring only Name while Type2
                         # gated its whole winget attempt on Id meant a row with a blank Id was
